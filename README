@@ -1,0 +1,46 @@
+# Volunteer Platform for Stray Animals
+
+## 📌 Project Description
+The **Volunteer Platform for Stray Animals** is a mobile application designed to bring together volunteers who want to support stray animals. Through this platform, volunteers can view designated need points on a map, participate in relief activities, and enhance social solidarity.
+
+The project includes tasks such as providing food, creating shelter opportunities, offering veterinary support, and carrying out emergency interventions. Additionally, businesses (cafes, restaurants, markets, etc.) will be encouraged to donate surplus food, thereby reducing food waste.
+
+## 🚀 Key Features
+- **Map-Based System:** Volunteers can view and assist at locations in need via the interactive map.
+- **Task Management:** Volunteers can take on and complete various assistance tasks.
+- **Business Participation:** Businesses can donate pet food and confirm received donations.
+- **Gamification:** Volunteers earn points and badges for completed tasks.
+- **Community & Communication:** Users can share their experiences and form teams.
+
+## 🛠 Technology Stack
+- **Frontend:** React Native (Supports Android & iOS)
+- **Backend:** Node.js + Express.js
+- **Database:** Firebase / PostgreSQL
+- **Map Service:** Google Maps API
+- **Authentication:** Firebase Authentication
+
+## 📥 Installation
+### 1️⃣ Clone the Repository
+```bash
+git clone https://github.com/username/stray-animals-platform.git
+cd stray-animals-platform
+```
+
+### 2️⃣ Install Dependencies
+```bash
+npm install  # or yarn install
+```
+
+### 3️⃣ Configure Environment Variables
+Create a `.env` file and add the required API keys:
+```
+GOOGLE_MAPS_API_KEY=your_api_key
+FIREBASE_API_KEY=your_firebase_key
+```
+
+### 4️⃣ Run the Application
+```bash
+npx expo start  # or npm start
+```
+
+
