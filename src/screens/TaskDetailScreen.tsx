@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import {
   View,
   StyleSheet,
@@ -18,8 +18,27 @@ import { Task } from '../types/task';
 import { TaskService } from '../services/taskService';
 import { useAuth } from '../hooks/useAuth';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MapPin, Clock, Award, User, CheckCircle, AlertTriangle } from 'lucide-react-native';
+
+// Class Component olarak TaskMarker bileşeni
+class TaskMarker extends Component<{
+  coordinate: { latitude: number; longitude: number };
+}> {
+  shouldComponentUpdate() {
+    // Koordinat değişmediği sürece yeniden render etme
+    return false;
+  }
+
+  render() {
+    return (
+      <Marker
+        coordinate={this.props.coordinate}
+        tracksViewChanges={false}
+      />
+    );
+  }
+}
 
 export default function TaskDetailScreen() {
   const [task, setTask] = useState<Task | null>(null);
@@ -196,7 +215,7 @@ export default function TaskDetailScreen() {
             scrollEnabled={false}
             zoomEnabled={false}
           >
-            <Marker
+            <TaskMarker
               coordinate={{
                 latitude: task.location.latitude,
                 longitude: task.location.longitude,
@@ -248,33 +267,43 @@ export default function TaskDetailScreen() {
                 requiredLocation={task.location ? {
                   latitude: task.location.latitude,
                   longitude: task.location.longitude,
-                  radiusMeters: 500 // Default 500 meters radius
                 } : undefined}
-                onComplete={loadTask}
+                onComplete={() => {
+                  setShowCompletionForm(false);
+                  loadTask();
+                }}
+                onCancel={() => setShowCompletionForm(false)}
               />
             </View>
           )
         ) : (
-          <View style={styles.actions}>
-            {task.status === 'OPEN' && !isAssignedToMe && (
+          <View style={styles.actionsContainer}>
+            {task.status === 'OPEN' && !task.assignedTo && (
               <Button
-                title="Görevi Üstlen"
+                mode="contained"
                 onPress={handleAssign}
-                variant="primary"
-              />
+                style={styles.actionButton}
+              >
+                Görevi Üstlen
+              </Button>
             )}
+            
             {isAssignedToMe && task.status === 'IN_PROGRESS' && (
               <>
                 <Button
-                  title="Görevi Bırak"
-                  onPress={handleUnassign}
-                  variant="outline"
-                />
-                <Button
-                  title="Görevi Tamamla"
+                  mode="contained"
                   onPress={handleComplete}
-                  variant="primary"
-                />
+                  style={[styles.actionButton, styles.completeButton]}
+                >
+                  Tamamlandı Olarak İşaretle
+                </Button>
+                <Button
+                  mode="outlined"
+                  onPress={handleUnassign}
+                  style={[styles.actionButton, styles.cancelButton]}
+                >
+                  Görevi Bırak
+                </Button>
               </>
             )}
           </View>
@@ -431,8 +460,17 @@ const styles = StyleSheet.create({
     marginVertical: 16,
     backgroundColor: '#E0E0E0',
   },
-  actions: {
+  actionsContainer: {
     marginTop: 16,
     gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+  },
+  completeButton: {
+    backgroundColor: '#4CAF50',
+  },
+  cancelButton: {
+    backgroundColor: '#FF6B6B',
   },
 });
