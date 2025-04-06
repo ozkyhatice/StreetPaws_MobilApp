@@ -1,155 +1,403 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, ScrollView } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import React from 'react';
+import {
+  View,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  RefreshControl,
+  Dimensions,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Appbar, Card, Button, IconButton } from 'react-native-paper';
+import { MapPin, Users, Heart, AlertTriangle, Map } from 'lucide-react-native';
+import { RootStackParamList } from '../types/navigation';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import { Text, Button, Card } from 'react-native-paper';
+
+type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+
+// Get the window width for responsive design
+const { width } = Dimensions.get('window');
+const cardWidth = width > 500 ? (width - 48) / 2 : width - 32;
+const isSmallScreen = width < 375;
 
 const HomeScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<HomeScreenNavigationProp>();
+  const [refreshing, setRefreshing] = React.useState(false);
 
-  // Acil yardım talepleri verisi
-  const [emergencyRequests, setEmergencyRequests] = useState([
-    { id: '1', title: 'Yangın Yardımı - Lokasyon 1', description: 'Yangın çıkmış, yardım bekliyor', lat: 37.78825, lon: -122.4324 },
-    { id: '2', title: 'Sağlık Yardımı - Lokasyon 2', description: 'Acil sağlık yardımı bekliyor', lat: 37.75825, lon: -122.4294 },
-    { id: '3', title: 'Sağlık Yardımı - Lokasyon 2', description: 'Acil sağlık yardımı bekliyor', lat: 37.75825, lon: -122.4294 },
-    { id: '4', title: 'Sağlık Yardımı - Lokasyon 2', description: 'Acil sağlık yardımı bekliyor', lat: 37.75825, lon: -122.4294 },
-    { id: '5', title: 'Sağlık Yardımı - Lokasyon 2', description: 'Acil sağlık yardımı bekliyor', lat: 37.75825, lon: -122.4294 },
-  ]);
-
-  // Harita merkezi ve zoom seviyesini kontrol etmek için state kullanıyoruz.
-  const [region, setRegion] = useState({
-    latitude: 37.78825,
-    longitude: -122.4324,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
-
-  // Refreshing state
-  const [refreshing, setRefreshing] = useState(false);
-
-  // Refresh control için fonksiyon
-  const onRefresh = () => {
+  const onRefresh = React.useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
-      setEmergencyRequests([
-        { id: '3', title: 'Yangın Yardımı - Lokasyon 3', description: 'Yeni yangın durumu', lat: 37.78835, lon: -122.4328 },
-        { id: '4', title: 'Sağlık Yardımı - Lokasyon 4', description: 'Yeni sağlık yardımı bekliyor', lat: 37.75815, lon: -122.4290 },
-      ]);
-      setRefreshing(false);
-    }, 2000);  // Simulate a network request delay
+    // Add your refresh logic here
+    setTimeout(() => setRefreshing(false), 2000);
+  }, []);
+
+  const emergencyCases = [
+    {
+      id: 1,
+      title: 'Yaralı Kedi',
+      location: 'Kadıköy, İstanbul',
+      image: 'https://placekitten.com/200/200',
+      urgency: 'Yüksek',
+    },
+    {
+      id: 2,
+      title: 'Aç Köpekler',
+      location: 'Beşiktaş, İstanbul',
+      image: 'https://placedog.net/200/200',
+      urgency: 'Orta',
+    },
+  ];
+
+  const handleEmergencyPress = () => {
+    navigation.navigate('AddEmergency');
   };
 
-  const handleEmergencyDetail = (emergencyRequest) => {
-    navigation.navigate('EmergencyDetail', { emergencyRequest }); // Pass the selected emergency request data
+  const handleMapPress = () => {
+    navigation.navigate('Map');
+  };
+
+  const handleVolunteersPress = () => {
+    navigation.navigate('Volunteers');
+  };
+
+  const handleDonationsPress = () => {
+    navigation.navigate('Donations');
+  };
+
+  const handleTaskDetailPress = (id: number) => {
+    navigation.navigate('TaskDetail', { taskId: id.toString() });
   };
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* Appbar - Modern Tasarım */}
-      <Appbar.Header style={styles.appbar}>
-        <Appbar.Content title="Ana Sayfa" />
-        <Appbar.Action icon="bell" onPress={() => navigation.navigate('Notifications')} />
-      </Appbar.Header>
-
-        {/* Harita */}
-        <View style={styles.mapContainer}>
-          <MapView
-            style={styles.map}
-            region={region}
-            onRegionChangeComplete={(newRegion) => setRegion(newRegion)}
-            zoomEnabled={true}
-            scrollEnabled={true}
-            pitchEnabled={true}
-            showsUserLocation={true}
-          >
-            {emergencyRequests.map(request => (
-              <Marker
-                key={request.id}
-                coordinate={{ latitude: request.lat, longitude: request.lon }}
-                title={request.title}
-                description={request.description}
-                pinColor="#ff7043"
-              />
-            ))}
-          </MapView>
-        </View>
-
-        {/* Acil Yardım Talep Akışı */}
-        <FlatList
-          data={emergencyRequests}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <Card style={styles.taskCard}>
-              <Card.Content>
-                <Text style={styles.taskTitle}>{item.title}</Text>
-                <Text style={styles.taskDescription}>{item.description}</Text>
-                <Button 
-                  mode="contained" 
-                  onPress={() => handleEmergencyDetail(item)} 
-                  style={styles.selectButton}
-                >
-                  Yardım Bilgileri
-                </Button>
-              </Card.Content>
-            </Card>
-          )}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      <View style={styles.header}>
+        <Image
+          source={require('../../assets/icon.png')}
+          style={styles.logo}
+          resizeMode="contain"
         />
-
-
-      {/* Navbar */}
-      <View style={styles.navbar}>
-        <IconButton icon="home-outline" size={30} onPress={() => navigation.navigate('Home')} />
-        <IconButton icon="clipboard-list" size={30} onPress={() => navigation.navigate('Tasks')} />
-        <IconButton icon="account-outline" size={30} onPress={() => navigation.navigate('Profile')} />
-        <IconButton icon="bell-outline" size={30} onPress={() => navigation.navigate('Notifications')} />
+        <Text variant="headlineMedium" style={styles.title}>StreetPaws</Text>
+        <Text variant="bodyLarge" style={styles.subtitle}>
+          Sokak hayvanlarına yardım etmek için bir araya geldik
+        </Text>
       </View>
-    </View>
+
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={handleMapPress}
+        >
+          <Map size={isSmallScreen ? 24 : 32} color="#FF6B6B" />
+          <Text variant="titleMedium" style={styles.actionTitle}>Haritada Gör</Text>
+          <Text variant="bodySmall" style={styles.actionDescription}>
+            Yakınındaki görevleri haritada keşfet
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={handleVolunteersPress}
+        >
+          <Users size={isSmallScreen ? 24 : 32} color="#4CAF50" />
+          <Text variant="titleMedium" style={styles.actionTitle}>Gönüllüler</Text>
+          <Text variant="bodySmall" style={styles.actionDescription}>
+            Diğer gönüllülerle iletişime geç
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={handleDonationsPress}
+        >
+          <Heart size={isSmallScreen ? 24 : 32} color="#2196F3" />
+          <Text variant="titleMedium" style={styles.actionTitle}>Bağış Yap</Text>
+          <Text variant="bodySmall" style={styles.actionDescription}>
+            Sokak hayvanlarına destek ol
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoSection}>
+        <Text variant="titleLarge" style={styles.sectionTitle}>Güncel Bilgiler</Text>
+        
+        <Card style={styles.infoCard}>
+          <Card.Content>
+            <Text variant="titleMedium" style={styles.cardTitle}>Kış Yaklaşıyor</Text>
+            <Text variant="bodyMedium" style={styles.cardText}>
+              Soğuk havalar için sokak hayvanlarına barınak yapma görevleri eklendi. Katılmak için görevler sayfasını kontrol edin.
+            </Text>
+          </Card.Content>
+        </Card>
+        
+        <Card style={styles.infoCard}>
+          <Card.Content>
+            <Text variant="titleMedium" style={styles.cardTitle}>Besleme Noktaları</Text>
+            <Text variant="bodyMedium" style={styles.cardText}>
+              Şehrin farklı bölgelerinde besleme noktaları oluşturuldu. En yakın beslenme noktasını haritada görebilirsiniz.
+            </Text>
+          </Card.Content>
+        </Card>
+      </View>
+
+      <View style={styles.statsSection}>
+        <Text variant="titleLarge" style={styles.sectionTitle}>İstatistikler</Text>
+        
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text variant="headlineMedium" style={styles.statNumber}>156</Text>
+            <Text variant="bodyMedium" style={styles.statLabel}>Aktif Görev</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <Text variant="headlineMedium" style={styles.statNumber}>843</Text>
+            <Text variant="bodyMedium" style={styles.statLabel}>Gönüllü</Text>
+          </View>
+          
+          <View style={styles.statCard}>
+            <Text variant="headlineMedium" style={styles.statNumber}>1.2k</Text>
+            <Text variant="bodyMedium" style={styles.statLabel}>Tamamlanan Görev</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Emergency Cases */}
+      <View style={styles.section}>
+        <Text variant="titleLarge" style={styles.sectionTitle}>Acil Durumlar</Text>
+        {emergencyCases.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.emergencyCard}
+            onPress={() => handleTaskDetailPress(item.id)}
+          >
+            <Image source={{ uri: item.image }} style={styles.emergencyImage} />
+            <View style={styles.emergencyInfo}>
+              <Text variant="titleMedium" style={styles.emergencyTitle}>{item.title}</Text>
+              <View style={styles.locationContainer}>
+                <MapPin size={16} color="#666" />
+                <Text variant="bodySmall" style={styles.locationText}>{item.location}</Text>
+              </View>
+              <View
+                style={[
+                  styles.urgencyBadge,
+                  {
+                    backgroundColor:
+                      item.urgency === 'Yüksek' ? '#FFE0E0' : '#E3F2FD',
+                  },
+                ]}
+              >
+                <Text
+                  variant="labelSmall"
+                  style={[
+                    styles.urgencyText,
+                    {
+                      color: item.urgency === 'Yüksek' ? '#FF6B6B' : '#2196F3',
+                    },
+                  ]}
+                >
+                  {item.urgency}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ))}
+        
+        <Button 
+          mode="contained" 
+          icon="plus"
+          style={styles.addEmergencyButton}
+          contentStyle={styles.addEmergencyButtonContent}
+          onPress={handleEmergencyPress}
+        >
+          Acil Durum Bildir
+        </Button>
+      </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  appbar: {
-    backgroundColor: '#81c784',  // Soft mor tonu
-  },
-  mapContainer: {
-    height: 300,  // Set the map height to ensure it fits in the layout
-    marginTop: 10,
-    borderRadius: 10,
-    borderColor: '#e0e0e0',
-    borderWidth: 1,
-  },
-  map: {
+  container: {
     flex: 1,
-    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
   },
-  taskCard: {
-    margin: 10,
-    borderRadius: 10,
-    elevation: 3,
-    backgroundColor: '#fff',
-    borderColor: '#e0e0e0',
-    borderWidth: 1,
+  scrollContent: {
+    paddingBottom: 24,
   },
-  taskTitle: {
-    fontSize: 18,
+  header: {
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: '#FFF8E1',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    marginBottom: 16,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+    marginBottom: 8,
+  },
+  title: {
     fontWeight: 'bold',
-    color: '#6a1b9a',
+    color: '#FF6B6B',
+    marginBottom: 8,
   },
-  taskDescription: {
-    fontSize: 14,
+  subtitle: {
+    textAlign: 'center',
     color: '#757575',
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  selectButton: {
-    marginTop: 10,
-    backgroundColor: '#81c784',
-  },
-  navbar: {
+  actionsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 10,
-    backgroundColor: '#81c784',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    padding: 16,
   },
+  actionCard: {
+    width: width > 600 ? (width / 3 - 24) : (width / 3 - 20),
+    minHeight: 100,
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    padding: width > 375 ? 16 : 12,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 2,
+  },
+  actionTitle: {
+    marginTop: 8,
+    marginBottom: 4,
+    textAlign: 'center',
+    fontSize: width > 375 ? 16 : 14,
+    fontWeight: '500',
+  },
+  actionDescription: {
+    textAlign: 'center',
+    color: '#757575',
+    fontSize: width > 375 ? 12 : 10,
+  },
+  section: {
+    padding: 16,
+  },
+  infoSection: {
+    padding: 16,
+    backgroundColor: '#F5F5F5',
+    marginTop: 8,
+  },
+  sectionTitle: {
+    marginBottom: 16,
+    color: '#4CAF50',
+    fontWeight: 'bold',
+  },
+  infoCard: {
+    marginBottom: 16,
+    borderRadius: 12,
+    elevation: 2,
+  },
+  cardTitle: {
+    marginBottom: 8,
+    color: '#333333',
+  },
+  cardText: {
+    color: '#555555',
+  },
+  statsSection: {
+    padding: 16,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+  },
+  statCard: {
+    width: width > 600 ? width / 3 - 24 : width / 3 - 20,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: width > 600 ? 0 : 8,
+    minWidth: 90,
+  },
+  statNumber: {
+    marginBottom: 4,
+    color: '#4CAF50',
+    fontWeight: 'bold',
+    fontSize: width > 375 ? 24 : 20,
+  },
+  statLabel: {
+    color: '#555555',
+    textAlign: 'center',
+    fontSize: width > 375 ? 14 : 12,
+  },
+  emergencyCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  emergencyImage: {
+    width: 100,
+    height: 100,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+  },
+  emergencyInfo: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  emergencyTitle: {
+    fontWeight: '500',
+    marginBottom: 8,
+    color: '#333333',
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  locationText: {
+    marginLeft: 4,
+    color: '#666666',
+  },
+  urgencyBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  urgencyText: {
+    fontWeight: '500',
+  },
+  addEmergencyButton: {
+    marginTop: 8,
+    backgroundColor: '#FF6B6B',
+    borderRadius: 12,
+    marginHorizontal: width > 600 ? 100 : 16,
+  },
+  addEmergencyButtonContent: {
+    paddingVertical: 8,
+  }
 });
 
 export default HomeScreen;
+
