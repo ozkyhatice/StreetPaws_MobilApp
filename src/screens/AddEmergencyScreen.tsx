@@ -1,47 +1,21 @@
-import React, { useState } from 'react';
-import { View, TextInput, Button, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Text } from 'react-native-paper';
 
-const AddEmergencyScreen = ({ navigation }) => {
-  const [message, setMessage] = useState('');
-  const [location, setLocation] = useState('');
-
-  const handleSave = () => {
-    // Yeni acil yardım talebi kaydedilecek ve ana sayfaya yönlendirilir
-    alert('Acil yardım talebiniz gönderildi!');
-    navigation.goBack();  // Ana sayfaya dönüş
-  };
-
+export default function AddEmergencyScreen() {
   return (
     <View style={styles.container}>
-      <TextInput
-        style={styles.input}
-        placeholder="Acil yardım mesajını girin"
-        value={message}
-        onChangeText={setMessage}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Konum bilgisi girin"
-        value={location}
-        onChangeText={setLocation}
-      />
-      <Button title="Acil Yardım Gönder" onPress={handleSave} />
+      <Text variant="headlineMedium">Acil Durum Ekle</Text>
+      <Text variant="bodyLarge">Yeni bir acil durum bildir</Text>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-  },
-  input: {
-    height: 50,
-    borderColor: '#ddd',
-    borderWidth: 1,
-    marginBottom: 10,
-    paddingLeft: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
 });
-
-export default AddEmergencyScreen;

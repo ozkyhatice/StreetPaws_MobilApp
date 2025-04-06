@@ -1,50 +1,144 @@
+# StreetPaws Mobile App
 
-# Volunteer Platform for Stray Animals
+StreetPaws, sokak hayvanlarına yardım etmek için oluşturulmuş bir mobil uygulamadır. Gönüllüler, görevleri üstlenebilir, tamamlayabilir ve sokak hayvanlarına yardım ederek XP kazanabilirler.
 
-## 📌 Project Description
-The **Volunteer Platform for Stray Animals** is a mobile application designed to connect volunteers who want to support stray animals. Through this platform, volunteers can view locations of need on an interactive map, participate in relief activities, and foster social solidarity. 
+## Özellikler
 
-The platform enables tasks such as providing food, creating shelter opportunities, offering veterinary support, and conducting emergency interventions. Additionally, businesses (cafes, restaurants, markets, etc.) can contribute by donating surplus food, reducing food waste while helping stray animals.
+- Görev yönetimi (görüntüleme, üstlenme, tamamlama)
+- Kullanıcı kimlik doğrulama
+- QR kod tarama
+- Harita entegrasyonu
+- Gönüllü profil sayfası
+- Bağış sistemi
 
-## 🚀 Key Features
-- **Map-Based System:** Volunteers can see and assist at designated locations in need via an interactive map.
-- **Task Management:** Volunteers can browse and claim various assistance tasks to help stray animals.
-- **Business Participation:** Local businesses can donate pet food, and the platform allows them to track and confirm donations.
-- **Gamification:** Volunteers earn points and badges for completed tasks, encouraging participation and engagement.
-- **Community & Communication:** Users can share their experiences, form teams, and collaborate on tasks.
+## Gereksinimler
 
-## 🛠 Technology Stack
-- **Frontend:** React Native (Supports both Android & iOS)
-- **Backend:** Node.js + Express.js
-- **Database:** Firebase / PostgreSQL
-- **Map Service:** Google Maps API
-- **Authentication:** Firebase Authentication
+- Node.js (v14 veya üzeri)
+- npm (v6 veya üzeri)
+- Expo CLI
+- iOS için: Xcode (macOS)
+- Android için: Android Studio ve JDK
 
-## 📥 Installation
-To get started with the project, follow these steps:
+## Kurulum
 
-### 1️⃣ Clone the Repository
+1. Projeyi klonlayın:
 ```bash
-git clone https://github.com/username/stray-animals-platform.git
-cd stray-animals-platform
+git clone https://github.com/ozkyhatice/StreetPaws_MobilApp.git
+cd StreetPaws_MobilApp
 ```
 
-### 2️⃣ Install Dependencies
+2. Bağımlılıkları yükleyin:
 ```bash
-npm install  # or yarn install
+npm install
 ```
 
-### 3️⃣ Configure Environment Variables
-Create a `.env` file in the root of the project and add the following required API keys:
-```
-GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-FIREBASE_API_KEY=your_firebase_api_key
-```
-
-### 4️⃣ Run the Application
-Start the application using Expo:
+3. Geliştirici istemcisini yükleyin:
 ```bash
-npx expo start  # or npm start
+npx expo install expo-dev-client
 ```
+
+## Bağımlılıklar
+
+Projenin ana bağımlılıkları şunlardır:
+
+```
+"dependencies": {
+  "@react-navigation/bottom-tabs": "^6.5.11",
+  "@react-navigation/native": "^6.1.9",
+  "@react-navigation/native-stack": "^6.9.17",
+  "expo": "~50.0.11",
+  "expo-barcode-scanner": "~12.5.3",
+  "expo-camera": "~13.2.1",
+  "expo-dev-client": "~2.2.1",
+  "expo-location": "~16.1.0",
+  "expo-status-bar": "~1.6.0",
+  "lucide-react-native": "^0.302.0",
+  "react": "18.2.0",
+  "react-native": "0.72.6",
+  "react-native-maps": "1.7.1",
+  "react-native-paper": "^5.11.1",
+  "react-native-safe-area-context": "4.6.3",
+  "react-native-screens": "~3.22.0",
+  "react-native-vector-icons": "^10.0.0"
+}
+```
+
+## Uygulamayı Çalıştırma
+
+Uygulamayı geliştirme modunda başlatmak için:
+
+```bash
+npx expo start
+```
+
+Expo Go uygulaması ile test etmek için:
+
+```bash
+npx expo start --dev-client
+```
+
+iOS simülatöründe çalıştırmak için:
+
+```bash
+npx expo run:ios
+```
+
+Android emülatöründe çalıştırmak için:
+
+```bash
+npx expo run:android
+```
+
+## Notlar ve Sorun Giderme
+
+1. İlk kurulum sırasında expo-dev-client yüklemek gereklidir:
+   ```bash
+   npx expo install expo-dev-client
+   ```
+
+2. iOS'ta "AirGoogleMaps dizini bulunamadı" hatası alırsanız, Google Maps yerine varsayılan harita sağlayıcısını kullanın.
+
+3. QR kod tarayıcısı için kamera izinlerinin verildiğinden emin olun.
+
+4. Expo'nun en son sürümünü kullanmak için düzenli olarak güncelleme yapmanız önerilir:
+   ```bash
+   npm install -g expo-cli
+   ```
+
+## Projeyi Hazırlama ve Derleme
+
+Üretim için APK/IPA oluşturmak için:
+
+```bash
+eas build --platform android
+eas build --platform ios
+```
+
+Önce EAS CLI'yi yüklemeniz gerekebilir:
+
+```bash
+npm install -g eas-cli
+```
+
+## Proje Yapısı
+
+```
+streetpaws/
+├── assets/           # Görsel ve statik dosyalar
+├── src/
+│   ├── components/   # Yeniden kullanılabilir bileşenler
+│   ├── contexts/     # React context dosyaları
+│   ├── hooks/        # Özel hook'lar
+│   ├── navigation/   # Navigasyon yapılandırması
+│   ├── screens/      # Uygulama ekranları
+│   ├── services/     # Veri ve API servisleri
+│   └── types/        # TypeScript tip tanımlamaları
+├── App.tsx           # Ana uygulama bileşeni
+└── package.json      # Paket bağımlılıkları
+```
+
+## Lisans
+
+MIT Lisansı
 
 ---

@@ -1,110 +1,3 @@
-// "use client"
-
-// import React from "react"
-// import { View, Text, TouchableOpacity, Image, StyleSheet, TextInput, Alert } from "react-native"
-// import { LinearGradient } from "expo-linear-gradient"
-
-// const LoginScreen = ({ navigation }) => {
-//   const [username, setUsername] = React.useState("")
-//   const [password, setPassword] = React.useState("")
-
-//   const handleLogin = () => {
-//     if (username === "admin" && password === "admin") {
-//       // Successful login
-//       navigation.navigate("Home")
-//     } else {
-//       // Failed login
-//       Alert.alert("Hata", "Kullanıcı adı veya şifre hatalı!")
-//     }
-//   }
-
-//   return (
-//     <LinearGradient colors={["#FFD1DC", "#F7CAC9", "#F0E68C"]} style={styles.container}>
-//       <View style={styles.logoContainer}>
-//         <Image source={require("../assets/login.png")} style={styles.logo} />
-//       </View>
-//       <View style={styles.formContainer}>
-//         <TextInput
-//           style={styles.input}
-//           placeholder="Kullanıcı Adı"
-//           placeholderTextColor="#B5838D"
-//           value={username}
-//           onChangeText={setUsername}
-//         />
-//         <TextInput
-//           style={styles.input}
-//           placeholder="Şifre"
-//           placeholderTextColor="#B5838D"
-//           secureTextEntry
-//           value={password}
-//           onChangeText={setPassword}
-//         />
-//         <TouchableOpacity style={styles.button} onPress={() => navigation.navigate("Home")}>
-//           <Text style={styles.buttonText}>Giriş Yap </Text>
-//         </TouchableOpacity>
-//         <View style={styles.linkContainer}>
-//           <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-//             <Text style={styles.linkText}>Kayıt Ol</Text>
-//           </TouchableOpacity>
-//           <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-//             <Text style={styles.linkText}>Şifremi Unuttum</Text>
-//           </TouchableOpacity>
-//         </View>
-//       </View>
-//     </LinearGradient>
-//   )
-// }
-
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     justifyContent: "center",
-//     alignItems: "center",
-//   },
-//   logoContainer: {
-//     marginBottom: 50,
-//   },
-//   logo: {
-//     width: 150,
-//     height: 150,
-//     borderRadius: 75,
-//     borderWidth: 3,
-//     borderColor: "#FFB6C1",
-//   },
-//   formContainer: {
-//     width: "80%",
-//   },
-//   input: {
-//     backgroundColor: "rgba(255, 255, 255, 0.8)",
-//     borderRadius: 25,
-//     padding: 15,
-//     marginBottom: 15,
-//     fontSize: 16,
-//     color: "#6D435A",
-//   },
-//   button: {
-//     backgroundColor: "#FFB6C1",
-//     borderRadius: 25,
-//     padding: 15,
-//     alignItems: "center",
-//     marginBottom: 15,
-//   },
-//   buttonText: {
-//     color: "#6D435A",
-//     fontSize: 18,
-//     fontWeight: "bold",
-//   },
-//   linkContainer: {
-//     flexDirection: "row",
-//     justifyContent: "space-between",
-//   },
-//   linkText: {
-//     color: "#6D435A",
-//     fontSize: 16,
-//   },
-// })
-
-// export default LoginScreen
 "use client"
 
 import { useEffect } from "react"
@@ -118,10 +11,16 @@ import Animated, {
   Easing,
 } from "react-native-reanimated"
 import { BlurView } from "@react-native-community/blur"
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../navigation/AppNavigator';
+
+type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const { width, height } = Dimensions.get("window")
 
-const LoginScreen = ({ navigation }) => {
+const LoginScreen = () => {
+  const navigation = useNavigation<LoginScreenNavigationProp>();
   const translateY = useSharedValue(height)
   const opacity = useSharedValue(0)
   const scale = useSharedValue(0.8)
@@ -132,7 +31,7 @@ const LoginScreen = ({ navigation }) => {
     opacity.value = withTiming(1, { duration: 1000 })
     scale.value = withSpring(1)
     rotation.value = withRepeat(withTiming(360, { duration: 20000, easing: Easing.linear }), -1, false)
-  }, [opacity]) // Added opacity to the dependency array
+  }, [opacity])
 
   const containerStyle = useAnimatedStyle(() => {
     return {
@@ -147,6 +46,17 @@ const LoginScreen = ({ navigation }) => {
     }
   })
 
+  const handleLogin = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainApp' }],
+    });
+  };
+
+  const handleRegister = () => {
+    navigation.navigate('Register');
+  };
+
   return (
     <View style={styles.container}>
       <Image source={require("../assets/background.jpg")} style={styles.backgroundImage} />
@@ -158,14 +68,11 @@ const LoginScreen = ({ navigation }) => {
         <TextInput style={styles.input} placeholder="Şifre" placeholderTextColor="#666" secureTextEntry />
         <TouchableOpacity
           style={styles.button}
-          onPress={() => {
-            // Kayıt işlemi burada gerçekleştirilecek
-            navigation.navigate('Home');
-          }}
+          onPress={handleLogin}
         >
           <Text style={styles.buttonText}>Giriş Yap</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+        <TouchableOpacity onPress={handleRegister}>
           <Text style={styles.linkText}>Hesabınız yok mu? Kayıt olun</Text>
         </TouchableOpacity>
       </Animated.View>
