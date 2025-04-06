@@ -18,7 +18,7 @@ import { Task } from '../types/task';
 import { TaskService } from '../services/taskService';
 import { useAuth } from '../hooks/useAuth';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Region } from 'react-native-maps';
 import { MapPin, Clock, Award, User, CheckCircle, AlertTriangle } from 'lucide-react-native';
 
 // Class Component olarak TaskMarker bileşeni
@@ -205,7 +205,6 @@ export default function TaskDetailScreen() {
           </View>
           <MapView
             style={styles.map}
-            provider={PROVIDER_GOOGLE}
             initialRegion={{
               latitude: task.location.latitude,
               longitude: task.location.longitude,
