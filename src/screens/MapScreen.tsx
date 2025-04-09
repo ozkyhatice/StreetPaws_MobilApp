@@ -1,11 +1,12 @@
-import React, { Component } from 'react';
-import { View, StyleSheet, Dimensions, ActivityIndicator, TouchableOpacity, ScrollView, StatusBar, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, Dimensions, ActivityIndicator, TouchableOpacity, ScrollView, StatusBar, Platform, SafeAreaView } from 'react-native';
 import { Text, Button, Card, IconButton, FAB } from 'react-native-paper';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, Region, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { getTasks } from '../services/taskService';
 import { Task } from '../types/task';
-import { MapPin, Navigation } from 'lucide-react-native';
+import { MapPin, Navigation, Filter, ChevronUp } from 'lucide-react-native';
+import { colors, spacing, shadows, borderRadius } from '../config/theme';
 
 // Marker bileşeni için props tipi
 type MarkerProps = {
@@ -13,188 +14,161 @@ type MarkerProps = {
   onPress: (task: Task) => void;
 };
 
-// Class component olarak Marker bileşeni
-class TaskMarker extends Component<MarkerProps> {
-  shouldComponentUpdate(nextProps: MarkerProps) {
-    return (
-      this.props.task.id !== nextProps.task.id ||
-      this.props.task.status !== nextProps.task.status
-    );
-  }
+// Functional component olarak Marker bileşeni
+const TaskMarker = React.memo(({ task, onPress }: MarkerProps) => {
+  return (
+    <Marker
+      identifier={task.id}
+      coordinate={{
+        latitude: task.location.latitude,
+        longitude: task.location.longitude,
+      }}
+      title={task.title}
+      description={task.category}
+      pinColor={
+        task.status === 'OPEN' ? colors.primary : 
+        task.status === 'IN_PROGRESS' ? colors.warning : colors.textTertiary
+      }
+      onPress={() => onPress(task)}
+      tracksViewChanges={false}
+    />
+  );
+});
 
-  render() {
-    const { task, onPress } = this.props;
-    return (
-      <Marker
-        identifier={task.id}
-        coordinate={{
-          latitude: task.location.latitude,
-          longitude: task.location.longitude,
-        }}
-        title={task.title}
-        description={task.category}
-        pinColor={
-          task.status === 'OPEN' ? '#4CAF50' : 
-          task.status === 'IN_PROGRESS' ? '#FFC107' : '#9E9E9E'
-        }
-        onPress={() => onPress(task)}
-        tracksViewChanges={false}
-      />
-    );
-  }
+// MapScreen bileşeni için props tipi
+interface MapScreenProps {
+  navigation: any;
 }
 
-// MapScreen bileşeni için state tipi
-type MapScreenState = {
-  userLocation: Location.LocationObject | null;
-  tasks: Task[];
-  loading: boolean;
-  selectedTask: Task | null;
-  filteredCategory: string | null;
-  showFilters: boolean;
-  mapReady: boolean;
-};
-
-// Class component olarak MapScreen
-export default class MapScreen extends Component<any, MapScreenState> {
-  private mapRef = React.createRef<MapView>();
+// Functional component olarak MapScreen
+const MapScreen: React.FC<MapScreenProps> = ({ navigation }) => {
+  const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [filteredCategory, setFilteredCategory] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   
-  constructor(props: any) {
-    super(props);
-    this.state = {
-      userLocation: null,
-      tasks: [],
-      loading: true,
-      selectedTask: null,
-      filteredCategory: null,
-      showFilters: false,
-      mapReady: false
-    };
-  }
-
-  componentDidMount() {
-    this.loadLocationAndTasks();
-  }
-
-  loadLocationAndTasks = async () => {
+  const mapRef = useRef<MapView>(null);
+  
+  useEffect(() => {
+    loadLocationAndTasks();
+  }, []);
+  
+  const loadLocationAndTasks = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         console.log('Permission to access location was denied');
-        this.setState({ loading: false });
+        setLoading(false);
         return;
       }
 
       // Konum ve görevleri paralel olarak yükle
-      const [location, tasks] = await Promise.all([
+      const [location, loadedTasks] = await Promise.all([
         Location.getCurrentPositionAsync({}),
         getTasks()
       ]);
 
-      this.setState({
-        userLocation: location,
-        tasks,
-        loading: false
-      });
+      setUserLocation(location);
+      setTasks(loadedTasks);
+      setLoading(false);
     } catch (error) {
       console.error('Error loading data:', error);
-      this.setState({ loading: false });
+      setLoading(false);
     }
   };
 
-  handleCenterToUser = () => {
-    if (this.state.userLocation && this.mapRef.current) {
+  const handleCenterToUser = () => {
+    if (userLocation && mapRef.current) {
       const region: Region = {
-        latitude: this.state.userLocation.coords.latitude,
-        longitude: this.state.userLocation.coords.longitude,
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude,
         latitudeDelta: 0.01,
         longitudeDelta: 0.01,
       };
-      this.mapRef.current.animateToRegion(region, 300);
+      mapRef.current.animateToRegion(region, 300);
     }
   };
 
-  handleMarkerPress = (task: Task) => {
-    this.setState({ selectedTask: task });
+  const handleMarkerPress = (task: Task) => {
+    setSelectedTask(task);
   };
 
-  toggleFilters = () => {
-    this.setState(prevState => ({
-      showFilters: !prevState.showFilters
-    }));
+  const toggleFilters = () => {
+    setShowFilters(!showFilters);
   };
 
-  handleCloseTaskInfo = () => {
-    this.setState({ selectedTask: null });
+  const handleCloseTaskInfo = () => {
+    setSelectedTask(null);
   };
 
-  navigateToTaskDetail = (taskId: string) => {
-    this.props.navigation.navigate('TaskDetail', { taskId });
+  const navigateToTaskDetail = (taskId: string) => {
+    navigation.navigate('TaskDetail', { taskId });
   };
 
-  handleMapReady = () => {
-    this.setState({ mapReady: true });
+  const handleMapReady = () => {
+    setMapReady(true);
   };
 
-  getFilteredTasks = () => {
-    const { tasks, filteredCategory } = this.state;
+  const getFilteredTasks = () => {
     return filteredCategory 
       ? tasks.filter(task => task.category === filteredCategory)
       : tasks;
   };
 
-  getCategories = () => {
-    return [...new Set(this.state.tasks.map(task => task.category))];
+  const getCategories = () => {
+    return [...new Set(tasks.map(task => task.category))];
+  };
+  
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  const initialRegion = userLocation ? {
+    latitude: userLocation.coords.latitude,
+    longitude: userLocation.coords.longitude,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  } : {
+    latitude: 41.0082, // Default: Istanbul
+    longitude: 28.9784,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
   };
 
-  render() {
-    const { loading, userLocation, selectedTask, filteredCategory, showFilters, mapReady } = this.state;
+  const tasksToShow = getFilteredTasks();
+  const categories = getCategories();
 
-    if (loading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4CAF50" />
-        </View>
-      );
-    }
-
-    const initialRegion = userLocation ? {
-      latitude: userLocation.coords.latitude,
-      longitude: userLocation.coords.longitude,
-      latitudeDelta: 0.0922,
-      longitudeDelta: 0.0421,
-    } : {
-      latitude: 41.0082, // Default: Istanbul
-      longitude: 28.9784,
-      latitudeDelta: 0.0922,
-      longitudeDelta: 0.0421,
-    };
-
-    const tasksToShow = this.getFilteredTasks();
-    const categories = this.getCategories();
-
-    return (
+  return (
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <StatusBar translucent backgroundColor="transparent" barStyle="dark-content" />
         
         <View style={styles.mapContainer}>
           <MapView
-            ref={this.mapRef}
+            ref={mapRef}
             style={styles.map}
             initialRegion={initialRegion}
             showsUserLocation
             showsCompass
             showsMyLocationButton={false}
-            onMapReady={this.handleMapReady}
+            onMapReady={handleMapReady}
             toolbarEnabled={false}
             rotateEnabled={true}
             zoomEnabled={true}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
           >
             {mapReady && tasksToShow.map(task => (
               <TaskMarker 
                 key={task.id}
                 task={task} 
-                onPress={this.handleMarkerPress} 
+                onPress={handleMarkerPress} 
               />
             ))}
           </MapView>
@@ -202,11 +176,13 @@ export default class MapScreen extends Component<any, MapScreenState> {
           <View style={styles.header}>
             <Text variant="titleLarge" style={styles.title}>Görevleri Haritada Gör</Text>
             <FAB
-              icon={showFilters ? "chevron-up" : "filter-variant"}
+              icon={props => showFilters 
+                ? <ChevronUp {...props} color={colors.primary} /> 
+                : <Filter {...props} color={colors.primary} />
+              }
               style={styles.filterToggleButton}
               size="small"
-              onPress={this.toggleFilters}
-              color="#4CAF50"
+              onPress={toggleFilters}
             />
           </View>
           
@@ -219,7 +195,7 @@ export default class MapScreen extends Component<any, MapScreenState> {
               >
                 <TouchableOpacity
                   style={[styles.filterChip, !filteredCategory && styles.activeFilterChip]}
-                  onPress={() => this.setState({ filteredCategory: null })}
+                  onPress={() => setFilteredCategory(null)}
                 >
                   <Text style={!filteredCategory ? styles.activeFilterText : styles.filterText}>
                     Tümü
@@ -230,9 +206,7 @@ export default class MapScreen extends Component<any, MapScreenState> {
                   <TouchableOpacity
                     key={category}
                     style={[styles.filterChip, filteredCategory === category && styles.activeFilterChip]}
-                    onPress={() => this.setState({ 
-                      filteredCategory: filteredCategory === category ? null : category 
-                    })}
+                    onPress={() => setFilteredCategory(filteredCategory === category ? null : category)}
                   >
                     <Text style={filteredCategory === category ? styles.activeFilterText : styles.filterText}>
                       {category}
@@ -246,7 +220,7 @@ export default class MapScreen extends Component<any, MapScreenState> {
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
               style={styles.locationButton}
-              onPress={this.handleCenterToUser}
+              onPress={handleCenterToUser}
             >
               <Navigation size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -258,12 +232,22 @@ export default class MapScreen extends Component<any, MapScreenState> {
             <Card.Content>
               <View style={styles.taskHeader}>
                 <Text variant="titleMedium" style={styles.taskTitle}>{selectedTask.title}</Text>
-                <View style={styles.statusContainer}>
+                <View style={[
+                  styles.statusContainer, 
+                  { 
+                    backgroundColor: selectedTask.status === 'OPEN' 
+                      ? colors.primary + '20'
+                      : selectedTask.status === 'IN_PROGRESS' 
+                        ? colors.warning + '20' 
+                        : colors.textTertiary + '20'
+                  }
+                ]}>
                   <Text
                     variant="labelMedium"
                     style={{
-                      color: selectedTask.status === 'OPEN' ? '#4CAF50' : 
-                            selectedTask.status === 'IN_PROGRESS' ? '#FFC107' : '#9E9E9E'
+                      color: selectedTask.status === 'OPEN' ? colors.primary : 
+                            selectedTask.status === 'IN_PROGRESS' ? colors.warning : 
+                            colors.textTertiary
                     }}
                   >
                     {selectedTask.status}
@@ -276,7 +260,7 @@ export default class MapScreen extends Component<any, MapScreenState> {
               </Text>
               
               <View style={styles.locationRow}>
-                <MapPin size={16} color="#666666" />
+                <MapPin size={16} color={colors.textSecondary} />
                 <Text variant="bodySmall" style={styles.locationText}>
                   {selectedTask.location.address}
                 </Text>
@@ -285,7 +269,8 @@ export default class MapScreen extends Component<any, MapScreenState> {
               <Button
                 mode="contained"
                 style={styles.detailButton}
-                onPress={() => this.navigateToTaskDetail(selectedTask.id)}
+                onPress={() => navigateToTaskDetail(selectedTask.id)}
+                buttonColor={colors.primary}
               >
                 Detayları Gör
               </Button>
@@ -295,32 +280,36 @@ export default class MapScreen extends Component<any, MapScreenState> {
               icon="close"
               size={20}
               style={styles.closeButton}
-              onPress={this.handleCloseTaskInfo}
+              onPress={handleCloseTaskInfo}
             />
           </Card>
         )}
       </View>
-    );
-  }
-}
+    </SafeAreaView>
+  );
+};
 
 const { width, height } = Dimensions.get('window');
 const STATUSBAR_HEIGHT = StatusBar.currentHeight || 0;
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
   },
   header: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : STATUSBAR_HEIGHT + 10,
+    top: Platform.OS === 'ios' ? 10 : STATUSBAR_HEIGHT + 10,
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -330,43 +319,29 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   title: {
-    color: '#333333',
+    color: colors.text,
     fontWeight: 'bold',
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    ...shadows.medium,
   },
   filterToggleButton: {
-    backgroundColor: '#FFFFFF',
-    elevation: 4,
+    backgroundColor: colors.surface,
+    ...shadows.small,
   },
   filterContainer: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 100 : STATUSBAR_HEIGHT + 60,
+    top: Platform.OS === 'ios' ? 60 : STATUSBAR_HEIGHT + 60,
     left: 0,
     right: 0,
     padding: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     zIndex: 5,
-    borderRadius: 20,
+    borderRadius: borderRadius.medium,
     marginHorizontal: 16,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    ...shadows.small,
   },
   filtersScroll: {
     paddingRight: 32,
@@ -377,14 +352,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.surface,
     marginRight: 8,
+    ...shadows.small,
   },
   activeFilterChip: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.primary,
   },
   filterText: {
-    color: '#4CAF50',
+    color: colors.primary,
   },
   activeFilterText: {
     color: 'white',
@@ -398,44 +374,30 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 24 + (Platform.OS === 'ios' ? 80 : 70), // Tab Bar için ek alan ekle
     right: 16,
     zIndex: 5,
   },
   locationButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.primary,
     width: 56,
     height: 56,
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    ...shadows.medium,
   },
   taskInfoContainer: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'white',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    bottom: 64, // Tab Bar için ek alan ekle
+    left: 8,
+    right: 8,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
+    ...shadows.medium,
     maxHeight: height * 0.3,
     zIndex: 10,
+    elevation: 5,
   },
   taskHeader: {
     flexDirection: 'row',
@@ -446,18 +408,18 @@ const styles = StyleSheet.create({
   taskTitle: {
     flex: 1,
     fontWeight: '500',
-    color: '#333333',
+    color: colors.text,
   },
   statusContainer: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    borderRadius: borderRadius.xs,
+    backgroundColor: colors.surface,
     marginLeft: 8,
   },
   taskDescription: {
     marginBottom: 12,
-    color: '#555555',
+    color: colors.textSecondary,
   },
   locationRow: {
     flexDirection: 'row',
@@ -466,18 +428,19 @@ const styles = StyleSheet.create({
   },
   locationText: {
     marginLeft: 6,
-    color: '#666666',
+    color: colors.textSecondary,
     flex: 1,
   },
   detailButton: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 20,
+    borderRadius: borderRadius.medium,
   },
   closeButton: {
     position: 'absolute',
     top: 8,
     right: 8,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: colors.surface,
     borderRadius: 20,
   },
 });
+
+export default MapScreen;

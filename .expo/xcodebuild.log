@@ -1,6 +1,0 @@
-Command line invocation:
-    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -workspace /Users/hatice/Desktop/streetpaws/ios/streetpaws.xcworkspace -configuration Debug -scheme streetpaws -destination id=6A8BBB6A-B57E-42DE-BBC5-276E84FE0E45
-
-User defaults from command line:
-    IDEPackageSupportUseBuiltinSCM = YES
-

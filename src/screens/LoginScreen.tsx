@@ -1,7 +1,19 @@
 "use client"
 
-import { useEffect } from "react"
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, Dimensions } from "react-native"
+import React, { useEffect } from "react"
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  Image, 
+  Dimensions,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView
+} from "react-native"
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -13,7 +25,8 @@ import Animated, {
 import { BlurView } from "@react-native-community/blur"
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import type { RootStackParamList } from '../navigation/AppNavigator';
+import { colors, spacing, borderRadius, shadows } from '../config/theme';
+import { RootStackParamList } from '../types/navigation';
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -42,7 +55,10 @@ const LoginScreen = () => {
 
   const logoStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ scale: scale.value }, { rotate: `${rotation.value}deg` }],
+      transform: [
+        { scale: scale.value },
+        { rotate: `${rotation.value}deg` }
+      ] as any,
     }
   })
 
@@ -57,32 +73,82 @@ const LoginScreen = () => {
     navigation.navigate('Register');
   };
 
+  const handleForgotPassword = () => {
+    navigation.navigate('ForgotPassword');
+  };
+
   return (
-    <View style={styles.container}>
-      <Image source={require("../assets/background.jpg")} style={styles.backgroundImage} />
-      <BlurView style={styles.absolute} blurType="light" blurAmount={10} reducedTransparencyFallbackColor="white" />
-      <Animated.View style={[styles.content, containerStyle]}>
-        <Animated.Image source={require("../assets/pawprint.png")} style={[styles.logo, logoStyle]} />
-        <Text style={styles.title}>Sokak Hayvanları Yardım Ağı</Text>
-        <TextInput style={styles.input} placeholder="Kullanıcı Adı" placeholderTextColor="#666" />
-        <TextInput style={styles.input} placeholder="Şifre" placeholderTextColor="#666" secureTextEntry />
-        <TouchableOpacity
-          style={styles.button}
-          onPress={handleLogin}
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.container}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.buttonText}>Giriş Yap</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleRegister}>
-          <Text style={styles.linkText}>Hesabınız yok mu? Kayıt olun</Text>
-        </TouchableOpacity>
-      </Animated.View>
-    </View>
+          <Image source={require("../assets/background.jpg")} style={styles.backgroundImage} />
+          <BlurView style={styles.absolute} blurType="light" blurAmount={10} reducedTransparencyFallbackColor="white" />
+          
+          <Animated.View style={[styles.content, containerStyle]}>
+            <Animated.Image 
+              source={require("../assets/pawprint.png")} 
+              style={[styles.logo, logoStyle as any]} 
+            />
+            <Text style={styles.title}>Sokak Hayvanları Yardım Ağı</Text>
+            
+            <View style={styles.inputContainer}>
+              <TextInput 
+                style={styles.input} 
+                placeholder="Kullanıcı Adı" 
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="none"
+              />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Şifre" 
+                placeholderTextColor={colors.textTertiary} 
+                secureTextEntry
+              />
+            </View>
+            
+            <TouchableOpacity
+              style={styles.forgotPasswordButton}
+              onPress={handleForgotPassword}
+            >
+              <Text style={styles.forgotPasswordText}>Şifremi unuttum</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.button}
+              onPress={handleLogin}
+            >
+              <Text style={styles.buttonText}>Giriş Yap</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.registerLink}
+              onPress={handleRegister}
+            >
+              <Text style={styles.linkText}>Hesabınız yok mu? Kayıt olun</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -99,50 +165,71 @@ const styles = StyleSheet.create({
     right: 0,
   },
   content: {
-    width: "80%",
-    padding: 20,
-    borderRadius: 20,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
+    width: "85%",
+    maxWidth: 400,
+    padding: spacing.lg,
+    borderRadius: borderRadius.large,
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
     alignItems: "center",
+    ...shadows.medium,
+    marginVertical: spacing.lg,
   },
   logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 20,
+    width: 100,
+    height: 100,
+    marginBottom: spacing.md,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
-    color: "#333",
-    marginBottom: 20,
+    color: colors.primary,
+    marginBottom: spacing.lg,
     textAlign: "center",
+  },
+  inputContainer: {
+    width: "100%",
+    marginBottom: spacing.sm,
   },
   input: {
     width: "100%",
     height: 50,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    marginBottom: 15,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    borderRadius: borderRadius.medium,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
     fontSize: 16,
+    color: colors.text,
+  },
+  forgotPasswordButton: {
+    alignSelf: "flex-end",
+    marginBottom: spacing.lg,
+  },
+  forgotPasswordText: {
+    color: colors.secondary,
+    fontSize: 14,
   },
   button: {
     width: "100%",
     height: 50,
-    backgroundColor: "#4CAF50",
-    borderRadius: 10,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.medium,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 10,
+    ...shadows.small,
   },
   buttonText: {
     color: "white",
     fontSize: 18,
     fontWeight: "bold",
   },
+  registerLink: {
+    marginTop: spacing.lg,
+  },
   linkText: {
-    color: "#333",
-    marginTop: 20,
+    color: colors.textSecondary,
+    fontSize: 16,
     textDecorationLine: "underline",
   },
 })

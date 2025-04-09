@@ -7,18 +7,22 @@ import {
   Image,
   RefreshControl,
   Dimensions,
+  SafeAreaView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MapPin, Users, Heart, AlertTriangle, Map } from 'lucide-react-native';
 import { RootStackParamList } from '../types/navigation';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { Text, Button, Card } from 'react-native-paper';
+import { Text, Button, Card, Divider } from 'react-native-paper';
+import { colors, spacing, borderRadius, shadows } from '../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 // Get the window width for responsive design
 const { width } = Dimensions.get('window');
-const cardWidth = width > 500 ? (width - 48) / 2 : width - 32;
+const isTablet = width > 768;
 const isSmallScreen = width < 375;
 
 const HomeScreen = () => {
@@ -69,334 +73,386 @@ const HomeScreen = () => {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      <View style={styles.header}>
-        <Image
-          source={require('../../assets/icon.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
-        <Text variant="headlineMedium" style={styles.title}>StreetPaws</Text>
-        <Text variant="bodyLarge" style={styles.subtitle}>
-          Sokak hayvanlarına yardım etmek için bir araya geldik
-        </Text>
-      </View>
-
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity 
-          style={styles.actionCard}
-          onPress={handleMapPress}
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <LinearGradient
+          colors={[colors.primaryLight + '60', colors.primary + '30']}
+          style={styles.headerGradient}
         >
-          <Map size={isSmallScreen ? 24 : 32} color="#FF6B6B" />
-          <Text variant="titleMedium" style={styles.actionTitle}>Haritada Gör</Text>
-          <Text variant="bodySmall" style={styles.actionDescription}>
-            Yakınındaki görevleri haritada keşfet
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.actionCard}
-          onPress={handleVolunteersPress}
-        >
-          <Users size={isSmallScreen ? 24 : 32} color="#4CAF50" />
-          <Text variant="titleMedium" style={styles.actionTitle}>Gönüllüler</Text>
-          <Text variant="bodySmall" style={styles.actionDescription}>
-            Diğer gönüllülerle iletişime geç
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.actionCard}
-          onPress={handleDonationsPress}
-        >
-          <Heart size={isSmallScreen ? 24 : 32} color="#2196F3" />
-          <Text variant="titleMedium" style={styles.actionTitle}>Bağış Yap</Text>
-          <Text variant="bodySmall" style={styles.actionDescription}>
-            Sokak hayvanlarına destek ol
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.infoSection}>
-        <Text variant="titleLarge" style={styles.sectionTitle}>Güncel Bilgiler</Text>
-        
-        <Card style={styles.infoCard}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.cardTitle}>Kış Yaklaşıyor</Text>
-            <Text variant="bodyMedium" style={styles.cardText}>
-              Soğuk havalar için sokak hayvanlarına barınak yapma görevleri eklendi. Katılmak için görevler sayfasını kontrol edin.
+          <View style={styles.header}>
+            <Image
+              source={require('../assets/icon.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+            <Text variant="headlineMedium" style={styles.title}>StreetPaws</Text>
+            <Text variant="bodyLarge" style={styles.subtitle}>
+              Sokak hayvanlarına yardım etmek için bir araya geldik
             </Text>
-          </Card.Content>
-        </Card>
-        
-        <Card style={styles.infoCard}>
-          <Card.Content>
-            <Text variant="titleMedium" style={styles.cardTitle}>Besleme Noktaları</Text>
-            <Text variant="bodyMedium" style={styles.cardText}>
-              Şehrin farklı bölgelerinde besleme noktaları oluşturuldu. En yakın beslenme noktasını haritada görebilirsiniz.
-            </Text>
-          </Card.Content>
-        </Card>
-      </View>
+          </View>
+        </LinearGradient>
 
-      <View style={styles.statsSection}>
-        <Text variant="titleLarge" style={styles.sectionTitle}>İstatistikler</Text>
-        
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text variant="headlineMedium" style={styles.statNumber}>156</Text>
-            <Text variant="bodyMedium" style={styles.statLabel}>Aktif Görev</Text>
-          </View>
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={handleMapPress}
+            activeOpacity={0.7}
+          >
+            <Map size={isSmallScreen ? 24 : 32} color={colors.secondary} />
+            <Text variant="titleMedium" style={styles.actionTitle}>Haritada Gör</Text>
+            <Text variant="bodySmall" style={styles.actionDescription}>
+              Yakınındaki görevleri haritada keşfet
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={handleVolunteersPress}
+            activeOpacity={0.7}
+          >
+            <Users size={isSmallScreen ? 24 : 32} color={colors.primary} />
+            <Text variant="titleMedium" style={styles.actionTitle}>Gönüllüler</Text>
+            <Text variant="bodySmall" style={styles.actionDescription}>
+              Diğer gönüllülerle iletişime geç
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={handleDonationsPress}
+            activeOpacity={0.7}
+          >
+            <Heart size={isSmallScreen ? 24 : 32} color={colors.info} />
+            <Text variant="titleMedium" style={styles.actionTitle}>Bağış Yap</Text>
+            <Text variant="bodySmall" style={styles.actionDescription}>
+              Sokak hayvanlarına destek ol
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.infoSection}>
+          <Text variant="titleLarge" style={styles.sectionTitle}>Güncel Bilgiler</Text>
           
-          <View style={styles.statCard}>
-            <Text variant="headlineMedium" style={styles.statNumber}>843</Text>
-            <Text variant="bodyMedium" style={styles.statLabel}>Gönüllü</Text>
-          </View>
+          <Card style={styles.infoCard} mode="elevated">
+            <Card.Content>
+              <Text variant="titleMedium" style={styles.cardTitle}>Kış Yaklaşıyor</Text>
+              <Text variant="bodyMedium" style={styles.cardText}>
+                Soğuk havalar için sokak hayvanlarına barınak yapma görevleri eklendi. Katılmak için görevler sayfasını kontrol edin.
+              </Text>
+            </Card.Content>
+          </Card>
           
-          <View style={styles.statCard}>
-            <Text variant="headlineMedium" style={styles.statNumber}>1.2k</Text>
-            <Text variant="bodyMedium" style={styles.statLabel}>Tamamlanan Görev</Text>
+          <Card style={styles.infoCard} mode="elevated">
+            <Card.Content>
+              <Text variant="titleMedium" style={styles.cardTitle}>Besleme Noktaları</Text>
+              <Text variant="bodyMedium" style={styles.cardText}>
+                Şehrin farklı bölgelerinde besleme noktaları oluşturuldu. En yakın beslenme noktasını haritada görebilirsiniz.
+              </Text>
+            </Card.Content>
+          </Card>
+        </View>
+
+        <View style={styles.statsSection}>
+          <Text variant="titleLarge" style={styles.sectionTitle}>İstatistikler</Text>
+          
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text variant="headlineMedium" style={styles.statNumber}>156</Text>
+              <Text variant="bodyMedium" style={styles.statLabel}>Aktif Görev</Text>
+            </View>
+            
+            <View style={styles.statCard}>
+              <Text variant="headlineMedium" style={styles.statNumber}>843</Text>
+              <Text variant="bodyMedium" style={styles.statLabel}>Gönüllü</Text>
+            </View>
+            
+            <View style={styles.statCard}>
+              <Text variant="headlineMedium" style={styles.statNumber}>1.2k</Text>
+              <Text variant="bodyMedium" style={styles.statLabel}>Tamamlanan Görev</Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Emergency Cases */}
-      <View style={styles.section}>
-        <Text variant="titleLarge" style={styles.sectionTitle}>Acil Durumlar</Text>
-        {emergencyCases.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={styles.emergencyCard}
-            onPress={() => handleTaskDetailPress(item.id)}
-          >
-            <Image source={{ uri: item.image }} style={styles.emergencyImage} />
-            <View style={styles.emergencyInfo}>
-              <Text variant="titleMedium" style={styles.emergencyTitle}>{item.title}</Text>
-              <View style={styles.locationContainer}>
-                <MapPin size={16} color="#666" />
-                <Text variant="bodySmall" style={styles.locationText}>{item.location}</Text>
-              </View>
-              <View
-                style={[
-                  styles.urgencyBadge,
-                  {
-                    backgroundColor:
-                      item.urgency === 'Yüksek' ? '#FFE0E0' : '#E3F2FD',
-                  },
-                ]}
-              >
-                <Text
-                  variant="labelSmall"
+        {/* Emergency Cases */}
+        <View style={styles.section}>
+          <Text variant="titleLarge" style={styles.sectionTitle}>Acil Durumlar</Text>
+          {emergencyCases.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.emergencyCard}
+              onPress={() => handleTaskDetailPress(item.id)}
+              activeOpacity={0.7}
+            >
+              <Image 
+                source={{ uri: item.image }} 
+                style={styles.emergencyImage} 
+                resizeMode="cover"
+              />
+              <View style={styles.emergencyInfo}>
+                <Text variant="titleMedium" style={styles.emergencyTitle}>{item.title}</Text>
+                <View style={styles.locationContainer}>
+                  <MapPin size={16} color={colors.textSecondary} />
+                  <Text variant="bodySmall" style={styles.locationText}>{item.location}</Text>
+                </View>
+                <View
                   style={[
-                    styles.urgencyText,
+                    styles.urgencyBadge,
                     {
-                      color: item.urgency === 'Yüksek' ? '#FF6B6B' : '#2196F3',
+                      backgroundColor:
+                        item.urgency === 'Yüksek' ? colors.secondaryLight : colors.info + '20',
                     },
                   ]}
                 >
-                  {item.urgency}
-                </Text>
+                  <Text
+                    variant="labelSmall"
+                    style={[
+                      styles.urgencyText,
+                      {
+                        color: item.urgency === 'Yüksek' ? colors.secondary : colors.info,
+                      },
+                    ]}
+                  >
+                    {item.urgency}
+                  </Text>
+                </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-        
-        <Button 
-          mode="contained" 
-          icon="plus"
-          style={styles.addEmergencyButton}
-          contentStyle={styles.addEmergencyButtonContent}
-          onPress={handleEmergencyPress}
-        >
-          Acil Durum Bildir
-        </Button>
-      </View>
-    </ScrollView>
+            </TouchableOpacity>
+          ))}
+          
+          <Button 
+            mode="contained" 
+            icon="plus"
+            style={styles.addEmergencyButton}
+            contentStyle={styles.addEmergencyButtonContent}
+            onPress={handleEmergencyPress}
+          >
+            Acil Durum Bildir
+          </Button>
+        </View>
+
+        <View style={styles.footer}>
+          <Text variant="bodySmall" style={styles.footerText}>
+            © 2023 StreetPaws - Tüm hakları saklıdır
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
   },
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: spacing.xxl,
+  },
+  headerGradient: {
+    borderBottomLeftRadius: borderRadius.large,
+    borderBottomRightRadius: borderRadius.large,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
   },
   header: {
     alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#FFF8E1',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    marginBottom: 16,
+    padding: spacing.lg,
   },
   logo: {
     width: 100,
     height: 100,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   title: {
     fontWeight: 'bold',
-    color: '#FF6B6B',
-    marginBottom: 8,
+    color: colors.primary,
+    marginBottom: spacing.xs,
   },
   subtitle: {
     textAlign: 'center',
-    color: '#757575',
-    marginBottom: 8,
+    color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
   },
   actionsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: spacing.screenPadding,
+    marginVertical: spacing.md,
   },
   actionCard: {
-    width: width > 600 ? (width / 3 - 24) : (width / 3 - 20),
-    minHeight: 100,
+    width: isTablet ? '30%' : isSmallScreen ? '100%' : '31%',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
+    padding: spacing.md,
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 12,
-    padding: width > 375 ? 16 : 12,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 2,
+    justifyContent: 'center',
+    ...shadows.medium,
+    marginBottom: isSmallScreen ? spacing.md : spacing.sm,
+    elevation: 3,
+    shadowColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.2)' : undefined,
+    shadowOffset: Platform.OS === 'ios' ? { width: 0, height: 3 } : undefined,
+    shadowOpacity: Platform.OS === 'ios' ? 0.3 : undefined,
+    shadowRadius: Platform.OS === 'ios' ? 4.65 : undefined,
   },
   actionTitle: {
-    marginTop: 8,
-    marginBottom: 4,
     textAlign: 'center',
-    fontSize: width > 375 ? 16 : 14,
-    fontWeight: '500',
+    marginTop: spacing.sm,
+    fontSize: isSmallScreen ? 14 : 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   actionDescription: {
     textAlign: 'center',
-    color: '#757575',
-    fontSize: width > 375 ? 12 : 10,
+    color: colors.textSecondary,
+    marginTop: spacing.xxs,
+    fontSize: isSmallScreen ? 12 : 14,
   },
   section: {
-    padding: 16,
+    paddingHorizontal: spacing.screenPadding,
+    marginTop: spacing.lg,
   },
   infoSection: {
-    padding: 16,
-    backgroundColor: '#F5F5F5',
-    marginTop: 8,
+    paddingHorizontal: spacing.screenPadding,
+    marginTop: spacing.lg,
   },
   sectionTitle: {
-    marginBottom: 16,
-    color: '#4CAF50',
-    fontWeight: 'bold',
+    marginBottom: spacing.md,
+    fontWeight: '600',
+    color: colors.text,
   },
   infoCard: {
-    marginBottom: 16,
-    borderRadius: 12,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
+    overflow: 'hidden',
     elevation: 2,
+    shadowColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.15)' : undefined,
+    shadowOffset: Platform.OS === 'ios' ? { width: 0, height: 2 } : undefined,
+    shadowOpacity: Platform.OS === 'ios' ? 0.25 : undefined,
+    shadowRadius: Platform.OS === 'ios' ? 3.84 : undefined,
   },
   cardTitle: {
-    marginBottom: 8,
-    color: '#333333',
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+    color: colors.text,
   },
   cardText: {
-    color: '#555555',
+    color: colors.textSecondary,
   },
   statsSection: {
-    padding: 16,
+    paddingHorizontal: spacing.screenPadding,
+    marginTop: spacing.lg,
   },
   statsRow: {
-    flexDirection: 'row',
+    flexDirection: isSmallScreen ? 'column' : 'row',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
   },
   statCard: {
-    width: width > 600 ? width / 3 - 24 : width / 3 - 20,
-    backgroundColor: '#E8F5E9',
-    borderRadius: 12,
-    padding: 16,
+    flex: isSmallScreen ? undefined : 1,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
+    padding: spacing.md,
     alignItems: 'center',
-    marginBottom: width > 600 ? 0 : 8,
-    minWidth: 90,
+    ...shadows.small,
+    marginHorizontal: isSmallScreen ? 0 : spacing.xxs,
+    marginBottom: isSmallScreen ? spacing.sm : 0,
+    width: isSmallScreen ? '100%' : undefined,
+    elevation: 2,
+    shadowColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.15)' : undefined,
+    shadowOffset: Platform.OS === 'ios' ? { width: 0, height: 2 } : undefined,
+    shadowOpacity: Platform.OS === 'ios' ? 0.2 : undefined,
+    shadowRadius: Platform.OS === 'ios' ? 3.0 : undefined,
   },
   statNumber: {
-    marginBottom: 4,
-    color: '#4CAF50',
     fontWeight: 'bold',
-    fontSize: width > 375 ? 24 : 20,
+    color: colors.primary,
   },
   statLabel: {
-    color: '#555555',
+    color: colors.textSecondary,
     textAlign: 'center',
-    fontSize: width > 375 ? 14 : 12,
+    fontSize: isSmallScreen ? 14 : 16,
   },
   emergencyCard: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 2,
+    flexDirection: isSmallScreen ? 'column' : 'row',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
     overflow: 'hidden',
+    marginBottom: spacing.md,
+    ...shadows.medium,
+    elevation: 3,
+    shadowColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.15)' : undefined,
+    shadowOffset: Platform.OS === 'ios' ? { width: 0, height: 3 } : undefined,
+    shadowOpacity: Platform.OS === 'ios' ? 0.3 : undefined,
+    shadowRadius: Platform.OS === 'ios' ? 4.65 : undefined,
   },
   emergencyImage: {
-    width: 100,
-    height: 100,
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
+    width: isSmallScreen ? '100%' : 100,
+    height: isSmallScreen ? 150 : 100,
+    borderTopLeftRadius: isSmallScreen ? borderRadius.medium : borderRadius.medium,
+    borderTopRightRadius: isSmallScreen ? borderRadius.medium : 0,
+    borderBottomLeftRadius: isSmallScreen ? 0 : borderRadius.medium,
   },
   emergencyInfo: {
     flex: 1,
-    padding: 12,
-    justifyContent: 'space-between',
+    padding: spacing.md,
   },
   emergencyTitle: {
-    fontWeight: '500',
-    marginBottom: 8,
-    color: '#333333',
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+    color: colors.text,
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.xs,
   },
   locationText: {
-    marginLeft: 4,
-    color: '#666666',
+    marginLeft: spacing.xs,
+    color: colors.textSecondary,
   },
   urgencyBadge: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: spacing.xxs,
+    paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.xs,
   },
   urgencyText: {
-    fontWeight: '500',
+    fontWeight: '600',
   },
   addEmergencyButton: {
-    marginTop: 8,
-    backgroundColor: '#FF6B6B',
-    borderRadius: 12,
-    marginHorizontal: width > 600 ? 100 : 16,
+    marginTop: spacing.md,
+    backgroundColor: colors.secondary,
+    borderRadius: borderRadius.medium,
+    elevation: 2,
+    shadowColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.15)' : undefined,
+    shadowOffset: Platform.OS === 'ios' ? { width: 0, height: 2 } : undefined,
+    shadowOpacity: Platform.OS === 'ios' ? 0.25 : undefined,
+    shadowRadius: Platform.OS === 'ios' ? 3.84 : undefined,
   },
   addEmergencyButtonContent: {
-    paddingVertical: 8,
-  }
+    paddingVertical: spacing.sm,
+  },
+  footer: {
+    paddingHorizontal: spacing.screenPadding,
+    marginTop: spacing.xl,
+    paddingBottom: spacing.md,
+    alignItems: 'center',
+  },
+  footerText: {
+    color: colors.textTertiary,
+  },
 });
 
 export default HomeScreen;

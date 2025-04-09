@@ -1,6 +1,0 @@
-2025-04-05 19:44:01.733 xcodebuild[20621:3645464] Writing error result bundle to /var/folders/02/r2c3fmw14js1r9gy3df530240000gn/T/ResultBundle_2025-05-04_19-44-0001.xcresult
-xcodebuild: error: Unable to find a destination matching the provided destination specifier:
-		{ id:6A8BBB6A-B57E-42DE-BBC5-276E84FE0E45 }
-
-	Ineligible destinations for the "streetpaws" scheme:
-		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device, error:iOS 18.2 is not installed. To use with Xcode, first download and install the platform }

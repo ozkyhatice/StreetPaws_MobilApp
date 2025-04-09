@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Card } from './Card';
-import { colors, typography } from '../config/theme';
+import { colors, typography, spacing, borderRadius, shadows } from '../config/theme';
 import { Task } from '../types/task';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -31,9 +31,9 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
       case 'URGENT':
         return colors.error;
       case 'HIGH':
-        return '#FF9500';
+        return colors.secondary;
       case 'MEDIUM':
-        return '#FFD60A';
+        return colors.warning;
       case 'LOW':
         return colors.success;
       default:
@@ -72,7 +72,10 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
   };
 
   return (
-    <TouchableOpacity onPress={() => onPress(task)}>
+    <TouchableOpacity 
+      onPress={() => onPress(task)}
+      activeOpacity={0.7}
+    >
       <Card style={styles.container}>
         <View style={styles.header}>
           <View style={styles.categoryIcon}>
@@ -83,11 +86,11 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
             />
           </View>
           <View style={styles.titleContainer}>
-            <Text style={styles.title}>{task.title}</Text>
-            <Text style={styles.location}>{task.location.address}</Text>
+            <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">{task.title}</Text>
+            <Text style={styles.location} numberOfLines={1} ellipsizeMode="tail">{task.location.address}</Text>
           </View>
-          <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority) }]}>
-            <Text style={styles.priorityText}>{task.priority}</Text>
+          <View style={[styles.priorityBadge, { backgroundColor: getPriorityColor(task.priority) + '20' }]}>
+            <Text style={[styles.priorityText, { color: getPriorityColor(task.priority) }]}>{task.priority}</Text>
           </View>
         </View>
 
@@ -100,23 +103,29 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
             <Text style={styles.statusText}>{getStatusText(task.status)}</Text>
           </View>
 
-          <View style={styles.xpContainer}>
-            <Icon name="star" size={16} color={colors.primary} />
-            <Text style={styles.xpText}>{task.xpReward} XP</Text>
-          </View>
-
-          {task.deadline && (
-            <View style={styles.deadlineContainer}>
-              <Icon name="clock-outline" size={16} color={colors.textLight} />
-              <Text style={styles.deadlineText}>
-                {new Date(task.deadline).toLocaleDateString()}
-              </Text>
+          <View style={styles.metadataContainer}>
+            <View style={styles.xpContainer}>
+              <Icon name="star" size={16} color={colors.primary} />
+              <Text style={styles.xpText}>{task.xpReward} XP</Text>
             </View>
-          )}
+
+            {task.deadline && (
+              <View style={styles.deadlineContainer}>
+                <Icon name="clock-outline" size={16} color={colors.textSecondary} />
+                <Text style={styles.deadlineText}>
+                  {new Date(task.deadline).toLocaleDateString()}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {task.images && task.images.length > 0 && (
-          <Image source={{ uri: task.images[0] }} style={styles.image} />
+          <Image 
+            source={{ uri: task.images[0] }} 
+            style={styles.image}
+            resizeMode="cover"
+          />
         )}
       </Card>
     </TouchableOpacity>
@@ -125,48 +134,51 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 8,
-    marginHorizontal: 16,
+    marginVertical: spacing.sm,
+    marginHorizontal: spacing.screenPadding,
+    borderRadius: borderRadius.medium,
+    ...shadows.small,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   categoryIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.card,
+    backgroundColor: colors.primaryLight + '20',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: spacing.sm,
   },
   titleContainer: {
     flex: 1,
+    marginRight: spacing.xs,
   },
   title: {
-    ...typography.h3,
+    ...typography.subtitle1,
     color: colors.text,
   },
   location: {
     ...typography.caption,
-    color: colors.textLight,
+    color: colors.textSecondary,
   },
   description: {
-    ...typography.body,
-    color: colors.text,
-    marginBottom: 12,
+    ...typography.body2,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
   priorityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginLeft: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: borderRadius.small,
   },
   priorityText: {
     ...typography.caption,
-    color: colors.background,
     fontWeight: '600',
   },
   footer: {
@@ -174,37 +186,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  metadataContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: borderRadius.small,
   },
   openBadge: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primary + '20',
   },
   inProgressBadge: {
-    backgroundColor: colors.warning,
+    backgroundColor: colors.warning + '20',
   },
   completedBadge: {
-    backgroundColor: colors.success,
+    backgroundColor: colors.success + '20',
   },
   cancelledBadge: {
-    backgroundColor: colors.textLight,
+    backgroundColor: colors.textDisabled + '20',
   },
   statusText: {
     ...typography.caption,
-    color: colors.background,
+    color: colors.text,
     fontWeight: '600',
   },
   xpContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: spacing.md,
   },
   xpText: {
     ...typography.caption,
     color: colors.primary,
     fontWeight: '600',
-    marginLeft: 4,
+    marginLeft: spacing.xxs,
   },
   deadlineContainer: {
     flexDirection: 'row',
@@ -212,13 +229,13 @@ const styles = StyleSheet.create({
   },
   deadlineText: {
     ...typography.caption,
-    color: colors.textLight,
-    marginLeft: 4,
+    color: colors.textSecondary,
+    marginLeft: spacing.xxs,
   },
   image: {
     width: '100%',
     height: 150,
-    borderRadius: 8,
-    marginTop: 12,
+    borderRadius: borderRadius.xs,
+    marginTop: spacing.sm,
   },
 }); 

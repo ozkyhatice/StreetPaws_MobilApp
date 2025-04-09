@@ -1,7 +1,20 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
-import { Text, Card, Button, Avatar, Searchbar, Chip } from 'react-native-paper';
-import { MapPin, Star, Clock, Award } from 'lucide-react-native';
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+  Image,
+} from 'react-native';
+import { Text, Card, Button, Avatar, Searchbar, Chip, Divider } from 'react-native-paper';
+import { MapPin, Star, Clock, Award, Loader, MessageCircle, Filter } from 'lucide-react-native';
+import { colors, spacing, shadows, borderRadius, typography } from '../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Mock volunteer data
 const mockVolunteers = [
@@ -14,7 +27,8 @@ const mockVolunteers = [
     xp: 2500,
     completedTasks: 42,
     skills: ['Besleme', 'Veteriner', 'Barınak'],
-    location: 'İstanbul, Kadıköy'
+    location: 'İstanbul, Kadıköy',
+    badge: 'Barınak Kahramanı'
   },
   {
     id: '2',
@@ -25,7 +39,8 @@ const mockVolunteers = [
     xp: 4200,
     completedTasks: 75,
     skills: ['Sağlık', 'İlkyardım', 'Eğitim'],
-    location: 'İstanbul, Beşiktaş'
+    location: 'İstanbul, Beşiktaş',
+    badge: 'Veteriner Uzmanı'
   },
   {
     id: '3',
@@ -36,7 +51,8 @@ const mockVolunteers = [
     xp: 3100,
     completedTasks: 51,
     skills: ['Barınak', 'Besleme', 'Tasarım'],
-    location: 'İstanbul, Üsküdar'
+    location: 'İstanbul, Üsküdar',
+    badge: 'Hayvan Dostu'
   },
   {
     id: '4',
@@ -47,7 +63,8 @@ const mockVolunteers = [
     xp: 1800,
     completedTasks: 28,
     skills: ['Organizasyon', 'Sosyal Medya', 'Eğitim'],
-    location: 'İstanbul, Bakırköy'
+    location: 'İstanbul, Bakırköy',
+    badge: 'Sosyal Medya Uzmanı'
   },
   {
     id: '5',
@@ -58,15 +75,19 @@ const mockVolunteers = [
     xp: 1200,
     completedTasks: 18,
     skills: ['Bakım', 'Tasarım', 'İnşaat'],
-    location: 'İstanbul, Beylikdüzü'
+    location: 'İstanbul, Beylikdüzü',
+    badge: 'Yeni Gönüllü'
   }
 ];
 
-const screenWidth = Dimensions.get('window').width;
+const { width, height } = Dimensions.get('window');
+const isSmallScreen = width < 375;
+const isTablet = width > 768;
 
 export default function VolunteersScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const filteredVolunteers = mockVolunteers
     .filter(v => 
@@ -77,33 +98,69 @@ export default function VolunteersScreen() {
     .filter(v => selectedSkill ? v.skills.includes(selectedSkill) : true);
   
   const allSkills = [...new Set(mockVolunteers.flatMap(v => v.skills))];
+  
+  const handleSearch = (query) => {
+    setIsLoading(true);
+    setSearchQuery(query);
+    // Simüle edilmiş arama gecikmesi
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 500);
+  };
+
+  const getBadgeColor = (level) => {
+    if (level >= 7) return colors.secondary;
+    if (level >= 5) return colors.primary;
+    if (level >= 3) return colors.info;
+    return colors.warning;
+  };
 
   const renderVolunteerCard = ({ item }) => (
-    <Card style={styles.card}>
+    <Card 
+      style={styles.card}
+      mode="elevated"
+    >
       <View style={styles.cardHeader}>
-        <Avatar.Image source={{ uri: item.avatar }} size={60} />
-        <View style={styles.headerInfo}>
-          <Text variant="titleMedium">{item.name}</Text>
-          <View style={styles.locationContainer}>
-            <MapPin size={14} color="#666" />
-            <Text variant="bodySmall" style={styles.locationText}>{item.location}</Text>
+        <View style={styles.avatarContainer}>
+          <Avatar.Image 
+            source={{ uri: item.avatar }} 
+            size={70} 
+            style={styles.avatar}
+          />
+          <View style={[styles.levelBadge, { backgroundColor: getBadgeColor(item.level) }]}>
+            <Text style={styles.levelText}>{item.level}</Text>
           </View>
         </View>
-        <View style={styles.levelBadge}>
-          <Text style={styles.levelText}>Seviye {item.level}</Text>
+
+        <View style={styles.headerInfo}>
+          <Text style={styles.volunteerName}>{item.name}</Text>
+          
+          <View style={styles.badgeContainer}>
+            <Award size={14} color={getBadgeColor(item.level)} />
+            <Text style={[styles.badgeText, { color: getBadgeColor(item.level) }]}>
+              {item.badge}
+            </Text>
+          </View>
+          
+          <View style={styles.locationContainer}>
+            <MapPin size={14} color={colors.textSecondary} />
+            <Text style={styles.locationText}>{item.location}</Text>
+          </View>
         </View>
       </View>
       
-      <Text variant="bodyMedium" style={styles.bio} numberOfLines={2}>{item.bio}</Text>
+      <Divider style={styles.divider} />
+      
+      <Text style={styles.bio} numberOfLines={2}>{item.bio}</Text>
       
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
-          <Star size={16} color="#FFC107" />
-          <Text variant="bodyMedium">{item.xp} XP</Text>
+          <Star size={16} color={colors.warning} />
+          <Text style={styles.statText}>{item.xp} XP</Text>
         </View>
         <View style={styles.statItem}>
-          <Clock size={16} color="#4CAF50" />
-          <Text variant="bodyMedium">{item.completedTasks} Görev</Text>
+          <Clock size={16} color={colors.primary} />
+          <Text style={styles.statText}>{item.completedTasks} Görev</Text>
         </View>
       </View>
       
@@ -115,7 +172,10 @@ export default function VolunteersScreen() {
               styles.skillChip,
               selectedSkill === skill && styles.selectedSkillChip
             ]}
-            textStyle={selectedSkill === skill ? styles.selectedSkillText : {}}
+            textStyle={[
+              styles.skillChipText,
+              selectedSkill === skill && styles.selectedSkillText
+            ]}
             onPress={() => setSelectedSkill(selectedSkill === skill ? null : skill)}
           >
             {skill}
@@ -126,35 +186,88 @@ export default function VolunteersScreen() {
       <Button 
         mode="contained" 
         style={styles.connectButton}
-        icon="message-outline"
+        icon={({size, color}) => <MessageCircle size={18} color={color} />}
+        buttonColor={colors.primary}
       >
         İletişime Geç
       </Button>
     </Card>
   );
 
-  return (
-    <View style={styles.container}>
-      <Text variant="headlineMedium" style={styles.title}>Gönüllüler</Text>
-      
-      <Searchbar
-        placeholder="Gönüllü ara..."
-        onChangeText={setSearchQuery}
-        value={searchQuery}
-        style={styles.searchbar}
+  const renderEmptyList = () => (
+    <View style={styles.emptyContainer}>
+      <Image 
+        source={require('../assets/paw.png')}
+        style={styles.emptyImage}
+        resizeMode="contain"
       />
+      <Text style={styles.emptyTitle}>Gönüllü Bulunamadı</Text>
+      <Text style={styles.emptyText}>
+        Arama kriterlerinize uygun gönüllü bulunamadı. Lütfen farklı bir arama deneyin.
+      </Text>
+      <Button 
+        mode="outlined" 
+        style={styles.resetButton}
+        onPress={() => {
+          setSearchQuery('');
+          setSelectedSkill(null);
+        }}
+      >
+        Filtreleri Temizle
+      </Button>
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+
+      <View style={styles.header}>
+        <Text style={styles.title}>Gönüllüler</Text>
+        <TouchableOpacity style={styles.filterButton}>
+          <Filter size={22} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.searchContainer}>
+        <Searchbar
+          placeholder="Gönüllü veya beceri ara..."
+          onChangeText={handleSearch}
+          value={searchQuery}
+          style={styles.searchbar}
+          iconColor={colors.primary}
+          loading={isLoading}
+        />
+      </View>
       
       <View style={styles.filtersContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.filtersScroll}
+        >
+          <Chip
+            mode="outlined"
+            style={[styles.filterChip, !selectedSkill && styles.activeFilterChip]}
+            onPress={() => setSelectedSkill(null)}
+            textStyle={!selectedSkill ? styles.activeFilterText : styles.filterChipText}
+          >
+            Tümü
+          </Chip>
           {allSkills.map(skill => (
             <Chip
               key={skill}
-              selected={selectedSkill === skill}
+              mode="outlined"
+              style={[
+                styles.filterChip, 
+                selectedSkill === skill && styles.activeFilterChip
+              ]}
               onPress={() => setSelectedSkill(selectedSkill === skill ? null : skill)}
-              style={styles.filterChip}
-              selectedColor="#FFFFFF"
-              showSelectedOverlay
-              selectedBackgroundColor="#4CAF50"
+              textStyle={
+                selectedSkill === skill 
+                  ? styles.activeFilterText 
+                  : styles.filterChipText
+              }
             >
               {skill}
             </Chip>
@@ -168,106 +281,233 @@ export default function VolunteersScreen() {
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         initialNumToRender={3}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={renderEmptyList}
+        // Tab bar için ekstra padding ekliyoruz
+        contentInset={{ bottom: 80 }}
+        contentInsetAdjustmentBehavior="automatic"
+        ListFooterComponent={<View style={{ height: 90 }} />}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    padding: 16,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
   },
   title: {
-    marginBottom: 16,
-    color: '#4CAF50',
+    ...typography.h2,
+    color: colors.text,
     fontWeight: 'bold',
   },
+  filterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.small,
+  },
+  searchContainer: {
+    paddingHorizontal: spacing.screenPadding,
+    marginBottom: spacing.sm,
+  },
   searchbar: {
-    marginBottom: 16,
-    backgroundColor: 'white',
+    borderRadius: borderRadius.medium,
+    backgroundColor: colors.surface,
     elevation: 2,
+    height: 48,
+    shadowColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : undefined,
+    shadowOffset: Platform.OS === 'ios' ? { width: 0, height: 2 } : undefined,
+    shadowOpacity: Platform.OS === 'ios' ? 0.2 : undefined,
+    shadowRadius: Platform.OS === 'ios' ? 3 : undefined,
   },
   filtersContainer: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
+    paddingLeft: spacing.screenPadding,
   },
   filtersScroll: {
-    paddingRight: 32,
+    paddingRight: spacing.screenPadding + spacing.md,
   },
   filterChip: {
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: '#E8F5E9',
+    marginRight: spacing.sm,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+  },
+  filterChipText: {
+    color: colors.textSecondary,
+  },
+  activeFilterChip: {
+    backgroundColor: colors.primary + '15',
+    borderColor: colors.primary,
+  },
+  activeFilterText: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   list: {
-    paddingBottom: 24,
+    paddingHorizontal: spacing.screenPadding,
   },
   card: {
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.medium,
+    backgroundColor: colors.surface,
     elevation: 2,
+    shadowColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.1)' : undefined,
+    shadowOffset: Platform.OS === 'ios' ? { width: 0, height: 2 } : undefined,
+    shadowOpacity: Platform.OS === 'ios' ? 0.2 : undefined,
+    shadowRadius: Platform.OS === 'ios' ? 3 : undefined,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.sm,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginRight: spacing.md,
+  },
+  avatar: {
+    borderWidth: 2,
+    borderColor: colors.surface,
+    backgroundColor: colors.primaryLight + '30',
   },
   headerInfo: {
     flex: 1,
-    marginLeft: 12,
+  },
+  volunteerName: {
+    ...typography.subtitle1,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.xxs,
+  },
+  badgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xxs,
+  },
+  badgeText: {
+    ...typography.caption,
+    fontWeight: '600',
+    marginLeft: spacing.xxs,
   },
   locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
   },
   locationText: {
-    marginLeft: 4,
-    color: '#666',
+    ...typography.caption,
+    marginLeft: spacing.xxs,
+    color: colors.textSecondary,
   },
   levelBadge: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 24,
+    height: 24,
     borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.surface,
   },
   levelText: {
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
   },
+  divider: {
+    marginVertical: spacing.sm,
+    backgroundColor: colors.divider,
+  },
   bio: {
-    marginBottom: 12,
-    color: '#555555',
+    ...typography.body2,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
   statsContainer: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: spacing.lg,
+  },
+  statText: {
+    ...typography.body2,
+    color: colors.text,
+    fontWeight: '500',
+    marginLeft: spacing.xxs,
   },
   skillContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   skillChip: {
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: '#E8F5E9',
+    marginRight: spacing.xs,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.primaryLight + '15',
+  },
+  skillChipText: {
+    ...typography.caption,
+    color: colors.primary,
   },
   selectedSkillChip: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: colors.primary + '30',
   },
   selectedSkillText: {
-    color: 'white',
+    color: colors.primary,
+    fontWeight: '600',
   },
   connectButton: {
-    backgroundColor: '#4CAF50',
+    borderRadius: borderRadius.medium,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyImage: {
+    width: 100,
+    height: 100,
+    marginBottom: spacing.md,
+    opacity: 0.5,
+  },
+  emptyTitle: {
+    ...typography.h3,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  emptyText: {
+    ...typography.body2,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  resetButton: {
+    width: 200,
+    borderColor: colors.primary,
   },
 });
