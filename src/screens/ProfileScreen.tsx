@@ -17,6 +17,33 @@ type RootStackParamList = {
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+// Animasyonlu Avatar bileşeni
+const AnimatedAvatar = ({ pulseAnim }: { pulseAnim: Animated.Value }) => {
+  const scale = pulseAnim;
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Avatar.Image 
+        size={80} 
+        source={{ uri: 'https://via.placeholder.com/100' }} 
+        style={styles.avatar}
+      />
+    </Animated.View>
+  );
+};
+
+// Animasyonlu StatItem bileşeni
+const AnimatedStatItem = ({ pulseAnim, value, label }: { pulseAnim: Animated.Value, value: string | number, label: string }) => {
+  const scale = pulseAnim;
+  
+  return (
+    <Animated.View style={[styles.statItem, { transform: [{ scale }] }]}>
+      <Text variant="headlineSmall">{value}</Text>
+      <Text variant="bodySmall">{label}</Text>
+    </Animated.View>
+  );
+};
+
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const [activeTab, setActiveTab] = useState(0);
@@ -114,17 +141,13 @@ export default function ProfileScreen() {
     currentXP: 850,
     levelXP: 1000,
     level: 5,
-    rank: 'gold' as const,
+    rank: 'gold' as 'bronze' | 'silver' | 'gold' | 'platinum',
   };
 
   const renderProfileInfo = () => (
     <View style={styles.profileContainer}>
       <Animated.View style={[styles.header, { transform: [{ scale: scaleAnim }] }]}>
-        <Avatar.Image 
-          size={80} 
-          source={{ uri: 'https://via.placeholder.com/100' }} 
-          style={[styles.avatar, { transform: [{ scale: pulseAnim }] }]}
-        />
+        <AnimatedAvatar pulseAnim={pulseAnim} />
         <View style={styles.userInfo}>
           <Text variant="headlineSmall" style={styles.name}>Hatice Özkaya</Text>
           <Text variant="bodyMedium" style={styles.username}>@haticeozkaya</Text>
@@ -142,18 +165,9 @@ export default function ProfileScreen() {
       <Animated.View style={[styles.statsCard, { transform: [{ scale: scaleAnim }] }]}>
         <Card.Content>
           <View style={styles.statsRow}>
-            <Animated.View style={[styles.statItem, { transform: [{ scale: pulseAnim }] }]}>
-              <Text variant="headlineSmall">12</Text>
-              <Text variant="bodySmall">Görev</Text>
-            </Animated.View>
-            <Animated.View style={[styles.statItem, { transform: [{ scale: pulseAnim }] }]}>
-              <Text variant="headlineSmall">{userData.currentXP}</Text>
-              <Text variant="bodySmall">XP</Text>
-            </Animated.View>
-            <Animated.View style={[styles.statItem, { transform: [{ scale: pulseAnim }] }]}>
-              <Text variant="headlineSmall">3</Text>
-              <Text variant="bodySmall">Rozet</Text>
-            </Animated.View>
+            <AnimatedStatItem pulseAnim={pulseAnim} value={12} label="Görev" />
+            <AnimatedStatItem pulseAnim={pulseAnim} value={userData.currentXP} label="XP" />
+            <AnimatedStatItem pulseAnim={pulseAnim} value={3} label="Rozet" />
           </View>
         </Card.Content>
       </Animated.View>
@@ -432,13 +446,13 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   email: {
-    color: colors.text.hint,
+    color: colors.text.tertiary,
   },
   statsCard: {
     marginHorizontal: 16,
     marginBottom: 16,
     borderRadius: 16,
-    backgroundColor: colors.background.paper,
+    backgroundColor: colors.background.secondary,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,

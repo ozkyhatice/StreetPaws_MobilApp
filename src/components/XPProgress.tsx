@@ -37,7 +37,7 @@ export const XPProgress: React.FC<XPProgressProps> = ({
     pulse(pulseAnim, 2000).start();
   }, [currentXP, levelXP]);
 
-  const rankColors = colors.gamification.level[rank];
+  const rankColors = colors.level[rank];
 
   return (
     <View style={styles.container}>
@@ -47,7 +47,7 @@ export const XPProgress: React.FC<XPProgressProps> = ({
             style={[
               styles.levelBadge,
               {
-                backgroundColor: rankColors.background,
+                backgroundColor: rankColors.start,
                 transform: [{ scale: scaleAnim }],
               },
             ]}
@@ -63,12 +63,12 @@ export const XPProgress: React.FC<XPProgressProps> = ({
             styles.xpContainer,
             {
               transform: [{ scale: pulseAnim }],
-              backgroundColor: colors.gamification.xp.background,
+              backgroundColor: colors.points.xp.background,
             },
           ]}
         >
-          <Star size={20} color={colors.gamification.xp.text} />
-          <Text style={[styles.xpText, { color: colors.gamification.xp.text }]}>
+          <Star size={20} color={colors.points.xp.text} />
+          <Text style={[styles.xpText, { color: colors.points.xp.text }]}>
             {currentXP} / {levelXP} XP
           </Text>
         </Animated.View>
@@ -79,7 +79,7 @@ export const XPProgress: React.FC<XPProgressProps> = ({
           style={[
             styles.progressBackground,
             {
-              backgroundColor: rankColors.background,
+              backgroundColor: rankColors.start,
             },
           ]}
         >
@@ -104,7 +104,7 @@ export const XPProgress: React.FC<XPProgressProps> = ({
 const styles = StyleSheet.create({
   container: {
     padding: 16,
-    backgroundColor: colors.background.paper,
+    backgroundColor: colors.background.secondary,
     borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: {
