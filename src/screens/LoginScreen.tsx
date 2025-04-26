@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect } from "react"
+import React, { useEffect, useState } from "react"
 import { 
   View, 
   Text, 
@@ -12,17 +12,19 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  ScrollView
+  ScrollView,
+  Pressable
 } from "react-native"
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withRepeat,
+  withSequence,
   withTiming,
   Easing,
 } from "react-native-reanimated"
-import { BlurView } from "@react-native-community/blur"
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { colors, spacing, borderRadius, shadows } from '../config/theme';
@@ -34,31 +36,32 @@ const { width, height } = Dimensions.get("window")
 
 const LoginScreen = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
-  const translateY = useSharedValue(height)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  
+  const translateY = useSharedValue(50)
   const opacity = useSharedValue(0)
-  const scale = useSharedValue(0.8)
-  const rotation = useSharedValue(0)
+  const scale = useSharedValue(0.9)
 
   useEffect(() => {
-    translateY.value = withSpring(0)
-    opacity.value = withTiming(1, { duration: 1000 })
-    scale.value = withSpring(1)
-    rotation.value = withRepeat(withTiming(360, { duration: 20000, easing: Easing.linear }), -1, false)
-  }, [opacity])
+    translateY.value = withSequence(
+      withTiming(0, { duration: 1000, easing: Easing.bezier(0.25, 0.1, 0.25, 1) }),
+    )
+    opacity.value = withTiming(1, { duration: 1200 })
+    scale.value = withSpring(1, {
+      damping: 15,
+      stiffness: 100,
+    })
+  }, [])
 
   const containerStyle = useAnimatedStyle(() => {
     return {
-      transform: [{ translateY: translateY.value }],
-      opacity: opacity.value,
-    }
-  })
-
-  const logoStyle = useAnimatedStyle(() => {
-    return {
       transform: [
-        { scale: scale.value },
-        { rotate: `${rotation.value}deg` }
-      ] as any,
+        { translateY: translateY.value } as any,
+        { scale: scale.value } as any
+      ],
+      opacity: opacity.value,
     }
   })
 
@@ -88,29 +91,55 @@ const LoginScreen = () => {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Image source={require("../assets/background.jpg")} style={styles.backgroundImage} />
-          <BlurView style={styles.absolute} blurType="light" blurAmount={10} reducedTransparencyFallbackColor="white" />
+          <LinearGradient
+            colors={['#FF6B6A', '#FF8787', '#FFA5A5']}
+            style={styles.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
           
           <Animated.View style={[styles.content, containerStyle]}>
-            <Animated.Image 
-              source={require("../assets/pawprint.png")} 
-              style={[styles.logo, logoStyle as any]} 
-            />
-            <Text style={styles.title}>Sokak Hayvanları Yardım Ağı</Text>
+            <View style={styles.logoContainer}>
+              <Image 
+                source={require("../assets/pawprint.png")} 
+                style={styles.logo}
+              />
+              <Text style={styles.title}>Sokak Dostları</Text>
+              <Text style={styles.subtitle}>Yardım Ağına Hoş Geldiniz</Text>
+            </View>
             
             <View style={styles.inputContainer}>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Kullanıcı Adı" 
-                placeholderTextColor={colors.textTertiary}
-                autoCapitalize="none"
-              />
-              <TextInput 
-                style={styles.input} 
-                placeholder="Şifre" 
-                placeholderTextColor={colors.textTertiary} 
-                secureTextEntry
-              />
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="E-posta adresiniz" 
+                  placeholderTextColor={colors.textTertiary}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="Şifreniz" 
+                  placeholderTextColor={colors.textTertiary} 
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                  <Ionicons 
+                    name={showPassword ? "eye-outline" : "eye-off-outline"} 
+                    size={20} 
+                    color={colors.textSecondary} 
+                  />
+                </Pressable>
+              </View>
             </View>
             
             <TouchableOpacity
@@ -124,15 +153,22 @@ const LoginScreen = () => {
               style={styles.button}
               onPress={handleLogin}
             >
-              <Text style={styles.buttonText}>Giriş Yap</Text>
+              <LinearGradient
+                colors={['#FF6B6B', '#FF8787']}
+                style={styles.buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.buttonText}>Giriş Yap</Text>
+              </LinearGradient>
             </TouchableOpacity>
             
-            <TouchableOpacity 
-              style={styles.registerLink}
-              onPress={handleRegister}
-            >
-              <Text style={styles.linkText}>Hesabınız yok mu? Kayıt olun</Text>
-            </TouchableOpacity>
+            <View style={styles.registerContainer}>
+              <Text style={styles.registerText}>Hesabınız yok mu?</Text>
+              <TouchableOpacity onPress={handleRegister}>
+                <Text style={styles.registerLink}>Kayıt Ol</Text>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -143,6 +179,7 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#fff'
   },
   container: {
     flex: 1,
@@ -152,85 +189,110 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  backgroundImage: {
-    width,
-    height,
-    position: "absolute",
-  },
-  absolute: {
-    position: "absolute",
-    top: 0,
+  gradient: {
+    position: 'absolute',
     left: 0,
-    bottom: 0,
     right: 0,
+    top: 0,
+    height: height,
   },
   content: {
-    width: "85%",
+    width: "88%",
     maxWidth: 400,
-    padding: spacing.lg,
-    borderRadius: borderRadius.large,
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    padding: spacing.xl,
+    borderRadius: borderRadius.xl,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
     alignItems: "center",
-    ...shadows.medium,
-    marginVertical: spacing.lg,
+    ...shadows.large,
+    marginVertical: spacing.xl,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
   },
   logo: {
-    width: 100,
-    height: 100,
-    marginBottom: spacing.md,
+    width: 80,
+    height: 80,
+    marginBottom: spacing.sm,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "bold",
+    fontSize: 28,
+    fontWeight: "700",
     color: colors.primary,
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: colors.textSecondary,
     marginBottom: spacing.lg,
-    textAlign: "center",
   },
   inputContainer: {
     width: "100%",
-    marginBottom: spacing.sm,
+    gap: spacing.md,
   },
-  input: {
-    width: "100%",
-    height: 50,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderRadius: borderRadius.medium,
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.large,
     borderWidth: 1,
     borderColor: colors.border,
+    height: 56,
     paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
+  },
+  inputIcon: {
+    marginRight: spacing.sm,
+  },
+  input: {
+    flex: 1,
     fontSize: 16,
     color: colors.text,
+    height: '100%',
+  },
+  eyeIcon: {
+    padding: spacing.xs,
   },
   forgotPasswordButton: {
     alignSelf: "flex-end",
-    marginBottom: spacing.lg,
+    marginTop: spacing.md,
+    marginBottom: spacing.xl,
   },
   forgotPasswordText: {
-    color: colors.secondary,
+    color: colors.primary,
     fontSize: 14,
+    fontWeight: '500',
   },
   button: {
     width: "100%",
-    height: 50,
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.medium,
+    height: 56,
+    borderRadius: borderRadius.large,
+    overflow: 'hidden',
+    ...shadows.small,
+  },
+  buttonGradient: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    ...shadows.small,
   },
   buttonText: {
     color: "white",
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "600",
+  },
+  registerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.xl,
+    gap: spacing.xs,
+  },
+  registerText: {
+    color: colors.textSecondary,
+    fontSize: 15,
   },
   registerLink: {
-    marginTop: spacing.lg,
-  },
-  linkText: {
-    color: colors.textSecondary,
-    fontSize: 16,
-    textDecorationLine: "underline",
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '600',
   },
 })
 

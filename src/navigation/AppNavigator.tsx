@@ -20,6 +20,9 @@ import MapScreen from '../screens/MapScreen';
 import VolunteersScreen from '../screens/VolunteersScreen';
 import DonationsScreen from '../screens/DonationsScreen';
 import DonateScreen from '../screens/DonateScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
+import ThemeSettingsScreen from '../screens/ThemeSettingsScreen';
 
 type RootStackParamList = {
   Login: undefined;
@@ -34,6 +37,9 @@ type RootStackParamList = {
   Volunteers: undefined;
   Donations: undefined;
   Donate: { campaignId: string };
+  ChangePassword: undefined;
+  NotificationSettings: undefined;
+  ThemeSettings: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -42,6 +48,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 function TabNavigator() {
   return (
     <Tab.Navigator
+    tabBarPosition = "bottom"
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
@@ -54,15 +61,15 @@ function TabNavigator() {
           borderTopWidth: 1,
           borderTopColor: colors.border,
           position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
+          left: 5,
+          right: 5,
+          bottom: 20,
           ...Platform.select({
             ios: {
-              shadowColor: 'rgba(0,0,0,0.2)',
-              shadowOffset: { width: 0, height: -2 },
-              shadowOpacity: 0.2,
-              shadowRadius: 3,
+              shadowColor: 'rgba(0,0,0,0.08)',
+              shadowOffset: { width: 2, height: -2 },
+              shadowOpacity: 0.6,
+              shadowRadius: 0,
             },
             android: {
               elevation: 4,
@@ -74,13 +81,12 @@ function TabNavigator() {
           fontSize: 10,
           fontWeight: '500',
           paddingBottom: 0,
-          marginTop: -5,
+          marginTop: 0.6,
         },
-        tabBarIconStyle: {
-          marginTop: 0,
-        },
+        
         tabBarAllowFontScaling: false,
         tabBarLabelPosition: 'below-icon',
+
       }}
       sceneContainerStyle={{ 
         marginBottom: 50,
@@ -90,7 +96,7 @@ function TabNavigator() {
         name="Home"
         component={HomeScreen}
         options={{
-          tabBarIcon: ({ color, size }) => <Home color={color} size={size-4} />,
+          tabBarIcon: ({ color, size }) => <Home color={color} size={size} />,
           title: 'Ana Sayfa',
           tabBarLabel: 'Ana Sayfa',
         }}
@@ -99,7 +105,7 @@ function TabNavigator() {
         name="Tasks"
         component={TasksScreen}
         options={{
-          tabBarIcon: ({ color, size }) => <MapPin color={color} size={size-4} />,
+          tabBarIcon: ({ color, size }) => <MapPin color={color} size={size} />,
           title: 'Görevler',
           tabBarLabel: 'Görevler',
         }}
@@ -108,7 +114,7 @@ function TabNavigator() {
         name="Map"
         component={MapScreen}
         options={{
-          tabBarIcon: ({ color, size }) => <Map color={color} size={size-4} />,
+          tabBarIcon: ({ color, size }) => <Map color={color} size={size} />,
           title: 'Harita',
           tabBarLabel: 'Harita',
         }}
@@ -117,7 +123,7 @@ function TabNavigator() {
         name="Volunteers"
         component={VolunteersScreen}
         options={{
-          tabBarIcon: ({ color, size }) => <Users color={color} size={size-4} />,
+          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
           title: 'Gönüllüler',
           tabBarLabel: 'Gönüllüler',
         }}
@@ -131,6 +137,7 @@ function TabNavigator() {
           tabBarLabel: 'Profil',
         }}
       />
+      
     </Tab.Navigator>
   );
 }
@@ -152,7 +159,6 @@ const AppNavigator: React.FC = () => {
           fontSize: 18,
         },
         headerShadowVisible: false,
-        headerBackTitleVisible: false,
         headerLeftContainerStyle: {
           paddingLeft: 8,
         },
@@ -160,53 +166,9 @@ const AppNavigator: React.FC = () => {
           backgroundColor: colors.background,
         },
         gestureEnabled: true,
-        gestureDirection: 'horizontal',
-        cardStyleInterpolator: ({ current, layouts, next }) => {
-          return {
-            cardStyle: {
-              transform: [
-                {
-                  translateX: current.progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [layouts.screen.width, 0],
-                  }),
-                },
-                {
-                  scale: next
-                    ? next.progress.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [1, 0.95],
-                      })
-                    : 1,
-                },
-              ],
-              opacity: current.progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.8, 1],
-              }),
-            },
-            overlayStyle: {
-              opacity: current.progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 0.5],
-              }),
-            },
-          };
-        },
-        transitionSpec: {
-          open: {
-            animation: 'timing',
-            config: {
-              duration: 300,
-            },
-          },
-          close: {
-            animation: 'timing',
-            config: {
-              duration: 300,
-            },
-          },
-        },
+        gestureDirection: "horizontal",
+        animation: "slide_from_right",
+        presentation: "card"
       }}
     >
       <Stack.Screen
@@ -261,6 +223,21 @@ const AppNavigator: React.FC = () => {
         component={DonateScreen}
         options={{ title: 'Bağış Bilgileri' }}
       />
+      <Stack.Screen 
+              name="ChangePassword" 
+              component={ChangePasswordScreen}
+              options={{ title: 'Şifre Değiştir' }}
+            />
+            <Stack.Screen 
+              name="NotificationSettings" 
+              component={NotificationSettingsScreen}
+              options={{ title: 'Bildirim Tercihleri' }}
+            />
+            <Stack.Screen 
+              name="ThemeSettings" 
+              component={ThemeSettingsScreen}
+              options={{ title: 'Tema Ayarları' }}
+            />
     </Stack.Navigator>
   );
 };

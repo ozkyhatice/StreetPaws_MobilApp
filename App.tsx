@@ -33,21 +33,7 @@ function NavigationWrapper() {
               component={AppNavigator}
               options={{ headerShown: false }}
             />
-            <Stack.Screen 
-              name="ChangePassword" 
-              component={ChangePasswordScreen}
-              options={{ title: 'Şifre Değiştir' }}
-            />
-            <Stack.Screen 
-              name="NotificationSettings" 
-              component={NotificationSettingsScreen}
-              options={{ title: 'Bildirim Tercihleri' }}
-            />
-            <Stack.Screen 
-              name="ThemeSettings" 
-              component={ThemeSettingsScreen}
-              options={{ title: 'Tema Ayarları' }}
-            />
+            
           </Stack.Navigator>
         </AuthProvider>
       </PaperProvider>
