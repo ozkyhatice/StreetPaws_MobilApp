@@ -23,6 +23,7 @@ export const StatsSection = () => {
           <Text variant="headlineMedium" style={styles.statNumber}>1.2k</Text>
           <Text variant="bodyMedium" style={styles.statLabel}>Tamamlanan Görev</Text>
         </View>
+        
       </View>
     </View>
   );

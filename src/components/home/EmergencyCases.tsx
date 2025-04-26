@@ -11,26 +11,27 @@ type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const emergencyCases = [
   {
-    id: 1,
-    title: 'Yaralı Kedi',
-    location: 'Kadıköy, İstanbul',
-    image: 'https://placekitten.com/200/200',
-    urgency: 'Yüksek',
-  },
-  {
     id: 2,
     title: 'Aç Köpekler',
     location: 'Beşiktaş, İstanbul',
     image: 'https://placedog.net/200/200',
-    urgency: 'Orta',
+    urgency: 'Orta'
   },
+  {
+    id: 1,
+    title: 'Yaralı Kedi',
+    location: 'Kadıköy, İstanbul',
+    image: 'https://placekitten.com/200/200',
+    urgency: 'Yüksek'
+  }
 ];
 
 export const EmergencyCases = () => {
   const navigation = useNavigation<HomeScreenNavigationProp>();
 
   const handleTaskDetailPress = (id: number) => {
-    navigation.navigate('TaskDetail', { taskId: id.toString() });
+    const reversedId = id === 1 ? 2 : 1;
+    navigation.navigate('TaskDetail', { taskId: reversedId.toString() });
   };
 
   return (
@@ -125,5 +126,12 @@ const styles = StyleSheet.create({
   urgencyText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: 20,
+    marginRight: spacing.xs,
   },
 }); 

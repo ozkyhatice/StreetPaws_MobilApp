@@ -12,14 +12,12 @@ export const Header = () => {
     >
       <View style={styles.header}>
         <Image
-          source={require('../../assets/icon.png')}
+          source={require('../../assets/pawprint.png')}
           style={styles.logo}
           resizeMode="contain"
         />
         <Text variant="headlineMedium" style={styles.title}>StreetPaws</Text>
-        <Text variant="bodyLarge" style={styles.subtitle}>
-          Sokak hayvanlarına yardım etmek için bir araya geldik
-        </Text>
+
       </View>
     </LinearGradient>
   );
@@ -27,26 +25,21 @@ export const Header = () => {
 
 const styles = StyleSheet.create({
   headerGradient: {
+    backgroundColor: '#f5f5f5',
     paddingVertical: 20,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
   },
   header: {
     alignItems: 'center',
-    padding: 20,
   },
   logo: {
     width: 80,
-    height: 80,
-    marginBottom: 10,
+    height: 100,
   },
   title: {
     color: colors.primary,
     fontWeight: 'bold',
     marginBottom: 5,
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    textAlign: 'center',
   },
 }); 

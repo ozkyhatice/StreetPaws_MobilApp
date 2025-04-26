@@ -32,7 +32,7 @@ export const Actions = () => {
       <TouchableOpacity 
         style={styles.actionCard}
         onPress={handleMapPress}
-        activeOpacity={0.7}
+        activeOpacity={0.6}
       >
         <Map size={isSmallScreen ? 24 : 32} color={colors.secondary} />
         <Text variant="titleMedium" style={styles.actionTitle}>Haritada Gör</Text>
@@ -44,7 +44,7 @@ export const Actions = () => {
       <TouchableOpacity 
         style={styles.actionCard}
         onPress={handleVolunteersPress}
-        activeOpacity={0.7}
+        activeOpacity={0.6}
       >
         <Users size={isSmallScreen ? 24 : 32} color={colors.primary} />
         <Text variant="titleMedium" style={styles.actionTitle}>Gönüllüler</Text>
@@ -56,7 +56,7 @@ export const Actions = () => {
       <TouchableOpacity 
         style={styles.actionCard}
         onPress={handleDonationsPress}
-        activeOpacity={0.7}
+        activeOpacity={0.6}
       >
         <Heart size={isSmallScreen ? 24 : 32} color={colors.info} />
         <Text variant="titleMedium" style={styles.actionTitle}>Bağış Yap</Text>
