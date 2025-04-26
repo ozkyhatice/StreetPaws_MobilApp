@@ -127,11 +127,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  filterChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    backgroundColor: colors.background,
-    borderRadius: 20,
-    marginRight: spacing.xs,
-  },
+
 }); 
