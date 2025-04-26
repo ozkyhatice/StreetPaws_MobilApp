@@ -1,144 +1,140 @@
-# StreetPaws Mobile App
+# Final Project - Mobile Application
 
-StreetPaws, sokak hayvanlarına yardım etmek için oluşturulmuş bir mobil uygulamadır. Gönüllüler, görevleri üstlenebilir, tamamlayabilir ve sokak hayvanlarına yardım ederek XP kazanabilirler.
+[English](#english) | [Türkçe](#turkish)
 
-## Özellikler
+---
 
-- Görev yönetimi (görüntüleme, üstlenme, tamamlama)
-- Kullanıcı kimlik doğrulama
-- QR kod tarama
-- Harita entegrasyonu
-- Gönüllü profil sayfası
-- Bağış sistemi
+<a name="english"></a>
+# 📱 Mobile Application Project
 
-## Gereksinimler
+## Overview
+This is a React Native mobile application built with Expo, featuring a modern UI and various interactive features. The application includes navigation, maps integration, image handling, and various UI components.
 
-- Node.js (v14 veya üzeri)
-- npm (v6 veya üzeri)
+## 🚀 Features
+- Modern and responsive user interface
+- Navigation system with bottom tabs and stack navigation
+- Map integration with react-native-maps
+- Image picking and handling capabilities
+- Location services
+- Custom animations and gestures
+- Safe area handling for different devices
+- Vector icons support
+- Async storage for data persistence
+
+## 🛠 Technologies
+- React Native
+- Expo
+- TypeScript
+- React Navigation
+- React Native Paper
+- React Native Maps
+- Expo Location
+- React Native Reanimated
+- And various other React Native libraries
+
+## 📋 Prerequisites
+- Node.js (Latest LTS version)
+- npm or yarn
 - Expo CLI
-- iOS için: Xcode (macOS)
-- Android için: Android Studio ve JDK
+- iOS Simulator (for Mac users) or Android Studio (for Android development)
 
-## Kurulum
+## 🔧 Installation
+
+1. Clone the repository:
+```bash
+git clone [repository-url]
+```
+
+2. Install dependencies:
+```bash
+npm install
+# or
+yarn install
+```
+
+3. Start the development server:
+```bash
+npm start
+# or
+yarn start
+```
+
+## 🏗 Project Structure
+- `/src` - Source code directory
+- `/assets` - Static assets
+- `/ios` - iOS specific configurations
+- `/android` - Android specific configurations
+
+## 🐳 Docker Support
+The project includes Docker support for containerized development and deployment.
+
+---
+
+<a name="turkish"></a>
+# 📱 Mobil Uygulama Projesi
+
+## Genel Bakış
+Bu proje, Expo kullanılarak geliştirilmiş, modern bir arayüze ve çeşitli etkileşimli özelliklere sahip bir React Native mobil uygulamasıdır. Uygulama, navigasyon, harita entegrasyonu, görüntü işleme ve çeşitli UI bileşenleri içermektedir.
+
+## 🚀 Özellikler
+- Modern ve duyarlı kullanıcı arayüzü
+- Alt sekmeler ve yığın navigasyonu ile gezinme sistemi
+- react-native-maps ile harita entegrasyonu
+- Görüntü seçme ve işleme özellikleri
+- Konum hizmetleri
+- Özel animasyonlar ve hareket kontrolü
+- Farklı cihazlar için güvenli alan yönetimi
+- Vektör ikonları desteği
+- Veri kalıcılığı için Async storage
+
+## 🛠 Kullanılan Teknolojiler
+- React Native
+- Expo
+- TypeScript
+- React Navigation
+- React Native Paper
+- React Native Maps
+- Expo Location
+- React Native Reanimated
+- Ve diğer çeşitli React Native kütüphaneleri
+
+## 📋 Gereksinimler
+- Node.js (En son LTS sürümü)
+- npm veya yarn
+- Expo CLI
+- iOS Simulator (Mac kullanıcıları için) veya Android Studio (Android geliştirme için)
+
+## 🔧 Kurulum
 
 1. Projeyi klonlayın:
 ```bash
-git clone https://github.com/ozkyhatice/StreetPaws_MobilApp.git
-cd StreetPaws_MobilApp
+git clone [repository-url]
 ```
 
 2. Bağımlılıkları yükleyin:
 ```bash
 npm install
+# veya
+yarn install
 ```
 
-3. Geliştirici istemcisini yükleyin:
+3. Geliştirme sunucusunu başlatın:
 ```bash
-npx expo install expo-dev-client
+npm start
+# veya
+yarn start
 ```
 
-## Bağımlılıklar
+## 🏗 Proje Yapısı
+- `/src` - Kaynak kod dizini
+- `/assets` - Statik dosyalar
+- `/ios` - iOS özel yapılandırmaları
+- `/android` - Android özel yapılandırmaları
 
-Projenin ana bağımlılıkları şunlardır:
-
-```
-"dependencies": {
-  "@react-navigation/bottom-tabs": "^6.5.11",
-  "@react-navigation/native": "^6.1.9",
-  "@react-navigation/native-stack": "^6.9.17",
-  "expo": "~50.0.11",
-  "expo-barcode-scanner": "~12.5.3",
-  "expo-camera": "~13.2.1",
-  "expo-dev-client": "~2.2.1",
-  "expo-location": "~16.1.0",
-  "expo-status-bar": "~1.6.0",
-  "lucide-react-native": "^0.302.0",
-  "react": "18.2.0",
-  "react-native": "0.72.6",
-  "react-native-maps": "1.7.1",
-  "react-native-paper": "^5.11.1",
-  "react-native-safe-area-context": "4.6.3",
-  "react-native-screens": "~3.22.0",
-  "react-native-vector-icons": "^10.0.0"
-}
-```
-
-## Uygulamayı Çalıştırma
-
-Uygulamayı geliştirme modunda başlatmak için:
-
-```bash
-npx expo start
-```
-
-Expo Go uygulaması ile test etmek için:
-
-```bash
-npx expo start --dev-client
-```
-
-iOS simülatöründe çalıştırmak için:
-
-```bash
-npx expo run:ios
-```
-
-Android emülatöründe çalıştırmak için:
-
-```bash
-npx expo run:android
-```
-
-## Notlar ve Sorun Giderme
-
-1. İlk kurulum sırasında expo-dev-client yüklemek gereklidir:
-   ```bash
-   npx expo install expo-dev-client
-   ```
-
-2. iOS'ta "AirGoogleMaps dizini bulunamadı" hatası alırsanız, Google Maps yerine varsayılan harita sağlayıcısını kullanın.
-
-3. QR kod tarayıcısı için kamera izinlerinin verildiğinden emin olun.
-
-4. Expo'nun en son sürümünü kullanmak için düzenli olarak güncelleme yapmanız önerilir:
-   ```bash
-   npm install -g expo-cli
-   ```
-
-## Projeyi Hazırlama ve Derleme
-
-Üretim için APK/IPA oluşturmak için:
-
-```bash
-eas build --platform android
-eas build --platform ios
-```
-
-Önce EAS CLI'yi yüklemeniz gerekebilir:
-
-```bash
-npm install -g eas-cli
-```
-
-## Proje Yapısı
-
-```
-streetpaws/
-├── assets/           # Görsel ve statik dosyalar
-├── src/
-│   ├── components/   # Yeniden kullanılabilir bileşenler
-│   ├── contexts/     # React context dosyaları
-│   ├── hooks/        # Özel hook'lar
-│   ├── navigation/   # Navigasyon yapılandırması
-│   ├── screens/      # Uygulama ekranları
-│   ├── services/     # Veri ve API servisleri
-│   └── types/        # TypeScript tip tanımlamaları
-├── App.tsx           # Ana uygulama bileşeni
-└── package.json      # Paket bağımlılıkları
-```
-
-## Lisans
-
-MIT Lisansı
+## 🐳 Docker Desteği
+Proje, konteynerleştirilmiş geliştirme ve dağıtım için Docker desteği içermektedir.
 
 ---
+
+## 📝 License / Lisans
+MIT
