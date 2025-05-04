@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Animated } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Animated, Alert } from 'react-native';
 import { Text, Avatar, Card, Divider, List, Button, IconButton, Chip } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -10,6 +10,7 @@ import { colors } from '../theme/colors';
 import { bounceIn, fadeIn, pulse } from '../utils/animations';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
+import { useAuthNavigation } from '../hooks/useAuthNavigation';
 
 type RootStackParamList = {
   ChangePassword: undefined;
@@ -56,6 +57,9 @@ const ProfileScreen = () => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const { user, signOut } = useContext(AuthContext) as AuthContextType;
+
+  // Oturum kontrolü - Profile sayfası için oturum gerektirir
+  useAuthNavigation(true);
 
   useEffect(() => {
     // Sayfa yüklendiğinde animasyonları başlat
@@ -150,10 +154,16 @@ const ProfileScreen = () => {
 
   const handleSignOut = async () => {
     try {
+      console.log('Oturumu kapatma işlemi başlatılıyor...');
       await signOut();
-      // Navigation to login is handled automatically by AuthContext since user becomes null
+      console.log('Oturum başarıyla kapatıldı');
+      // Navigation to login is handled by the AuthContext + App.tsx navigation logic
     } catch (error) {
-      console.error('Sign out error:', error);
+      console.error('Çıkış hatası:', error);
+      Alert.alert(
+        'Çıkış Hatası',
+        'Oturumu kapatırken bir sorun oluştu. Lütfen tekrar deneyin.'
+      );
     }
   };
 

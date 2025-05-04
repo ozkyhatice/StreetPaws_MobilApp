@@ -23,8 +23,11 @@ import DonateScreen from '../screens/DonateScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
 import ThemeSettingsScreen from '../screens/ThemeSettingsScreen';
+import AuthTestScreen from '../screens/AuthTestScreen';
+import SplashScreen from '../screens/SplashScreen';
 
 type RootStackParamList = {
+  Splash: undefined;
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
@@ -40,6 +43,7 @@ type RootStackParamList = {
   ChangePassword: undefined;
   NotificationSettings: undefined;
   ThemeSettings: undefined;
+  AuthTest: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -142,10 +146,11 @@ function TabNavigator() {
   );
 }
 
-const AppNavigator: React.FC = () => {
+const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({ initialRouteName = "Splash" }) => {
   return (
     // @ts-ignore
     <Stack.Navigator
+      initialRouteName={initialRouteName}
       screenOptions={{
         headerStyle: {
           backgroundColor: colors.primary,
@@ -172,6 +177,11 @@ const AppNavigator: React.FC = () => {
       }}
     >
       <Stack.Screen
+        name="Splash"
+        component={SplashScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="Login"
         component={LoginScreen}
         options={{ headerShown: false }}
@@ -185,6 +195,11 @@ const AppNavigator: React.FC = () => {
         name="ForgotPassword"
         component={ForgotPasswordScreen}
         options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AuthTest"
+        component={AuthTestScreen}
+        options={{ title: 'Firebase Auth Test' }}
       />
       <Stack.Screen
         name="MainApp"

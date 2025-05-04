@@ -32,6 +32,7 @@ import { colors, spacing, borderRadius, shadows } from '../config/theme';
 import { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
+import { useAuthNavigation } from '../hooks/useAuthNavigation';
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -99,6 +100,9 @@ const LoginScreen = () => {
   const handleForgotPassword = () => {
     navigation.navigate('ForgotPassword');
   };
+
+  // Oturum kontrolü - Login sayfası için oturum gerekMEZ, oturum varsa MainApp'e yönlendir
+  useAuthNavigation(false, 'MainApp');
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -192,6 +196,13 @@ const LoginScreen = () => {
                 <Text style={styles.registerLink}>Kayıt Ol</Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity
+              style={styles.testButton}
+              onPress={() => navigation.navigate('AuthTest')}
+            >
+              <Text style={styles.testButtonText}>Firebase Test</Text>
+            </TouchableOpacity>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -319,6 +330,15 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7,
+  },
+  testButton: {
+    marginTop: 10,
+    padding: 5,
+    alignSelf: 'center',
+  },
+  testButtonText: {
+    color: '#999',
+    fontSize: 12,
   },
 })
 

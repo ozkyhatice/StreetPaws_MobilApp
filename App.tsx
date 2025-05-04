@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { AuthProvider } from './src/contexts/AuthContext';
+import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { StatusBar } from 'react-native';
+import { AuthContextType } from './src/types/auth';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,6 +20,7 @@ const Stack = createNativeStackNavigator();
 
 function NavigationWrapper() {
   const { paperTheme, navigationTheme } = useTheme();
+  const { loading } = useContext(AuthContext) as AuthContextType;
 
   return (
     <NavigationContainer theme={navigationTheme}>
@@ -27,7 +29,8 @@ function NavigationWrapper() {
           backgroundColor={navigationTheme.colors.background}
           barStyle={navigationTheme.dark ? 'light-content' : 'dark-content'}
         />
-        <AppNavigator />
+        {/* Yükleniyor durumu SplashScreen tarafından ele alınacak */}
+        <AppNavigator initialRouteName="Splash" />
       </PaperProvider>
     </NavigationContainer>
   );
