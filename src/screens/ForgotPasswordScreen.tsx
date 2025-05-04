@@ -1,11 +1,61 @@
 "use client"
 
-import React from "react"
-import { View, Text, TouchableOpacity, Image, StyleSheet, TextInput } from "react-native"
+import React, { useContext, useState } from "react"
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  Image, 
+  StyleSheet, 
+  TextInput, 
+  Alert,
+  ActivityIndicator 
+} from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../types/navigation';
+import { AuthContext } from '../contexts/AuthContext';
+import { AuthContextType } from '../types/auth';
 
-const ForgotPasswordScreen = ({ navigation }) => {
-  const [email, setEmail] = React.useState("")
+type ForgotPasswordScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+
+const ForgotPasswordScreen = () => {
+  const navigation = useNavigation<ForgotPasswordScreenNavigationProp>();
+  const { resetPassword } = useContext(AuthContext) as AuthContextType;
+  const [email, setEmail] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleResetPassword = async () => {
+    if (!email.trim()) {
+      Alert.alert('Hata', 'Lütfen e-posta adresinizi girin.');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert('Hata', 'Geçerli bir e-posta adresi girin.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await resetPassword(email);
+      Alert.alert(
+        'Başarılı', 
+        'Şifre sıfırlama talimatları e-posta adresinize gönderildi.',
+        [{ text: 'Tamam', onPress: () => navigation.navigate('Login') }]
+      );
+    } catch (error: any) {
+      Alert.alert('Hata', error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <LinearGradient colors={["#FFD1DC", "#F7CAC9", "#F0E68C"]} style={styles.container}>
@@ -20,17 +70,20 @@ const ForgotPasswordScreen = ({ navigation }) => {
           placeholder="E-posta"
           placeholderTextColor="#B5838D"
           keyboardType="email-address"
+          autoCapitalize="none"
           value={email}
           onChangeText={setEmail}
         />
         <TouchableOpacity
-          style={styles.button}
-          onPress={() => {
-            // Şifre sıfırlama e-postası gönderme işlemi burada gerçekleştirilecek
-            navigation.navigate("Login")
-          }}
+          style={[styles.button, isLoading && styles.buttonDisabled]}
+          onPress={handleResetPassword}
+          disabled={isLoading}
         >
-          <Text style={styles.buttonText}>Şifre Sıfırlama Gönder</Text>
+          {isLoading ? (
+            <ActivityIndicator color="#6D435A" />
+          ) : (
+            <Text style={styles.buttonText}>Şifre Sıfırlama Gönder</Text>
+          )}
         </TouchableOpacity>
         <TouchableOpacity onPress={() => navigation.navigate("Login")}>
           <Text style={styles.linkText}>Giriş sayfasına dön</Text>
@@ -86,6 +139,9 @@ const styles = StyleSheet.create({
     padding: 15,
     alignItems: "center",
     marginBottom: 15,
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
   buttonText: {
     color: "#6D435A",

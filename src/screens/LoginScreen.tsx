@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useContext } from "react"
 import { 
   View, 
   Text, 
@@ -13,7 +13,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Pressable
+  Pressable,
+  Alert
 } from "react-native"
 import Animated, {
   useSharedValue,
@@ -29,6 +30,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { colors, spacing, borderRadius, shadows } from '../config/theme';
 import { RootStackParamList } from '../types/navigation';
+import { AuthContext } from '../contexts/AuthContext';
+import { AuthContextType } from '../types/auth';
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -36,9 +39,11 @@ const { width, height } = Dimensions.get("window")
 
 const LoginScreen = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
+  const { signIn } = useContext(AuthContext) as AuthContextType;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   
   const translateY = useSharedValue(50)
   const opacity = useSharedValue(0)
@@ -65,11 +70,26 @@ const LoginScreen = () => {
     }
   })
 
-  const handleLogin = () => {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainApp' }],
-    });
+  const handleLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Hata', 'E-posta ve şifre alanları boş bırakılamaz.');
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      await signIn(email, password);
+      // If login is successful, navigate to MainApp
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainApp' }],
+      });
+    } catch (error: any) {
+      // Handle login errors
+      Alert.alert('Giriş Hatası', error.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRegister = () => {
@@ -150,8 +170,9 @@ const LoginScreen = () => {
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={styles.button}
+              style={[styles.button, isLoading && styles.buttonDisabled]}
               onPress={handleLogin}
+              disabled={isLoading}
             >
               <LinearGradient
                 colors={['#FF6B6B', '#FF8787']}
@@ -159,7 +180,9 @@ const LoginScreen = () => {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
-                <Text style={styles.buttonText}>Giriş Yap</Text>
+                <Text style={styles.buttonText}>
+                  {isLoading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
             
@@ -293,6 +316,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 15,
     fontWeight: '600',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
   },
 })
 

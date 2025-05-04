@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Provider as PaperProvider } from 'react-native-paper';
@@ -7,10 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
-import ProfileScreen from './src/screens/ProfileScreen';
-import ChangePasswordScreen from './src/screens/ChangePasswordScreen';
-import NotificationSettingsScreen from './src/screens/NotificationSettingsScreen';
-import ThemeSettingsScreen from './src/screens/ThemeSettingsScreen';
+import { StatusBar } from 'react-native';
 
 const Stack = createNativeStackNavigator();
 
@@ -26,16 +23,11 @@ function NavigationWrapper() {
   return (
     <NavigationContainer theme={navigationTheme}>
       <PaperProvider theme={paperTheme}>
-        <AuthProvider>
-          <Stack.Navigator>
-            <Stack.Screen 
-              name="AppNavigator" 
-              component={AppNavigator}
-              options={{ headerShown: false }}
-            />
-            
-          </Stack.Navigator>
-        </AuthProvider>
+        <StatusBar 
+          backgroundColor={navigationTheme.colors.background}
+          barStyle={navigationTheme.dark ? 'light-content' : 'dark-content'}
+        />
+        <AppNavigator />
       </PaperProvider>
     </NavigationContainer>
   );
@@ -46,7 +38,9 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <NavigationWrapper />
+          <AuthProvider>
+            <NavigationWrapper />
+          </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

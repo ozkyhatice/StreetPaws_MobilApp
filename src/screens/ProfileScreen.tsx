@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useContext } from 'react';
 import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Animated } from 'react-native';
 import { Text, Avatar, Card, Divider, List, Button, IconButton, Chip } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,8 @@ import MapView, { Marker } from 'react-native-maps';
 import { XPProgress } from '../components/XPProgress';
 import { colors } from '../theme/colors';
 import { bounceIn, fadeIn, pulse } from '../utils/animations';
+import { AuthContext } from '../contexts/AuthContext';
+import { AuthContextType } from '../types/auth';
 
 type RootStackParamList = {
   ChangePassword: undefined;
@@ -44,7 +46,7 @@ const AnimatedStatItem = ({ pulseAnim, value, label }: { pulseAnim: Animated.Val
   );
 };
 
-export default function ProfileScreen() {
+const ProfileScreen = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const [activeTab, setActiveTab] = useState(0);
 
@@ -52,6 +54,8 @@ export default function ProfileScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const { user, signOut } = useContext(AuthContext) as AuthContextType;
 
   useEffect(() => {
     // Sayfa yüklendiğinde animasyonları başlat
@@ -144,6 +148,15 @@ export default function ProfileScreen() {
     rank: 'gold' as 'bronze' | 'silver' | 'gold' | 'platinum',
   };
 
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      // Navigation to login is handled automatically by AuthContext since user becomes null
+    } catch (error) {
+      console.error('Sign out error:', error);
+    }
+  };
+
   const renderProfileInfo = () => (
     <View style={styles.profileContainer}>
       <Animated.View style={[styles.header, { transform: [{ scale: scaleAnim }] }]}>
@@ -211,14 +224,12 @@ export default function ProfileScreen() {
       </Card>
 
       <View style={styles.logoutContainer}>
-        <Button
-          mode="outlined"
-          onPress={() => {}}
-          style={styles.logoutButton}
-          textColor="#FF0000"
+        <TouchableOpacity 
+          style={styles.logoutButton} 
+          onPress={handleSignOut}
         >
-          Çıkış Yap
-        </Button>
+          <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -497,7 +508,16 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   logoutButton: {
-    borderColor: '#FF0000',
+    backgroundColor: '#FF6B6B',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  logoutButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   badgesCard: {
     margin: 16,
@@ -608,3 +628,5 @@ const styles = StyleSheet.create({
     color: '#666',
   },
 });
+
+export default ProfileScreen;
