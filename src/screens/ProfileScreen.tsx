@@ -10,27 +10,33 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import type { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
-import { Text, Avatar, Surface, useTheme, Button } from 'react-native-paper';
+import { Text, Avatar, Surface, useTheme, Button, ProgressBar } from 'react-native-paper';
 import { colors } from '../config/theme';
-import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2 } from 'lucide-react-native';
-import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText } from 'lucide-react-native';
+import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { BadgeService } from '../services/badgeService';
 
 const { width } = Dimensions.get('window');
+
+type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const ProfileScreen = () => {
   const { user, signOut } = useContext(AuthContext) as AuthContextType;
   const [activeTab, setActiveTab] = useState('Bilgilerim');
   const theme = useTheme();
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
-  const [editingField, setEditingField] = useState<'name' | 'phone' | null>(null);
+  const [editingField, setEditingField] = useState<'name' | 'phone' | 'dateOfBirth' | 'city' | 'bio' | 'username' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [badges, setBadges] = useState([]);
+  const navigation = useNavigation<ProfileScreenNavigationProp>();
 
   const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
 
@@ -51,9 +57,30 @@ const ProfileScreen = () => {
     return () => unsubscribe();
   }, [user?.uid]);
 
-  const handleEditField = (field: 'name' | 'phone') => {
+  const checkUsernameAvailability = async (username: string): Promise<boolean> => {
+    if (username === userData?.username) return true; // If username hasn't changed
+    
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('username', '==', username));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.empty;
+    } catch (error) {
+      console.error('Error checking username availability:', error);
+      return false;
+    }
+  };
+
+  const handleEditField = (field: 'name' | 'phone' | 'dateOfBirth' | 'city' | 'bio' | 'username') => {
     setEditingField(field);
-    setEditValue(field === 'name' ? userData?.displayName || '' : userData?.phoneNumber || '');
+    setEditValue(
+      field === 'name' ? userData?.firstName + ' ' + userData?.lastName || '' :
+      field === 'phone' ? userData?.phoneNumber || '' :
+      field === 'dateOfBirth' ? userData?.dateOfBirth || '' :
+      field === 'city' ? userData?.city || '' :
+      field === 'username' ? userData?.username || '' :
+      userData?.bio || ''
+    );
     setIsEditModalVisible(true);
   };
 
@@ -63,10 +90,39 @@ const ProfileScreen = () => {
     setLoading(true);
     try {
       const userRef = doc(db, 'users', user.uid);
+
+      if (editingField === 'username') {
+        // Username boş olamaz ve en az 3 karakter olmalı
+        if (!editValue || editValue.length < 3) {
+          Alert.alert('Hata', 'Kullanıcı adı en az 3 karakter olmalıdır.');
+          return;
+        }
+
+        // Sadece harf, rakam ve alt çizgi içerebilir
+        if (!/^[a-zA-Z0-9_]+$/.test(editValue)) {
+          Alert.alert('Hata', 'Kullanıcı adı sadece harf, rakam ve alt çizgi içerebilir.');
+          return;
+        }
+
+        // Kullanıcı adının benzersiz olduğunu kontrol et
+        const isAvailable = await checkUsernameAvailability(editValue);
+        if (!isAvailable) {
+          Alert.alert('Hata', 'Bu kullanıcı adı başka bir kullanıcı tarafından kullanılıyor.');
+          return;
+        }
+      }
       
       const updateData = editingField === 'name' 
-        ? { displayName: editValue }
-        : { phoneNumber: editValue };
+        ? { firstName: editValue.split(' ')[0], lastName: editValue.split(' ')[1] }
+        : editingField === 'phone' 
+        ? { phoneNumber: editValue }
+        : editingField === 'dateOfBirth' 
+        ? { dateOfBirth: editValue }
+        : editingField === 'city' 
+        ? { city: editValue }
+        : editingField === 'username'
+        ? { username: editValue }
+        : { bio: editValue };
       
       await updateDoc(userRef, updateData);
       setIsEditModalVisible(false);
@@ -92,53 +148,98 @@ const ProfileScreen = () => {
     }
   };
 
-  const renderProfileInfo = () => (
-    <View>
-      <Surface style={styles.profileCard} elevation={0}>
-        <Avatar.Image
-          size={80}
-          source={{ uri: user?.photoURL || 'https://via.placeholder.com/80' }}
-          style={styles.avatar}
-        />
-        <Text variant="titleLarge" style={styles.name}>
-          {userData?.displayName || 'İsimsiz Gönüllü'}
-        </Text>
-        <Text variant="bodyMedium" style={styles.username}>
-          @{userData?.displayName?.toLowerCase().replace(/\s+/g, '') || 'volunteer'}
-        </Text>
-        <Text variant="bodyMedium" style={styles.email}>
-          {userData?.email}
-        </Text>
-      </Surface>
+  // XP Level calculations
+  const calculateLevel = (xp: number) => {
+    return Math.floor(Math.sqrt(xp / 100)) + 1;
+  };
 
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <Text variant="titleLarge" style={styles.statValue}>
-            {userData?.completedTasks?.length || 0}
+  const calculateXPForNextLevel = (level: number) => {
+    return (level * level) * 100;
+  };
+
+  const calculateProgress = (xp: number, level: number) => {
+    const nextLevelXP = calculateXPForNextLevel(level);
+    const currentLevelXP = calculateXPForNextLevel(level - 1);
+    return (xp - currentLevelXP) / (nextLevelXP - currentLevelXP);
+  };
+
+  const renderProfileInfo = () => {
+    const currentXP = userData?.xp || 0;
+    const currentLevel = calculateLevel(currentXP);
+    const progress = calculateProgress(currentXP, currentLevel);
+    const nextLevelXP = calculateXPForNextLevel(currentLevel);
+    const currentLevelXP = calculateXPForNextLevel(currentLevel - 1);
+
+    return (
+      <View>
+        <Surface style={styles.profileCard} elevation={0}>
+          <Avatar.Image
+            size={80}
+            source={{ uri: user?.photoURL || 'https://via.placeholder.com/80' }}
+            style={styles.avatar}
+          />
+          <Text variant="titleLarge" style={styles.name}>
+            {userData?.firstName} {userData?.lastName}
           </Text>
-          <Text variant="bodyMedium" style={styles.statLabel}>
-            Görev
+          <Text variant="bodyMedium" style={styles.username}>
+            @{userData?.username}
           </Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text variant="titleLarge" style={styles.statValue}>
-            {userData?.xp || 0}
+          <Text variant="bodyMedium" style={styles.email}>
+            {userData?.email}
           </Text>
-          <Text variant="bodyMedium" style={styles.statLabel}>
-            XP
-          </Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text variant="titleLarge" style={styles.statValue}>
-            {badges.length}
-          </Text>
-          <Text variant="bodyMedium" style={styles.statLabel}>
-            Rozet
-          </Text>
+          <TouchableOpacity 
+            style={styles.bioContainer}
+            onPress={() => handleEditField('bio')}
+          >
+            <Text style={styles.bioLabel}>Hakkında</Text>
+            <Text style={styles.bioText}>{userData?.bio || 'Kendinizden bahsedin...'}</Text>
+            <Edit2 size={16} color={colors.primary} style={styles.bioEditIcon} />
+          </TouchableOpacity>
+
+          <View style={styles.levelContainer}>
+            <Text style={styles.levelText}>Seviye {currentLevel}</Text>
+            <View style={styles.xpBarContainer}>
+              <ProgressBar
+                progress={progress}
+                color={colors.primary}
+                style={styles.xpBar}
+              />
+              <Text style={styles.xpText}>
+                {currentXP - currentLevelXP} / {nextLevelXP - currentLevelXP} XP
+              </Text>
+            </View>
+          </View>
+        </Surface>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text variant="titleLarge" style={styles.statValue}>
+              {userData?.completedTasks?.length || 0}
+            </Text>
+            <Text variant="bodyMedium" style={styles.statLabel}>
+              Görev
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text variant="titleLarge" style={styles.statValue}>
+              {currentXP}
+            </Text>
+            <Text variant="bodyMedium" style={styles.statLabel}>
+              XP
+            </Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text variant="titleLarge" style={styles.statValue}>
+              {badges.length}
+            </Text>
+            <Text variant="bodyMedium" style={styles.statLabel}>
+              Rozet
+            </Text>
+          </View>
         </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderPersonalInfo = () => (
     <Surface style={styles.infoCard} elevation={0}>
@@ -152,11 +253,27 @@ const ProfileScreen = () => {
         </View>
         <View style={styles.infoContent}>
           <Text style={styles.infoLabel}>Ad Soyad</Text>
-          <Text style={styles.infoValue}>{userData?.displayName || 'Belirtilmemiş'}</Text>
+          <Text style={styles.infoValue}>{userData?.firstName} {userData?.lastName}</Text>
         </View>
         <TouchableOpacity 
           style={styles.editButton}
           onPress={() => handleEditField('name')}
+        >
+          <Edit2 size={20} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoItem}>
+        <View style={styles.infoIcon}>
+          <User size={24} color={colors.text} />
+        </View>
+        <View style={styles.infoContent}>
+          <Text style={styles.infoLabel}>Kullanıcı Adı</Text>
+          <Text style={styles.infoValue}>@{userData?.username}</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.editButton}
+          onPress={() => handleEditField('username')}
         >
           <Edit2 size={20} color={colors.primary} />
         </TouchableOpacity>
@@ -177,6 +294,38 @@ const ProfileScreen = () => {
           <Edit2 size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
+
+      <View style={styles.infoItem}>
+        <View style={styles.infoIcon}>
+          <Calendar size={24} color={colors.text} />
+        </View>
+        <View style={styles.infoContent}>
+          <Text style={styles.infoLabel}>Doğum Tarihi</Text>
+          <Text style={styles.infoValue}>{userData?.dateOfBirth || 'Belirtilmemiş'}</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.editButton}
+          onPress={() => handleEditField('dateOfBirth')}
+        >
+          <Edit2 size={20} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoItem}>
+        <View style={styles.infoIcon}>
+          <MapPin size={24} color={colors.text} />
+        </View>
+        <View style={styles.infoContent}>
+          <Text style={styles.infoLabel}>Şehir</Text>
+          <Text style={styles.infoValue}>{userData?.city || 'Belirtilmemiş'}</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.editButton}
+          onPress={() => handleEditField('city')}
+        >
+          <Edit2 size={20} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
     </Surface>
   );
 
@@ -190,15 +339,37 @@ const ProfileScreen = () => {
       <View style={styles.modalOverlay}>
         <Surface style={styles.modalContent}>
           <Text variant="titleMedium" style={styles.modalTitle}>
-            {editingField === 'name' ? 'Ad Soyad Düzenle' : 'Telefon Düzenle'}
+            {editingField === 'name' ? 'Ad Soyad Düzenle' : 
+             editingField === 'phone' ? 'Telefon Düzenle' : 
+             editingField === 'dateOfBirth' ? 'Doğum Tarihi Düzenle' : 
+             editingField === 'city' ? 'Şehir Düzenle' : 
+             editingField === 'username' ? 'Kullanıcı Adı Düzenle' :
+             editingField === 'bio' ? 'Hakkında Düzenle' : 'Belirtilmemiş'}
           </Text>
           
+          {editingField === 'username' && (
+            <Text style={styles.modalSubtitle}>
+              Kullanıcı adı benzersiz olmalı ve sadece harf, rakam ve alt çizgi içerebilir.
+            </Text>
+          )}
+
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              editingField === 'username' && styles.usernameInput
+            ]}
             value={editValue}
             onChangeText={setEditValue}
-            placeholder={editingField === 'name' ? 'Ad Soyad' : 'Telefon Numarası'}
+            placeholder={
+              editingField === 'name' ? 'Ad Soyad' : 
+              editingField === 'phone' ? 'Telefon Numarası' : 
+              editingField === 'dateOfBirth' ? 'Doğum Tarihi' : 
+              editingField === 'city' ? 'Şehir' : 
+              editingField === 'username' ? 'Kullanıcı Adı' :
+              editingField === 'bio' ? 'Hakkında' : 'Belirtilmemiş'
+            }
             keyboardType={editingField === 'phone' ? 'phone-pad' : 'default'}
+            autoCapitalize={editingField === 'username' ? 'none' : 'sentences'}
           />
 
           <View style={styles.modalButtons}>
@@ -222,6 +393,10 @@ const ProfileScreen = () => {
       </View>
     </Modal>
   );
+
+  const handlePasswordChange = () => {
+    navigation.navigate('ChangePassword');
+  };
 
   if (!user) {
     return (
@@ -265,7 +440,10 @@ const ProfileScreen = () => {
                 Hesap Ayarları
               </Text>
               
-              <TouchableOpacity style={styles.settingItem}>
+              <TouchableOpacity 
+                style={styles.settingItem}
+                onPress={handlePasswordChange}
+              >
                 <Lock size={24} color={colors.text} />
                 <Text style={styles.settingText}>Şifre Değiştir</Text>
               </TouchableOpacity>
@@ -472,6 +650,71 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: colors.text,
+  },
+  bioContainer: {
+    width: '100%',
+    marginTop: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    borderRadius: 8,
+  },
+  bioLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  bioText: {
+    color: '#333',
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  bioEditIcon: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  usernameInput: {
+    textTransform: 'lowercase',
+  },
+  levelContainer: {
+    width: '100%',
+    marginTop: 16,
+    paddingHorizontal: 16,
+  },
+  levelText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  xpBarContainer: {
+    marginTop: 4,
+  },
+  xpBar: {
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+  },
+  xpText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 4,
   },
 });
 

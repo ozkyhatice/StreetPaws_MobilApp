@@ -23,6 +23,8 @@ import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../config/theme';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 type RegisterScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -32,11 +34,16 @@ const RegisterScreen = () => {
   
   const [formData, setFormData] = useState({
     username: '',
-    displayName: '',
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
     confirmPassword: '',
     phoneNumber: '',
+    dateOfBirth: '',
+    city: '',
+    bio: '',
+    profilePicture: null as string | null,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -44,7 +51,8 @@ const RegisterScreen = () => {
   const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   const validateForm = () => {
-    if (!formData.username || !formData.email || !formData.password || !formData.confirmPassword) {
+    if (!formData.username || !formData.email || !formData.password || !formData.confirmPassword ||
+        !formData.firstName || !formData.lastName) {
       Alert.alert('Hata', 'Lütfen zorunlu alanları doldurun.');
       return false;
     }
@@ -70,6 +78,14 @@ const RegisterScreen = () => {
       return false;
     }
 
+    if (formData.dateOfBirth) {
+      const dateRegex = /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/;
+      if (!dateRegex.test(formData.dateOfBirth)) {
+        Alert.alert('Hata', 'Geçerli bir doğum tarihi girin (GG/AA/YYYY).');
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -78,7 +94,27 @@ const RegisterScreen = () => {
 
     try {
       setIsLoading(true);
-      await signUp(formData.email, formData.password, formData.username);
+      const { user } = await signUp(formData.email, formData.password, formData.username);
+      
+      // Create user profile in Firestore
+      const userProfile = {
+        username: formData.username,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        displayName: `${formData.firstName} ${formData.lastName}`,
+        email: formData.email,
+        phoneNumber: formData.phoneNumber || null,
+        dateOfBirth: formData.dateOfBirth || null,
+        city: formData.city || null,
+        bio: formData.bio || null,
+        profilePicture: formData.profilePicture || null,
+        createdAt: new Date().toISOString(),
+        xp: 0,
+        badges: [],
+        completedTasks: [],
+      };
+
+      await setDoc(doc(db, 'users', user.uid), userProfile);
       setShowVerificationModal(true);
     } catch (error: any) {
       let errorMessage = 'Kayıt sırasında bir hata oluştu.';
@@ -172,24 +208,64 @@ const RegisterScreen = () => {
                 onChangeText={(text) => setFormData(prev => ({ ...prev, username: text }))}
               />
             </View>
+
             <View style={styles.inputWrapper}>
               <Ionicons name="person-outline" size={20} color="#B5838D" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Ad"
                 placeholderTextColor="#B5838D"
-                value={formData.displayName}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, displayName: text }))}
+                value={formData.firstName}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, firstName: text }))}
               />
             </View>
+
             <View style={styles.inputWrapper}>
               <Ionicons name="person-outline" size={20} color="#B5838D" style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
                 placeholder="Soyad"
                 placeholderTextColor="#B5838D"
+                value={formData.lastName}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, lastName: text }))}
               />
             </View>
+
+            <View style={styles.inputWrapper}>
+              <Ionicons name="calendar-outline" size={20} color="#B5838D" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Doğum Tarihi (GG/AA/YYYY)"
+                placeholderTextColor="#B5838D"
+                value={formData.dateOfBirth}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, dateOfBirth: text }))}
+              />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Ionicons name="location-outline" size={20} color="#B5838D" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Şehir"
+                placeholderTextColor="#B5838D"
+                value={formData.city}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, city: text }))}
+              />
+            </View>
+
+            <View style={styles.inputWrapper}>
+              <Ionicons name="document-text-outline" size={20} color="#B5838D" style={styles.inputIcon} />
+              <TextInput
+                style={[styles.input, styles.bioInput]}
+                placeholder="Hakkında"
+                placeholderTextColor="#B5838D"
+                value={formData.bio}
+                onChangeText={(text) => setFormData(prev => ({ ...prev, bio: text }))}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
             <View style={styles.inputWrapper}>
               <Ionicons name="mail-outline" size={20} color="#B5838D" style={styles.inputIcon} />
               <TextInput
@@ -325,18 +401,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderRadius: 25,
+    borderRadius: 10,
     marginBottom: 15,
     paddingHorizontal: 15,
+    height: 50,
   },
   inputIcon: {
-    marginRight: 10,
+    width: 20,
+    textAlign: 'center',
   },
   input: {
     flex: 1,
-    paddingVertical: 15,
-    fontSize: 16,
+    marginLeft: 10,
     color: '#6D435A',
+    fontSize: 16,
   },
   eyeIcon: {
     padding: 10,
@@ -409,6 +487,11 @@ const styles = StyleSheet.create({
     color: '#6D435A',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  bioInput: {
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: 10,
   },
 });
 
