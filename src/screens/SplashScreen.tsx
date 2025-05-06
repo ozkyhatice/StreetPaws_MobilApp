@@ -17,12 +17,14 @@ const SplashScreen = () => {
       setTimeout(() => {
         if (user) {
           // Kullanıcı oturum açmışsa ana ekrana yönlendir
+          console.log('Kullanıcı oturum açmış, ana ekrana yönlendiriliyor...');
           navigation.reset({
             index: 0,
             routes: [{ name: 'MainApp' }],
           });
         } else {
           // Kullanıcı oturum açmamışsa giriş ekranına yönlendir
+          console.log('Kullanıcı oturum açmamış, giriş ekranına yönlendiriliyor...');
           navigation.reset({
             index: 0,
             routes: [{ name: 'Login' }],

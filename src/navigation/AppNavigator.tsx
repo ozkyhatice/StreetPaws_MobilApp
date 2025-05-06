@@ -1,10 +1,12 @@
 import React from 'react';
-import { createStackNavigator } from '@react-navigation/stack';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Home, MapPin, User, Map, Heart, Users } from 'lucide-react-native';
-import { MainTabParamList } from '../types/navigation';
+import { MainTabParamList, RootStackParamList } from '../types/navigation';
 import { colors, borderRadius, shadows, spacing } from '../config/theme';
 import { Platform } from 'react-native';
+import { AuthGuard } from '../components/AuthGuard';
+import { RouteProp, useNavigation } from '@react-navigation/native';
 
 // Import screens
 import HomeScreen from '../screens/HomeScreen';
@@ -25,34 +27,15 @@ import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
 import ThemeSettingsScreen from '../screens/ThemeSettingsScreen';
 import AuthTestScreen from '../screens/AuthTestScreen';
 import SplashScreen from '../screens/SplashScreen';
+import VerifyEmailScreen from '../screens/VerifyEmailScreen';
 
-type RootStackParamList = {
-  Splash: undefined;
-  Login: undefined;
-  Register: undefined;
-  ForgotPassword: undefined;
-  MainApp: undefined;
-  Tasks: undefined;
-  TaskDetail: { taskId: string };
-  Settings: undefined;
-  AddEmergency: undefined;
-  Map: undefined;
-  Volunteers: undefined;
-  Donations: undefined;
-  Donate: { campaignId: string };
-  ChangePassword: undefined;
-  NotificationSettings: undefined;
-  ThemeSettings: undefined;
-  AuthTest: undefined;
-};
-
-const Stack = createStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function TabNavigator() {
   return (
     <Tab.Navigator
-    tabBarPosition = "bottom"
+      tabBarPosition="bottom"
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textTertiary,
@@ -90,7 +73,6 @@ function TabNavigator() {
         
         tabBarAllowFontScaling: false,
         tabBarLabelPosition: 'below-icon',
-
       }}
       sceneContainerStyle={{ 
         marginBottom: 50,
@@ -141,41 +123,44 @@ function TabNavigator() {
           tabBarLabel: 'Profil',
         }}
       />
-      
     </Tab.Navigator>
   );
 }
 
+// Korumalı TabNavigator bileşeni
+const ProtectedTabNavigator = () => (
+  <AuthGuard>
+    <TabNavigator />
+  </AuthGuard>
+);
+
+interface TaskDetailScreenProps {
+  taskId: string;
+}
+
+interface DonateScreenProps {
+  campaignId: string;
+}
+
 const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({ initialRouteName = "Splash" }) => {
+  const navigation = useNavigation();
+  
   return (
-    // @ts-ignore
     <Stack.Navigator
+      id={undefined}
       initialRouteName={initialRouteName}
       screenOptions={{
         headerStyle: {
-          backgroundColor: colors.primary,
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 0,
+          backgroundColor: '#ffffff',
         },
-        headerTintColor: '#fff',
+        headerTintColor: '#000000',
         headerTitleStyle: {
-          fontWeight: '600',
-          fontSize: 18,
+          fontWeight: 'bold',
         },
-        headerShadowVisible: false,
-        headerLeftContainerStyle: {
-          paddingLeft: 8,
-        },
-        cardStyle: {
-          backgroundColor: colors.background,
-        },
-        gestureEnabled: true,
-        gestureDirection: "horizontal",
-        animation: "slide_from_right",
-        presentation: "card"
+        animation: 'slide_from_right',
       }}
     >
+      {/* Kimlik doğrulama gerektirmeyen ekranlar */}
       <Stack.Screen
         name="Splash"
         component={SplashScreen}
@@ -197,62 +182,153 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
         options={{ headerShown: false }}
       />
       <Stack.Screen
-        name="AuthTest"
-        component={AuthTestScreen}
-        options={{ title: 'Firebase Auth Test' }}
+        name="VerifyEmail"
+        component={VerifyEmailScreen}
+        options={{ 
+          headerShown: false,
+          gestureEnabled: false
+        }}
       />
+
+      {/* Kimlik doğrulama gerektiren ekranlar */}
       <Stack.Screen
         name="MainApp"
-        component={TabNavigator}
+        component={ProtectedTabNavigator}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="Tasks" component={TasksScreen} />
+      
+      {/* Korumalı sayfaları Screen.children yaklaşımıyla tanımlama */}
       <Stack.Screen 
-        name="TaskDetail" 
-        component={TaskDetailScreen}
+        name="AuthTest"
+        options={{ title: 'Firebase Auth Test' }}
+      >
+        {() => (
+          <AuthGuard>
+            <AuthTestScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
+      <Stack.Screen 
+        name="Tasks"
+        options={{ title: 'Görevler' }}
+      >
+        {() => (
+          <AuthGuard>
+            <TasksScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
+      <Stack.Screen 
+        name="TaskDetail"
         options={{ title: 'Görev Detayı' }}
-      />
-      <Stack.Screen name="Settings" component={SettingsScreen} />
+      >
+        {({ route }) => (
+          <AuthGuard>
+            <TaskDetailScreen taskId={route.params.taskId} />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
       <Stack.Screen 
-        name="AddEmergency" 
-        component={AddEmergencyScreen} 
+        name="Settings"
+        options={{ title: 'Ayarlar' }}
+      >
+        {() => (
+          <AuthGuard>
+            <SettingsScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
+      <Stack.Screen 
+        name="AddEmergency"
         options={{ headerShown: false }}
-      />
+      >
+        {() => (
+          <AuthGuard>
+            <AddEmergencyScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
       <Stack.Screen 
-        name="Map" 
-        component={MapScreen}
+        name="Map"
         options={{ title: 'Haritada Gör' }}
-      />
+      >
+        {() => (
+          <AuthGuard>
+            <MapScreen navigation={navigation} />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
       <Stack.Screen 
-        name="Volunteers" 
-        component={VolunteersScreen}
+        name="Volunteers"
         options={{ title: 'Gönüllüler' }}
-      />
+      >
+        {() => (
+          <AuthGuard>
+            <VolunteersScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
       <Stack.Screen 
-        name="Donations" 
-        component={DonationsScreen}
+        name="Donations"
         options={{ title: 'Bağış Yap' }}
-      />
+      >
+        {() => (
+          <AuthGuard>
+            <DonationsScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
       <Stack.Screen 
-        name="Donate" 
-        component={DonateScreen}
+        name="Donate"
         options={{ title: 'Bağış Bilgileri' }}
-      />
+      >
+        {({ route }) => (
+          <AuthGuard>
+            <DonateScreen campaignId={route.params.campaignId} />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
       <Stack.Screen 
-              name="ChangePassword" 
-              component={ChangePasswordScreen}
-              options={{ title: 'Şifre Değiştir' }}
-            />
-            <Stack.Screen 
-              name="NotificationSettings" 
-              component={NotificationSettingsScreen}
-              options={{ title: 'Bildirim Tercihleri' }}
-            />
-            <Stack.Screen 
-              name="ThemeSettings" 
-              component={ThemeSettingsScreen}
-              options={{ title: 'Tema Ayarları' }}
-            />
+        name="ChangePassword"
+        options={{ title: 'Şifre Değiştir' }}
+      >
+        {() => (
+          <AuthGuard>
+            <ChangePasswordScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
+      <Stack.Screen 
+        name="NotificationSettings"
+        options={{ title: 'Bildirim Tercihleri' }}
+      >
+        {() => (
+          <AuthGuard>
+            <NotificationSettingsScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
+      <Stack.Screen 
+        name="ThemeSettings"
+        options={{ title: 'Tema Ayarları' }}
+      >
+        {() => (
+          <AuthGuard>
+            <ThemeSettingsScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 };

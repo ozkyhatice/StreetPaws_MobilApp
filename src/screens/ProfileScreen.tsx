@@ -1,641 +1,477 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
-import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Animated, Alert } from 'react-native';
-import { Text, Avatar, Card, Divider, List, Button, IconButton, Chip } from 'react-native-paper';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import MapView, { Marker } from 'react-native-maps';
-import { XPProgress } from '../components/XPProgress';
-import { colors } from '../theme/colors';
-import { bounceIn, fadeIn, pulse } from '../utils/animations';
+import React, { useContext, useState, useEffect } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+  Dimensions,
+  Modal,
+  TextInput,
+  Alert,
+} from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
-import { useAuthNavigation } from '../hooks/useAuthNavigation';
+import { Text, Avatar, Surface, useTheme, Button } from 'react-native-paper';
+import { colors } from '../config/theme';
+import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2 } from 'lucide-react-native';
+import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { BadgeService } from '../services/badgeService';
 
-type RootStackParamList = {
-  ChangePassword: undefined;
-  NotificationSettings: undefined;
-  ThemeSettings: undefined;
-};
-
-type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-// Animasyonlu Avatar bileşeni
-const AnimatedAvatar = ({ pulseAnim }: { pulseAnim: Animated.Value }) => {
-  const scale = pulseAnim;
-
-  return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <Avatar.Image 
-        size={80} 
-        source={{ uri: 'https://via.placeholder.com/100' }} 
-        style={styles.avatar}
-      />
-    </Animated.View>
-  );
-};
-
-// Animasyonlu StatItem bileşeni
-const AnimatedStatItem = ({ pulseAnim, value, label }: { pulseAnim: Animated.Value, value: string | number, label: string }) => {
-  const scale = pulseAnim;
-  
-  return (
-    <Animated.View style={[styles.statItem, { transform: [{ scale }] }]}>
-      <Text variant="headlineSmall">{value}</Text>
-      <Text variant="bodySmall">{label}</Text>
-    </Animated.View>
-  );
-};
+const { width } = Dimensions.get('window');
 
 const ProfileScreen = () => {
-  const navigation = useNavigation<ProfileScreenNavigationProp>();
-  const [activeTab, setActiveTab] = useState(0);
-
-  // Animasyon değerleri
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
   const { user, signOut } = useContext(AuthContext) as AuthContextType;
+  const [activeTab, setActiveTab] = useState('Bilgilerim');
+  const theme = useTheme();
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editingField, setEditingField] = useState<'name' | 'phone' | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [userData, setUserData] = useState<any>(null);
+  const [badges, setBadges] = useState([]);
 
-  // Oturum kontrolü - Profile sayfası için oturum gerektirir
-  useAuthNavigation(true);
+  const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
 
   useEffect(() => {
-    // Sayfa yüklendiğinde animasyonları başlat
-    Animated.parallel([
-      fadeIn(fadeAnim),
-      bounceIn(scaleAnim),
-      pulse(pulseAnim, 2000)
-    ]).start();
-  }, []);
+    if (!user?.uid) return;
 
-  const badges = [
-    {
-      id: 1,
-      name: 'İlk Görev',
-      description: 'İlk görevini tamamladın!',
-      icon: 'star',
-      color: '#FFD700',
-      earned: true
-    },
-    {
-      id: 2,
-      name: 'Haftalık Gönüllü',
-      description: 'Bir hafta boyunca aktif gönüllülük yaptın',
-      icon: 'calendar-check',
-      color: '#4CAF50',
-      earned: true
-    },
-    {
-      id: 3,
-      name: 'Bağış Toplayıcı',
-      description: '1000 TL değerinde bağış topladın',
-      icon: 'hand-heart',
-      color: '#FF5722',
-      earned: true
-    },
-    {
-      id: 4,
-      name: 'Süper Gönüllü',
-      description: '50 görev tamamladın',
-      icon: 'trophy',
-      color: '#9C27B0',
-      earned: false
-    }
-  ];
+    // Kullanıcı verilerini gerçek zamanlı dinle
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
+      if (doc.exists()) {
+        setUserData(doc.data());
+        setBadges(doc.data()?.badges || []);
+      }
+    }, (error) => {
+      console.error("Error fetching user data:", error);
+      Alert.alert('Hata', 'Kullanıcı bilgileri alınamadı');
+    });
 
-  const leaderboardData = {
-    rank: 15,
-    totalUsers: 1000,
-    points: 850
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  const handleEditField = (field: 'name' | 'phone') => {
+    setEditingField(field);
+    setEditValue(field === 'name' ? userData?.displayName || '' : userData?.phoneNumber || '');
+    setIsEditModalVisible(true);
   };
 
-  const socialData = {
-    following: 24,
-    followers: 18,
-    recentFollowers: [
-      { id: 1, name: 'Ahmet Yılmaz', avatar: 'https://via.placeholder.com/40' },
-      { id: 2, name: 'Ayşe Demir', avatar: 'https://via.placeholder.com/40' },
-      { id: 3, name: 'Mehmet Kaya', avatar: 'https://via.placeholder.com/40' }
-    ]
-  };
-
-  const contributionData = {
-    activeRegions: [
-      { id: 1, name: 'Kadıköy', count: 8 },
-      { id: 2, name: 'Beşiktaş', count: 5 },
-      { id: 3, name: 'Şişli', count: 3 }
-    ],
-    foodPoints: [
-      { id: 1, name: 'Köfteci Yusuf', type: 'Restoran', count: 12 },
-      { id: 2, name: 'Simit Sarayı', type: 'Kafe', count: 8 },
-      { id: 3, name: 'Burger King', type: 'Fast Food', count: 5 }
-    ],
-    mapRegion: {
-      latitude: 41.0082,
-      longitude: 28.9784,
-      latitudeDelta: 0.0922,
-      longitudeDelta: 0.0421,
-    },
-    markers: [
-      { id: 1, coordinate: { latitude: 41.0082, longitude: 28.9784 }, title: 'Kadıköy' },
-      { id: 2, coordinate: { latitude: 41.0422, longitude: 29.0062 }, title: 'Beşiktaş' },
-      { id: 3, coordinate: { latitude: 41.0602, longitude: 28.9877 }, title: 'Şişli' }
-    ]
-  };
-
-  const userData = {
-    currentXP: 850,
-    levelXP: 1000,
-    level: 5,
-    rank: 'gold' as 'bronze' | 'silver' | 'gold' | 'platinum',
-  };
-
-  const handleSignOut = async () => {
+  const handleSaveField = async () => {
+    if (!user?.uid || !editingField) return;
+    
+    setLoading(true);
     try {
-      console.log('Oturumu kapatma işlemi başlatılıyor...');
-      await signOut();
-      console.log('Oturum başarıyla kapatıldı');
-      // Navigation to login is handled by the AuthContext + App.tsx navigation logic
+      const userRef = doc(db, 'users', user.uid);
+      
+      const updateData = editingField === 'name' 
+        ? { displayName: editValue }
+        : { phoneNumber: editValue };
+      
+      await updateDoc(userRef, updateData);
+      setIsEditModalVisible(false);
+      Alert.alert('Başarılı', 'Bilgileriniz güncellendi');
     } catch (error) {
-      console.error('Çıkış hatası:', error);
-      Alert.alert(
-        'Çıkış Hatası',
-        'Oturumu kapatırken bir sorun oluştu. Lütfen tekrar deneyin.'
-      );
+      console.error('Error updating user info:', error);
+      Alert.alert('Hata', 'Bilgileriniz güncellenirken bir hata oluştu');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTestBadge = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      const badgeService = BadgeService.getInstance();
+      const newBadge = await badgeService.awardTestBadge(user.uid);
+      Alert.alert('Başarılı', 'Yeni rozet kazandınız!');
+    } catch (error) {
+      console.error('Error awarding test badge:', error);
+      Alert.alert('Hata', 'Rozet verilirken bir hata oluştu');
     }
   };
 
   const renderProfileInfo = () => (
-    <View style={styles.profileContainer}>
-      <Animated.View style={[styles.header, { transform: [{ scale: scaleAnim }] }]}>
-        <AnimatedAvatar pulseAnim={pulseAnim} />
-        <View style={styles.userInfo}>
-          <Text variant="headlineSmall" style={styles.name}>Hatice Özkaya</Text>
-          <Text variant="bodyMedium" style={styles.username}>@haticeozkaya</Text>
-          <Text variant="bodySmall" style={styles.email}>hatice@example.com</Text>
+    <View>
+      <Surface style={styles.profileCard} elevation={0}>
+        <Avatar.Image
+          size={80}
+          source={{ uri: user?.photoURL || 'https://via.placeholder.com/80' }}
+          style={styles.avatar}
+        />
+        <Text variant="titleLarge" style={styles.name}>
+          {userData?.displayName || 'İsimsiz Gönüllü'}
+        </Text>
+        <Text variant="bodyMedium" style={styles.username}>
+          @{userData?.displayName?.toLowerCase().replace(/\s+/g, '') || 'volunteer'}
+        </Text>
+        <Text variant="bodyMedium" style={styles.email}>
+          {userData?.email}
+        </Text>
+      </Surface>
+
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <Text variant="titleLarge" style={styles.statValue}>
+            {userData?.completedTasks?.length || 0}
+          </Text>
+          <Text variant="bodyMedium" style={styles.statLabel}>
+            Görev
+          </Text>
         </View>
-      </Animated.View>
-
-      <XPProgress
-        currentXP={userData.currentXP}
-        levelXP={userData.levelXP}
-        level={userData.level}
-        rank={userData.rank}
-      />
-
-      <Animated.View style={[styles.statsCard, { transform: [{ scale: scaleAnim }] }]}>
-        <Card.Content>
-          <View style={styles.statsRow}>
-            <AnimatedStatItem pulseAnim={pulseAnim} value={12} label="Görev" />
-            <AnimatedStatItem pulseAnim={pulseAnim} value={userData.currentXP} label="XP" />
-            <AnimatedStatItem pulseAnim={pulseAnim} value={3} label="Rozet" />
-          </View>
-        </Card.Content>
-      </Animated.View>
-
-      <Card style={styles.socialCard}>
-        <Card.Content>
-          <View style={styles.socialStats}>
-            <View style={styles.socialStat}>
-              <Text variant="headlineSmall">{socialData.following}</Text>
-              <Text variant="bodySmall">Takip Edilen</Text>
-            </View>
-            <View style={styles.socialStat}>
-              <Text variant="headlineSmall">{socialData.followers}</Text>
-              <Text variant="bodySmall">Takipçi</Text>
-            </View>
-          </View>
-        </Card.Content>
-      </Card>
-
-      <Card style={styles.settingsCard}>
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Hesap Ayarları</Text>
-          <List.Section>
-            <List.Item
-              title="Şifre Değiştir"
-              left={props => <List.Icon {...props} icon="lock" />}
-              onPress={() => navigation.navigate('ChangePassword')}
-            />
-            <List.Item
-              title="Bildirim Tercihleri"
-              left={props => <List.Icon {...props} icon="bell" />}
-              onPress={() => navigation.navigate('NotificationSettings')}
-            />
-            <List.Item
-              title="Tema Ayarları"
-              left={props => <List.Icon {...props} icon="theme-light-dark" />}
-              onPress={() => navigation.navigate('ThemeSettings')}
-            />
-          </List.Section>
-        </Card.Content>
-      </Card>
-
-      <View style={styles.logoutContainer}>
-        <TouchableOpacity 
-          style={styles.logoutButton} 
-          onPress={handleSignOut}
-        >
-          <Text style={styles.logoutButtonText}>Çıkış Yap</Text>
-        </TouchableOpacity>
+        <View style={styles.statItem}>
+          <Text variant="titleLarge" style={styles.statValue}>
+            {userData?.xp || 0}
+          </Text>
+          <Text variant="bodyMedium" style={styles.statLabel}>
+            XP
+          </Text>
+        </View>
+        <View style={styles.statItem}>
+          <Text variant="titleLarge" style={styles.statValue}>
+            {badges.length}
+          </Text>
+          <Text variant="bodyMedium" style={styles.statLabel}>
+            Rozet
+          </Text>
+        </View>
       </View>
     </View>
   );
 
-  const renderBadges = () => (
-    <ScrollView>
-      <Card style={styles.badgesCard}>
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Rozetlerim</Text>
-          <View style={styles.badgesGrid}>
-            {badges.map((badge) => (
-              <View key={badge.id} style={styles.badgeItem}>
-                <IconButton
-                  icon={badge.icon}
-                  size={40}
-                  iconColor={badge.earned ? badge.color : '#CCCCCC'}
-                  style={[
-                    styles.badgeIcon,
-                    { backgroundColor: badge.earned ? `${badge.color}20` : '#F5F5F5' }
-                  ]}
-                />
-                <Text variant="bodySmall" style={styles.badgeName}>{badge.name}</Text>
-                <Text variant="bodySmall" style={styles.badgeDescription}>{badge.description}</Text>
-              </View>
-            ))}
-          </View>
-        </Card.Content>
-      </Card>
-    </ScrollView>
+  const renderPersonalInfo = () => (
+    <Surface style={styles.infoCard} elevation={0}>
+      <Text variant="titleMedium" style={styles.sectionTitle}>
+        Kişisel Bilgiler
+      </Text>
+      
+      <View style={styles.infoItem}>
+        <View style={styles.infoIcon}>
+          <User size={24} color={colors.text} />
+        </View>
+        <View style={styles.infoContent}>
+          <Text style={styles.infoLabel}>Ad Soyad</Text>
+          <Text style={styles.infoValue}>{userData?.displayName || 'Belirtilmemiş'}</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.editButton}
+          onPress={() => handleEditField('name')}
+        >
+          <Edit2 size={20} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoItem}>
+        <View style={styles.infoIcon}>
+          <Phone size={24} color={colors.text} />
+        </View>
+        <View style={styles.infoContent}>
+          <Text style={styles.infoLabel}>Telefon</Text>
+          <Text style={styles.infoValue}>{userData?.phoneNumber || 'Belirtilmemiş'}</Text>
+        </View>
+        <TouchableOpacity 
+          style={styles.editButton}
+          onPress={() => handleEditField('phone')}
+        >
+          <Edit2 size={20} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+    </Surface>
   );
 
-  const renderActivities = () => (
-    <ScrollView>
-      <Card style={styles.contributionCard}>
-        <Card.Content>
-          <Text variant="titleMedium" style={styles.sectionTitle}>Katkıda Bulunduğum Yerler</Text>
+  const renderEditModal = () => (
+    <Modal
+      visible={isEditModalVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setIsEditModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <Surface style={styles.modalContent}>
+          <Text variant="titleMedium" style={styles.modalTitle}>
+            {editingField === 'name' ? 'Ad Soyad Düzenle' : 'Telefon Düzenle'}
+          </Text>
           
-          <View style={styles.mapContainer}>
-            <MapView
-              style={styles.map}
-              initialRegion={contributionData.mapRegion}
+          <TextInput
+            style={styles.input}
+            value={editValue}
+            onChangeText={setEditValue}
+            placeholder={editingField === 'name' ? 'Ad Soyad' : 'Telefon Numarası'}
+            keyboardType={editingField === 'phone' ? 'phone-pad' : 'default'}
+          />
+
+          <View style={styles.modalButtons}>
+            <Button 
+              mode="outlined" 
+              onPress={() => setIsEditModalVisible(false)}
+              style={styles.modalButton}
             >
-              {contributionData.markers.map((marker) => (
-                <Marker
-                  key={marker.id}
-                  coordinate={marker.coordinate}
-                  title={marker.title}
-                />
-              ))}
-            </MapView>
-          </View>
-
-          <View style={styles.regionsList}>
-            <Text variant="bodyMedium" style={styles.listTitle}>Aktif Bölgeler</Text>
-            {contributionData.activeRegions.map((region) => (
-              <View key={region.id} style={styles.regionItem}>
-                <Text variant="bodyMedium">{region.name}</Text>
-                <Chip>{region.count} görev</Chip>
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.foodPointsList}>
-            <Text variant="bodyMedium" style={styles.listTitle}>Yiyecek Noktaları</Text>
-            {contributionData.foodPoints.map((point) => (
-              <View key={point.id} style={styles.foodPointItem}>
-                <View>
-                  <Text variant="bodyMedium">{point.name}</Text>
-                  <Text variant="bodySmall" style={styles.foodPointType}>{point.type}</Text>
-                </View>
-                <Chip>{point.count} katkı</Chip>
-              </View>
-            ))}
-          </View>
-        </Card.Content>
-      </Card>
-
-      <Card style={styles.leaderboardCard}>
-        <Card.Content>
-          <View style={styles.leaderboardHeader}>
-            <Text variant="titleMedium" style={styles.sectionTitle}>Sıralama</Text>
-            <Button
-              mode="text"
-              onPress={() => {}}
-              icon="trophy"
+              İptal
+            </Button>
+            <Button 
+              mode="contained" 
+              onPress={handleSaveField}
+              loading={loading}
+              style={styles.modalButton}
             >
-              Genel Sıralamayı Gör
+              Kaydet
             </Button>
           </View>
-          <View style={styles.leaderboardStats}>
-            <View style={styles.leaderboardStat}>
-              <Text variant="headlineSmall">{leaderboardData.rank}</Text>
-              <Text variant="bodySmall">Sıralama</Text>
-            </View>
-            <View style={styles.leaderboardStat}>
-              <Text variant="headlineSmall">{leaderboardData.points}</Text>
-              <Text variant="bodySmall">Puan</Text>
-            </View>
-            <View style={styles.leaderboardStat}>
-              <Text variant="headlineSmall">{leaderboardData.totalUsers}</Text>
-              <Text variant="bodySmall">Toplam Gönüllü</Text>
-            </View>
-          </View>
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressFill,
-                  { width: `${(leaderboardData.rank / leaderboardData.totalUsers) * 100}%` }
-                ]} 
-              />
-            </View>
-            <Text variant="bodySmall" style={styles.progressText}>
-              İlk {Math.round((leaderboardData.rank / leaderboardData.totalUsers) * 100)}% içindesin
-            </Text>
-          </View>
-        </Card.Content>
-      </Card>
-    </ScrollView>
+        </Surface>
+      </View>
+    </Modal>
   );
+
+  if (!user) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text>Lütfen giriş yapın</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.tabContainer}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 0 && styles.activeTab]} 
-          onPress={() => setActiveTab(0)}
-        >
-          <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>Bilgilerim</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 1 && styles.activeTab]} 
-          onPress={() => setActiveTab(1)}
-        >
-          <Text style={[styles.tabText, activeTab === 1 && styles.activeTabText]}>Rozetlerim</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 2 && styles.activeTab]} 
-          onPress={() => setActiveTab(2)}
-        >
-          <Text style={[styles.tabText, activeTab === 2 && styles.activeTabText]}>Etkinliklerim</Text>
-        </TouchableOpacity>
+        {tabs.map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.tab,
+              activeTab === tab && styles.activeTab,
+            ]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === tab && styles.activeTabText,
+              ]}
+            >
+              {tab}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      <Animated.ScrollView 
-        style={[styles.content, { opacity: fadeAnim }]}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {activeTab === 0 && renderProfileInfo()}
-        {activeTab === 1 && renderBadges()}
-        {activeTab === 2 && renderActivities()}
-      </Animated.ScrollView>
+      <ScrollView style={styles.content}>
+        {activeTab === 'Bilgilerim' && (
+          <>
+            {renderProfileInfo()}
+            {renderPersonalInfo()}
+            <Surface style={styles.settingsCard} elevation={0}>
+              <Text variant="titleMedium" style={styles.settingsTitle}>
+                Hesap Ayarları
+              </Text>
+              
+              <TouchableOpacity style={styles.settingItem}>
+                <Lock size={24} color={colors.text} />
+                <Text style={styles.settingText}>Şifre Değiştir</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.settingItem}>
+                <Bell size={24} color={colors.text} />
+                <Text style={styles.settingText}>Bildirim Tercihleri</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.settingItem}>
+                <Paintbrush size={24} color={colors.text} />
+                <Text style={styles.settingText}>Tema Ayarları</Text>
+              </TouchableOpacity>
+            </Surface>
+
+            <TouchableOpacity 
+              style={styles.logoutButton}
+              onPress={signOut}
+            >
+              <LogOut size={24} color={colors.error} />
+              <Text style={[styles.logoutText, { color: colors.error }]}>
+                Çıkış Yap
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+
+      {renderEditModal()}
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    elevation: 2,
-    height: 48,
-  },
-  tab: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  tab: {
+    paddingVertical: 12,
+    marginRight: 24,
   },
   activeTab: {
-    borderBottomColor: '#4CAF50',
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
   },
   tabText: {
-    fontSize: 14,
     color: '#666',
+    fontSize: 16,
   },
   activeTabText: {
-    color: '#4CAF50',
-    fontWeight: 'bold',
+    color: colors.primary,
+    fontWeight: '600',
   },
   content: {
     flex: 1,
   },
-  profileContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  profileCard: {
     padding: 16,
-    backgroundColor: colors.background.card,
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-    shadowColor: colors.utility.shadow,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
   avatar: {
-    marginRight: 16,
-  },
-  userInfo: {
-    flex: 1,
+    marginBottom: 12,
   },
   name: {
-    color: colors.text.primary,
     fontWeight: 'bold',
+    marginBottom: 4,
   },
   username: {
-    color: colors.text.secondary,
+    color: '#666',
+    marginBottom: 4,
   },
   email: {
-    color: colors.text.tertiary,
-  },
-  statsCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-    backgroundColor: colors.background.secondary,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    color: '#999',
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
   statItem: {
     alignItems: 'center',
   },
-  socialCard: {
+  statValue: {
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  statLabel: {
+    color: '#666',
+  },
+  infoCard: {
     margin: 16,
-    marginTop: 0,
-    elevation: 2,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
   },
-  socialStats: {
+  infoItem: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  infoIcon: {
+    width: 40,
     alignItems: 'center',
   },
-  socialStat: {
-    alignItems: 'center',
+  infoContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  infoValue: {
+    fontSize: 16,
+    color: '#333',
+    marginTop: 2,
+  },
+  editButton: {
+    padding: 8,
   },
   settingsCard: {
     margin: 16,
-    marginTop: 0,
-    elevation: 2,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
   },
-  sectionTitle: {
-    marginBottom: 8,
+  settingsTitle: {
     fontWeight: 'bold',
+    marginBottom: 16,
   },
-  logoutContainer: {
-    margin: 16,
-    marginTop: 0,
-  },
-  logoutButton: {
-    backgroundColor: '#FF6B6B',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 20,
+  settingItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
-  logoutButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+  settingText: {
+    marginLeft: 12,
+    color: '#333',
     fontSize: 16,
   },
-  badgesCard: {
-    margin: 16,
-    elevation: 2,
-  },
-  badgesGrid: {
+  logoutButton: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  badgeItem: {
-    width: '48%',
     alignItems: 'center',
-    marginBottom: 16,
-    padding: 8,
-  },
-  badgeIcon: {
-    marginBottom: 8,
-  },
-  badgeName: {
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  badgeDescription: {
-    textAlign: 'center',
-    color: '#666',
-    fontSize: 12,
-  },
-  contributionCard: {
-    margin: 16,
-    elevation: 2,
-  },
-  mapContainer: {
-    height: 200,
-    marginVertical: 16,
+    justifyContent: 'center',
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 24,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.error,
     borderRadius: 8,
-    overflow: 'hidden',
   },
-  map: {
-    ...StyleSheet.absoluteFillObject,
+  logoutText: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '600',
   },
-  regionsList: {
-    marginTop: 16,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
   },
-  foodPointsList: {
-    marginTop: 16,
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
   },
-  listTitle: {
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  regionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  foodPointItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  foodPointType: {
-    color: '#666',
-  },
-  leaderboardCard: {
-    margin: 16,
-    marginTop: 0,
-    elevation: 2,
-  },
-  leaderboardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  leaderboardStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 16,
-  },
-  leaderboardStat: {
-    alignItems: 'center',
-  },
-  progressContainer: {
-    marginTop: 8,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
-    borderRadius: 4,
-  },
-  progressText: {
+  modalTitle: {
+    marginBottom: 20,
     textAlign: 'center',
-    marginTop: 4,
-    color: '#666',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
   },
 });
 

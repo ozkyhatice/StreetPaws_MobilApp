@@ -12,6 +12,8 @@ import * as Location from 'expo-location';
 import { Camera, MapPin } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { submitTaskVerification, uploadVerificationImage } from '../services/taskVerificationService';
+import { BadgeService } from '../services/badgeService';
+import { taskService } from '../services/taskService';
 
 interface TaskCompletionFormProps {
   taskId: string;
@@ -35,6 +37,7 @@ export function TaskCompletionForm({
   const [note, setNote] = useState('');
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const pickImage = async () => {
     try {
@@ -131,7 +134,8 @@ export function TaskCompletionForm({
       return;
     }
 
-    setLoading(true);
+    setIsSubmitting(true);
+
     try {
       const imageUrl = await uploadVerificationImage(imageUri);
       
@@ -146,9 +150,24 @@ export function TaskCompletionForm({
         } : undefined,
       });
 
-      Alert.alert('Başarılı', 'Görev tamamlama isteğiniz gönderildi');
-      onComplete();
+      // Check for new badges
+      const badgeService = BadgeService.getInstance();
+      const task = await taskService.getTask(taskId);
+      const newBadges = await badgeService.checkAndAwardBadges(userId, task);
+
+      // Show badge notification if new badges were earned
+      if (newBadges.length > 0) {
+        const badgeNames = newBadges.map(b => b.name).join(', ');
+        Alert.alert(
+          'Tebrikler! 🎉',
+          `Yeni rozet(ler) kazandınız: ${badgeNames}`,
+          [{ text: 'Tamam', onPress: () => onComplete() }]
+        );
+      } else {
+        onComplete();
+      }
     } catch (error) {
+      console.error('Error completing task:', error);
       Alert.alert('Hata', 'Görev tamamlanırken bir hata oluştu');
     } finally {
       setLoading(false);

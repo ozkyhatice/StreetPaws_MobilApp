@@ -57,18 +57,19 @@ const TaskMarker = React.memo(({ latitude, longitude, radiusMeters }: TaskMarker
   );
 });
 
-export default function TaskDetailScreen() {
+interface TaskDetailScreenProps {
+  taskId: string;
+}
+
+export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCompletionForm, setShowCompletionForm] = useState(false);
   const [imageError, setImageError] = useState(false);
 
-  const route = useRoute();
   const navigation = useNavigation();
   const { user } = useAuth();
   const taskService = TaskService.getInstance();
-
-  const { taskId } = route.params as { taskId: string };
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;

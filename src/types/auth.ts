@@ -1,8 +1,4 @@
-export interface User {
-  uid: string;
-  email: string;
-  displayName: string;
-}
+import { User } from './user';
 
 export interface AuthContextType {
   user: User | null;
@@ -11,4 +7,6 @@ export interface AuthContextType {
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<boolean>;
+  checkEmailVerification: () => Promise<boolean>;
 } 

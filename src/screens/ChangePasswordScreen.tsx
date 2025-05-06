@@ -1,15 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Text, TextInput, Button, Card } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../types/navigation';
+import { Ionicons } from '@expo/vector-icons';
+
+type ChangePasswordScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
+  const navigation = useNavigation<ChangePasswordScreenNavigationProp>();
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: 'Şifre Değiştir',
+      headerLeft: () => (
+        <Ionicons
+          name="chevron-back"
+          size={24}
+          color="#000"
+          style={{ marginLeft: 10 }}
+          onPress={() => navigation.goBack()}
+        />
+      ),
+    });
+  }, [navigation]);
 
   const handleChangePassword = () => {
+    if (currentPassword === newPassword) {
+      setError('Mevcut şifre yeni şifre ile aynı olamaz');
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       setError('Yeni şifreler eşleşmiyor');
       return;
@@ -20,6 +48,10 @@ export default function ChangePasswordScreen() {
     }
     // Burada şifre değiştirme API çağrısı yapılacak
     console.log('Şifre değiştiriliyor...');
+    Alert.alert('Başarılı', 'Şifreniz başarıyla değiştirildi');
+    navigation.navigate('MainApp', {
+      screen: 'Profile'
+    });
   };
 
   return (
@@ -27,7 +59,6 @@ export default function ChangePasswordScreen() {
       <ScrollView>
         <Card style={styles.card}>
           <Card.Content>
-            <Text style={styles.title}>Şifre Değiştir</Text>
             
             <TextInput
               label="Mevcut Şifre"
@@ -73,6 +104,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    
   },
   card: {
     margin: 16,

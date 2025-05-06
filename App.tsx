@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
-import { StatusBar } from 'react-native';
+import { StatusBar, View, ActivityIndicator } from 'react-native';
 import { AuthContextType } from './src/types/auth';
 
 const Stack = createNativeStackNavigator();
@@ -21,6 +21,15 @@ const Stack = createNativeStackNavigator();
 function NavigationWrapper() {
   const { paperTheme, navigationTheme } = useTheme();
   const { loading } = useContext(AuthContext) as AuthContextType;
+
+  // Ana uygulama yüklenirken bekleme ekranı
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: navigationTheme.colors.background }}>
+        <ActivityIndicator size="large" color={navigationTheme.colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <NavigationContainer theme={navigationTheme}>

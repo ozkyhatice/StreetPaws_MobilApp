@@ -7,12 +7,13 @@ import { Task } from '../types/task';
 import { colors } from '../config/theme';
 import { TaskMarker } from '../components/map/TaskMarker';
 import { FilterBar } from '../components/map/FilterBar';
+import { useNavigation } from '@react-navigation/native';
 
 interface MapScreenProps {
   navigation: any;
 }
 
-const MapScreen: React.FC<MapScreenProps> = ({ navigation }) => {
+const MapScreen: React.FC<MapScreenProps> = () => {
   const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,7 @@ const MapScreen: React.FC<MapScreenProps> = ({ navigation }) => {
   const [mapReady, setMapReady] = useState(false);
   
   const mapRef = useRef<MapView>(null);
+  const navigation = useNavigation();
   
   useEffect(() => {
     loadLocationAndTasks();

@@ -1,35 +1,56 @@
-# Firebase Kurulumu
+# Firebase Kurulum Rehberi
 
-Bu uygulama Firebase Authentication kullanmaktadır. Projeyi çalıştırmadan önce Firebase projesi oluşturup, gerekli konfigürasyonları yapmanız gerekmektedir.
+## 1. Firebase Konsol Kurulumu
 
-## Adım 1: Firebase Projesi Oluşturma
+1. [Firebase Console](https://console.firebase.google.com)'a gidin
+2. "Yeni Proje Oluştur" butonuna tıklayın
+3. Proje adını girin (örn: "street-paws")
+4. Google Analytics'i etkinleştirin (isteğe bağlı)
+5. "Proje Oluştur"u tıklayın
 
-1. [Firebase Console](https://console.firebase.google.com/) adresine gidin ve Google hesabınızla giriş yapın
-2. "Proje Ekle" butonuna tıklayın
-3. Projenize bir isim verin (örn. "Sokak Dostları")
-4. Google Analytics'i etkinleştirmeyi seçin
-5. "Proje Oluştur" butonuna tıklayın ve proje oluşturulmasını bekleyin
+## 2. Firebase Web Uygulaması Oluşturma
 
-## Adım 2: Authentication Servisini Etkinleştirme
+1. Firebase konsolunda projenize gidin
+2. "Project Overview" sayfasında "</>" simgesine tıklayın (Web uygulaması)
+3. Uygulama takma adı girin (örn: "street-paws-web")
+4. "Register app" butonuna tıklayın
+5. Size verilen Firebase yapılandırma kodunu kopyalayın
 
-1. Sol menüden "Authentication" seçeneğine tıklayın
-2. "Get Started" veya "Başlangıç" butonuna tıklayın
-3. "Sign-in method" (Oturum açma yöntemi) sekmesine tıklayın
-4. "Email/Password" (E-posta/Şifre) satırına tıklayın ve etkinleştirin
-5. "Save" (Kaydet) butonuna tıklayın
+## 3. Authentication Ayarları
 
-## Adım 3: Firebase Web Uygulaması Oluşturma
+1. Sol menüden "Authentication"ı seçin
+2. "Get Started" butonuna tıklayın
+3. "Sign-in method" sekmesinde:
+   - Email/Password'ü etkinleştirin
+   - Google Sign-in'i etkinleştirin (opsiyonel)
 
-1. Ana sayfa dashboard'a dönün
-2. "Add app" (Uygulama ekle) butonuna tıklayın ve web simgesini (</>)  seçin
-3. Uygulamanıza bir takma ad verin (örn. "Sokak Dostları Web")
-4. "Register app" (Uygulamayı kaydet) butonuna tıklayın
-5. Firebase konfigürasyon bilgilerini kopyalayın
+## 4. Firestore Database Ayarları
 
-## Adım 4: Firebase Konfigürasyonu
+1. Sol menüden "Firestore Database"i seçin
+2. "Create Database" butonuna tıklayın
+3. Production mode'u seçin
+4. Bölge olarak "eur3 (europe-west)"i seçin
+5. Güvenlik kurallarını aşağıdaki gibi güncelleyin:
 
-1. `src/config/firebase.ts` dosyasını açın
-2. Aşağıdaki bilgileri Firebase konsolundan aldığınız bilgilerle değiştirin:
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /{document=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+  }
+}
+```
+
+## 5. Firebase Yapılandırma Dosyası
+
+1. Firebase konsolundan aldığınız yapılandırma bilgilerini `src/config/firebase.ts` dosyasına ekleyin:
 
 ```typescript
 const firebaseConfig = {

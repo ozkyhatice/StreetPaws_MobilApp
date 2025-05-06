@@ -8,10 +8,11 @@ export type MainTabParamList = {
 };
 
 export type RootStackParamList = {
+  Splash: undefined;
   Login: undefined;
   Register: undefined;
   ForgotPassword: undefined;
-  MainApp: undefined;
+  MainApp: { screen?: keyof MainTabParamList };
   Tasks: undefined;
   TaskDetail: { taskId: string };
   Settings: undefined;
@@ -19,5 +20,11 @@ export type RootStackParamList = {
   Map: undefined;
   Volunteers: undefined;
   Donations: undefined;
-  Donate: undefined;
+  Donate: { campaignId: string };
+  ChangePassword: undefined;
+  NotificationSettings: undefined;
+  ThemeSettings: undefined;
+  AuthTest: undefined;
+  Profile: undefined;
+  VerifyEmail: undefined;
 }; 

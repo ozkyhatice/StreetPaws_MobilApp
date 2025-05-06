@@ -1,10 +1,15 @@
-import { XPActivity, UserXP, XP_REWARDS, calculateLevel } from '../types/xp';
-import firestore from '@react-native-firebase/firestore';
+import { XPActivity, XP_REWARDS } from '../types/xp';
+import { db } from '../config/firebase';
+import { collection, doc, getDoc, updateDoc, increment, arrayUnion } from 'firebase/firestore';
 
-interface UserXP {
+interface UserXPData {
   userId: string;
   totalXP: number;
   level: number;
+  currentLevel: number;
+  currentLevelXP: number;
+  xpToNextLevel: number;
+  recentActivities: XPActivity[];
   taskCompletions: {
     taskId: string;
     xp: number;
@@ -12,50 +17,15 @@ interface UserXP {
   }[];
 }
 
-// Mock XP data
-const mockUserXP: { [userId: string]: UserXP } = {};
-
-const calculateLevel = (xp: number): number => {
-  return Math.floor(Math.sqrt(xp / 100)) + 1;
-};
-
-export const getUserXP = async (userId: string): Promise<UserXP> => {
-  if (!mockUserXP[userId]) {
-    mockUserXP[userId] = {
-      userId,
-      totalXP: 0,
-      level: 1,
-      taskCompletions: []
-    };
-  }
-  return mockUserXP[userId];
-};
-
-export const addTaskCompletionXP = async (userId: string, taskId: string, xp: number): Promise<UserXP> => {
-  const userXP = await getUserXP(userId);
-  
-  userXP.taskCompletions.push({
-    taskId,
-    xp,
-    timestamp: new Date().toISOString()
-  });
-  
-  userXP.totalXP += xp;
-  userXP.level = calculateLevel(userXP.totalXP);
-  
-  mockUserXP[userId] = userXP;
-  return userXP;
-};
-
-export const getLeaderboard = async (limit: number = 10): Promise<UserXP[]> => {
-  return Object.values(mockUserXP)
-    .sort((a, b) => b.totalXP - a.totalXP)
-    .slice(0, limit);
-};
+function calculateUserLevel(xp: number): { level: number; progress: number } {
+  const level = Math.floor(Math.sqrt(xp / 100)) + 1;
+  const progress = (xp - (level - 1) * (level - 1) * 100) / (level * level * 100);
+  return { level, progress };
+}
 
 export class XPService {
   private static instance: XPService;
-  private readonly usersCollection = firestore().collection('users');
+  private readonly usersCollection = 'users';
 
   private constructor() {}
 
@@ -66,42 +36,48 @@ export class XPService {
     return XPService.instance;
   }
 
-  async getUserXP(userId: string): Promise<UserXP> {
-    const userDoc = await this.usersCollection.doc(userId).get();
+  async getUserXP(userId: string): Promise<UserXPData> {
+    const userDoc = await getDoc(doc(db, this.usersCollection, userId));
     const userData = userDoc.data();
     
     if (!userData?.xp) {
       return {
+        userId,
         currentLevel: 1,
         totalXP: 0,
+        level: 1,
         currentLevelXP: 0,
         xpToNextLevel: 100,
         recentActivities: [],
+        taskCompletions: []
       };
     }
 
-    const { level, progress } = calculateLevel(userData.xp);
+    const { level, progress } = calculateUserLevel(userData.xp);
     const nextLevelXP = Math.ceil((1 - progress) * 100);
 
     return {
+      userId,
       currentLevel: level,
       totalXP: userData.xp,
+      level,
       currentLevelXP: Math.floor(progress * 100),
       xpToNextLevel: nextLevelXP,
       recentActivities: userData.recentActivities || [],
+      taskCompletions: userData.taskCompletions || []
     };
   }
 
   async addXP(userId: string, activity: Omit<XPActivity, 'id' | 'timestamp'>): Promise<void> {
     const newActivity: XPActivity = {
       ...activity,
-      id: firestore().collection('random').doc().id,
+      id: doc(collection(db, 'random')).id,
       timestamp: Date.now(),
     };
 
-    await this.usersCollection.doc(userId).update({
-      xp: firestore.FieldValue.increment(activity.xpAmount),
-      recentActivities: firestore.FieldValue.arrayUnion(newActivity),
+    await updateDoc(doc(db, this.usersCollection, userId), {
+      xp: increment(activity.xpAmount),
+      recentActivities: arrayUnion(newActivity),
     });
   }
 

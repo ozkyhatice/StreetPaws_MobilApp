@@ -48,7 +48,11 @@ const campaignData = [
 
 const donationAmounts = [100, 200, 500, 1000];
 
-export default function DonateScreen() {
+interface DonateScreenProps {
+  campaignId: string;
+}
+
+export default function DonateScreen({ campaignId }: DonateScreenProps) {
   const [donationAmount, setDonationAmount] = useState('');
   const [customAmount, setCustomAmount] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -59,9 +63,7 @@ export default function DonateScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [campaign, setCampaign] = useState(null);
   
-  const route = useRoute();
   const navigation = useNavigation();
-  const { campaignId } = route.params as { campaignId: string };
   
   useEffect(() => {
     const foundCampaign = campaignData.find(c => c.id === campaignId);
