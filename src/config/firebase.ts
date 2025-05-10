@@ -12,6 +12,16 @@ import {
   FIREBASE_APP_ID,
   FIREBASE_MEASUREMENT_ID
 } from '@env';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  getDocs, 
+  getDoc, 
+  query, 
+  where,
+  limit
+} from 'firebase/firestore';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -37,5 +47,143 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+
+// Firestore koleksiyonlarını ve field yapılarını tanımla
+export const initializeDatabase = async () => {
+  try {
+    console.log('Veritabanı yapısı kontrol ediliyor...');
+    
+    // Koleksiyon referansları
+    const collectionsToInitialize = [
+      'users',
+      'tasks',
+      'taskVerifications',
+      'badges',
+      'xpActivities'
+    ];
+    
+    // Her koleksiyon için
+    for (const collectionName of collectionsToInitialize) {
+      const collectionRef = collection(db, collectionName);
+      
+      // Koleksiyonda doküman var mı kontrol et
+      const querySnapshot = await getDocs(query(collectionRef, limit(1)));
+      
+      if (querySnapshot.empty) {
+        console.log(`${collectionName} koleksiyonu boş, şablon doküman ekleniyor...`);
+        
+        // Koleksiyona göre şablon doküman oluştur
+        let templateDoc = {};
+        
+        if (collectionName === 'users') {
+          templateDoc = {
+            uid: 'template',
+            email: 'template@example.com',
+            displayName: 'Template User',
+            firstName: 'Template',
+            lastName: 'User',
+            username: 'templateuser',
+            photoURL: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            emailVerified: false,
+            role: 'user',
+            preferences: {
+              notifications: true,
+              emailUpdates: true,
+              darkMode: false,
+            },
+            stats: {
+              tasksCompleted: 0,
+              volunteeredHours: 0,
+              donationsCount: 0,
+              totalDonationAmount: 0,
+              xpPoints: 0,
+              level: 1,
+            },
+            xp: 0,
+            completedTasks: [],
+            volunteerHours: 0,
+            badges: [],
+            activeTask: null,
+            savedPets: [],
+            favoriteLocations: []
+          };
+        } else if (collectionName === 'tasks') {
+          templateDoc = {
+            id: 'template',
+            title: 'Template Task',
+            description: 'Template task description',
+            status: 'OPEN',
+            category: 'OTHER',
+            location: {
+              latitude: 0,
+              longitude: 0,
+              address: 'Template Address'
+            },
+            deadline: new Date().toISOString(),
+            xpReward: 100,
+            assignedTo: null,
+            images: [],
+            verifications: []
+          };
+        } else if (collectionName === 'taskVerifications') {
+          templateDoc = {
+            id: 'template',
+            taskId: 'template',
+            userId: 'template',
+            status: 'PENDING',
+            createdAt: new Date().toISOString(),
+            imageUrl: '',
+            note: '',
+            location: {
+              latitude: 0,
+              longitude: 0
+            },
+            reviewerId: null,
+            reviewNote: null
+          };
+        } else if (collectionName === 'badges') {
+          templateDoc = {
+            id: 'template',
+            name: 'Template Badge',
+            description: 'Template badge description',
+            icon: 'star',
+            criteria: {
+              type: 'TASK_COMPLETION',
+              count: 1
+            }
+          };
+        } else if (collectionName === 'xpActivities') {
+          templateDoc = {
+            id: 'template',
+            userId: 'template',
+            title: 'Template Activity',
+            description: 'Template activity description',
+            xpAmount: 100,
+            type: 'TASK_COMPLETION',
+            timestamp: Date.now()
+          };
+        }
+        
+        // Şablon dokümanı ekle
+        const templateDocRef = doc(collectionRef, 'template');
+        await setDoc(templateDocRef, templateDoc);
+        console.log(`${collectionName} şablon dokümanı oluşturuldu`);
+        
+        // Şablonu temizle (isteğe bağlı)
+        // await deleteDoc(templateDocRef);
+      } else {
+        console.log(`${collectionName} koleksiyonu zaten mevcut`);
+      }
+    }
+    
+    console.log('Veritabanı yapısı doğrulandı');
+    return true;
+  } catch (error) {
+    console.error('Veritabanı yapısını oluştururken hata:', error);
+    return false;
+  }
+};
 
 export { app, auth, db, storage }; 

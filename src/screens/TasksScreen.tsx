@@ -11,6 +11,8 @@ import {
   Dimensions,
   Platform,
   ScrollView,
+  Image,
+  Alert,
 } from 'react-native';
 import { TaskCard } from '../components/TaskCard';
 import { Button } from '../components/Button';
@@ -21,9 +23,21 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MapPin, Search, Filter, Plus, RefreshCw } from 'lucide-react-native';
 import { Text, Chip, Badge, Divider } from 'react-native-paper';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../types/navigation';
+import { EmergencyService, EmergencyRequest } from '../services/emergencyService';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../hooks/useAuth';
 
 const { width } = Dimensions.get('window');
 const isSmallScreen = width < 375;
+
+type TasksScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+
+type ListItem = {
+  type: 'task' | 'emergency';
+  data: Task | EmergencyRequest;
+};
 
 // Mock task data - servis hazır olmadığında kullanılacak
 const mockTasks: Task[] = [
@@ -107,82 +121,227 @@ const mockTasks: Task[] = [
     createdBy: {
       id: '4',
       name: 'Murat Yıldız'
+    },
+    completedBy: {
+      id: '5',
+      name: 'Ayşe Kaya',
+      completedAt: new Date().toISOString(),
     }
   }
 ];
 
 export default function TasksScreen() {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [loading, setLoading] = useState(false);
+  const navigation = useNavigation<TasksScreenNavigationProp>();
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<TaskFilter>({});
+  const [items, setItems] = useState<ListItem[]>([]);
+  const [filter, setFilter] = useState<'all' | 'tasks' | 'emergencies' | 'completed'>('all');
   const [searchText, setSearchText] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  const navigation = useNavigation();
   const taskService = TaskService.getInstance();
+  const emergencyService = EmergencyService.getInstance();
 
-  const loadTasks = async () => {
+  const fetchData = async () => {
     try {
       setLoading(true);
-      // Gerçek API hazır olduğunda burayı aktif edebilirsiniz:
-      // const loadedTasks = await taskService.getTasks({
-      //   ...filter,
-      //   searchText: searchText,
-      // });
-      // setTasks(loadedTasks);
-      
-      // Mock veri kullanımı
-      const filteredTasks = mockTasks.filter(task => {
-        // Arama metni filtrelemesi
-        if (searchText && !task.title.toLowerCase().includes(searchText.toLowerCase()) && 
-            !task.description.toLowerCase().includes(searchText.toLowerCase())) {
-          return false;
-        }
-        
-        // Durum filtrelemesi
-        if (filter.status && task.status !== filter.status) {
-          return false;
-        }
-        
-        // Kategori filtrelemesi
-        if (filter.category && task.category !== filter.category) {
-          return false;
-        }
-        
-        // Öncelik filtrelemesi
-        if (filter.priority && task.priority !== filter.priority) {
-          return false;
-        }
-        
-        return true;
+      const [tasks, emergencies] = await Promise.all([
+        taskService.getTasks(),
+        emergencyService.getEmergencyRequests()
+      ]);
+
+      const taskItems: ListItem[] = tasks.map(task => ({
+        type: 'task',
+        data: task
+      }));
+
+      const emergencyItems: ListItem[] = emergencies.map(emergency => ({
+        type: 'emergency',
+        data: emergency
+      }));
+
+      const allItems = [...taskItems, ...emergencyItems].sort((a, b) => {
+        const dateA = new Date(a.data.createdAt);
+        const dateB = new Date(b.data.createdAt);
+        return dateB.getTime() - dateA.getTime(); // Sort by newest first
       });
-      
-      // Filtrelenmiş görevleri set et
-      setTimeout(() => {
-        setTasks(filteredTasks);
-        setLoading(false);
-        setRefreshing(false);
-      }, 500); // Gerçek veri çekimi simülasyonu için
-      
+
+      setItems(allItems);
     } catch (error) {
-      console.error('Error loading tasks:', error);
+      console.error('Error fetching data:', error);
+      Alert.alert('Hata', 'Veriler yüklenirken bir hata oluştu.');
+    } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadTasks();
-  }, [filter, searchText]);
+    fetchData();
+  }, []);
 
-  const handleRefresh = () => {
+  const onRefresh = () => {
     setRefreshing(true);
-    loadTasks();
+    fetchData();
   };
 
-  const handleTaskPress = (task: Task) => {
-    navigation.navigate('TaskDetail', { taskId: task.id });
+  const handleItemPress = (item: ListItem) => {
+    if (item.type === 'task') {
+      navigation.navigate('TaskDetail', { taskId: item.data.id! });
+    } else {
+      // Here you can navigate to an emergency detail screen if you have one
+      Alert.alert(
+        'Acil Durum Detayı',
+        `${item.data.title}\n\n${item.data.description}\n\nKonum: ${item.data.location}`
+      );
+    }
+  };
+
+  const getFilteredItems = () => {
+    if (filter === 'all') return items;
+    if (filter === 'tasks') return items.filter(item => item.type === 'task' && !(item.data as Task).completed);
+    if (filter === 'emergencies') return items.filter(item => item.type === 'emergency');
+    if (filter === 'completed') return items.filter(item => 
+      item.type === 'task' && (item.data as Task).completed || 
+      (item.type === 'emergency' && (item.data as EmergencyRequest).status === 'resolved')
+    );
+    
+    return items;
+  };
+
+  const renderItem = ({ item }: { item: ListItem }) => {
+    if (item.type === 'task') {
+      const task = item.data as Task;
+      return (
+        <TouchableOpacity
+          style={[styles.itemCard, styles.taskCard]}
+          onPress={() => handleItemPress(item)}
+        >
+          <View style={styles.cardHeader}>
+            <Text style={styles.itemTitle}>{task.title}</Text>
+            <View style={[styles.badgeContainer, { backgroundColor: colors.primary }]}>
+              <Text style={styles.badgeText}>Görev</Text>
+            </View>
+          </View>
+          <Text style={styles.itemDescription} numberOfLines={2}>
+            {task.description}
+          </Text>
+          <Text style={styles.itemLocation}>
+            <Ionicons name="location-outline" size={14} /> {typeof task.location === 'object' ? task.location.address : task.location}
+          </Text>
+          
+          {task.completed && task.completedBy && (
+            <View style={styles.completedByContainer}>
+              <Text style={styles.completedByLabel}>Tamamlayan:</Text>
+              <View style={styles.completedByInfo}>
+                <Ionicons name="person" size={14} color={colors.primary} />
+                <Text style={styles.completedByText}>{task.completedBy.name}</Text>
+              </View>
+              <Text style={styles.completedAtText}>
+                {new Date(task.completedBy.completedAt).toLocaleDateString('tr-TR')}
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.itemFooter}>
+            <Text style={styles.itemDate}>
+              {new Date(task.createdAt).toLocaleDateString('tr-TR')}
+            </Text>
+            <View style={[
+              styles.statusBadge,
+              { backgroundColor: task.completed ? colors.success : colors.primary }
+            ]}>
+              <Text style={styles.statusText}>
+                {task.completed ? 'Tamamlandı' : 'Açık'}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    } else {
+      const emergency = item.data as EmergencyRequest;
+      return (
+        <TouchableOpacity
+          style={[styles.itemCard, styles.emergencyCard]}
+          onPress={() => handleItemPress(item)}
+        >
+          <View style={styles.cardHeader}>
+            <Text style={styles.itemTitle}>{emergency.title}</Text>
+            <View style={[styles.badgeContainer, { backgroundColor: '#FF3B30' }]}>
+              <Text style={styles.badgeText}>Acil</Text>
+            </View>
+          </View>
+          
+          {emergency.imageUrl && (
+            <Image 
+              source={{ uri: emergency.imageUrl }} 
+              style={styles.emergencyImage} 
+              resizeMode="cover"
+            />
+          )}
+          
+          <Text style={styles.itemDescription} numberOfLines={2}>
+            {emergency.description}
+          </Text>
+          <Text style={styles.itemLocation}>
+            <Ionicons name="location-outline" size={14} /> {emergency.location}
+          </Text>
+          
+          <View style={styles.urgencyContainer}>
+            <Text style={styles.urgencyLabel}>Aciliyet:</Text>
+            <View style={[
+              styles.urgencyBadge, 
+              { 
+                backgroundColor: 
+                  emergency.urgency === 'high' ? '#FF3B30' : 
+                  emergency.urgency === 'medium' ? '#FF9500' : 
+                  '#34C759'
+              }
+            ]}>
+              <Text style={styles.urgencyText}>
+                {emergency.urgency === 'high' ? 'Yüksek' : 
+                 emergency.urgency === 'medium' ? 'Orta' : 'Düşük'}
+              </Text>
+            </View>
+          </View>
+          
+          {emergency.status === 'resolved' && emergency.resolvedBy && (
+            <View style={styles.completedByContainer}>
+              <Text style={styles.completedByLabel}>Çözümleyen:</Text>
+              <View style={styles.completedByInfo}>
+                <Ionicons name="person" size={14} color="#34C759" />
+                <Text style={styles.completedByText}>{emergency.resolvedBy.name}</Text>
+              </View>
+              <Text style={styles.completedAtText}>
+                {new Date(emergency.resolvedBy.resolvedAt).toLocaleDateString('tr-TR')}
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.itemFooter}>
+            <Text style={styles.itemDate}>
+              {new Date(emergency.createdAt).toLocaleDateString('tr-TR')}
+            </Text>
+            <View style={[
+              styles.statusBadge,
+              { 
+                backgroundColor: 
+                  emergency.status === 'pending' ? '#FF9500' :
+                  emergency.status === 'in-progress' ? '#5AC8FA' :
+                  emergency.status === 'resolved' ? '#34C759' : '#FF3B30'
+              }
+            ]}>
+              <Text style={styles.statusText}>
+                {emergency.status === 'pending' ? 'Bekliyor' :
+                 emergency.status === 'in-progress' ? 'İşlemde' :
+                 emergency.status === 'resolved' ? 'Çözüldü' : 'İptal Edildi'}
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    }
   };
 
   const handleCreateTask = () => {
@@ -190,7 +349,7 @@ export default function TasksScreen() {
   };
 
   const clearFilters = () => {
-    setFilter({});
+    setFilter('all');
     setSearchText('');
   };
 
@@ -300,111 +459,77 @@ export default function TasksScreen() {
   const activeFilterCount = Object.values(filter).filter(v => v !== undefined).length;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Görevler</Text>
-        <TouchableOpacity 
-          style={styles.createTaskButton}
-          onPress={handleCreateTask}
-        >
-          <Plus size={20} color="white" />
-        </TouchableOpacity>
+        <Text style={styles.pageTitle}>Görevler ve Acil Durumlar</Text>
       </View>
-
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Search size={20} color={colors.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Görev ara..."
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholderTextColor={colors.textTertiary}
-          />
-          {searchText.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchText('')}>
-              <Text style={styles.clearButton}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.filterButton}
-          onPress={() => setShowFilters(!showFilters)}
+      
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsContainer}
+      >
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'all' && styles.activeFilterButton]}
+          onPress={() => setFilter('all')}
         >
-          <Filter size={20} color={colors.primary} />
-          {activeFilterCount > 0 && (
-            <Badge
-              style={styles.filterBadge}
-              size={18}
-            >
-              {activeFilterCount}
-            </Badge>
-          )}
+          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
+            Tümü
+          </Text>
         </TouchableOpacity>
-      </View>
-
-      {showFilters && (
-        <View style={styles.filtersWrapper}>
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Durum</Text>
-            <ScrollableTags>
-              {renderFilterChip('Tümü', 'status', undefined)}
-              {renderFilterChip('Açık', 'status', 'OPEN')}
-              {renderFilterChip('Devam Eden', 'status', 'IN_PROGRESS')}
-              {renderFilterChip('Tamamlanan', 'status', 'COMPLETED')}
-            </ScrollableTags>
-          </View>
-          
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Öncelik</Text>
-            <ScrollableTags>
-              {renderFilterChip('Acil', 'priority', 'URGENT')}
-              {renderFilterChip('Yüksek', 'priority', 'HIGH')}
-              {renderFilterChip('Orta', 'priority', 'MEDIUM')}
-              {renderFilterChip('Düşük', 'priority', 'LOW')}
-            </ScrollableTags>
-          </View>
-          
-          <View style={styles.filterSection}>
-            <Text style={styles.filterTitle}>Kategori</Text>
-            <ScrollableTags>
-              {renderFilterChip('Besleme', 'category', 'FEEDING')}
-              {renderFilterChip('Temizlik', 'category', 'CLEANING')}
-              {renderFilterChip('Sağlık', 'category', 'HEALTH')}
-              {renderFilterChip('Barınak', 'category', 'SHELTER')}
-            </ScrollableTags>
-          </View>
-          
-          {(activeFilterCount > 0 || searchText.length > 0) && (
-            <TouchableOpacity 
-              style={styles.clearAllButton}
-              onPress={clearFilters}
-            >
-              <Text style={styles.clearAllText}>Tüm Filtreleri Temizle</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'tasks' && styles.activeFilterButton]}
+          onPress={() => setFilter('tasks')}
+        >
+          <Text style={[styles.filterText, filter === 'tasks' && styles.activeFilterText]}>
+            Görevler
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'emergencies' && styles.activeFilterButton]}
+          onPress={() => setFilter('emergencies')}
+        >
+          <Text style={[styles.filterText, filter === 'emergencies' && styles.activeFilterText]}>
+            Acil Durumlar
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'completed' && styles.activeFilterButton]}
+          onPress={() => setFilter('completed')}
+        >
+          <Text style={[styles.filterText, filter === 'completed' && styles.activeFilterText]}>
+            Tamamlananlar
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+      
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       ) : (
         <FlatList
-          data={tasks}
-          renderItem={({ item }) => <TaskCard task={item} onPress={handleTaskPress} />}
-          keyExtractor={(item) => item.id}
+          data={getFilteredItems()}
+          renderItem={renderItem}
+          keyExtractor={(item) => `${item.type}-${item.data.id}`}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           contentContainerStyle={styles.listContent}
-          ListEmptyComponent={renderEmptyList}
-          showsVerticalScrollIndicator={false}
-          ListFooterComponent={<View style={{ height: 90 }} />}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Gösterilecek öğe bulunamadı</Text>
+            </View>
+          }
         />
       )}
+      
+      <TouchableOpacity 
+        style={styles.floatingButton}
+        onPress={() => navigation.navigate('EmergencyHelp')}
+      >
+        <Ionicons name="add" size={24} color="white" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -420,30 +545,114 @@ const ScrollableTags = ({ children }) => (
 );
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.screenPadding,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
+    backgroundColor: colors.white,
   },
-  title: {
-    ...typography.h2,
+  pageTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
   },
-  createTaskButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
-    ...shadows.small,
+    alignItems: 'center',
+  },
+  tabsContainer: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.sm,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    padding: spacing.sm,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  filterButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+    marginRight: spacing.xs,
+  },
+  activeFilterButton: {
+    borderBottomColor: colors.primary,
+  },
+  filterText: {
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  activeFilterText: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl * 2,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  floatingButton: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  completedByContainer: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.medium,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    flexDirection: 'column',
+  },
+  completedByLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  completedByInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  completedByText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.text,
+    marginLeft: spacing.xs,
+  },
+  completedAtText: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -523,19 +732,9 @@ const styles = StyleSheet.create({
     ...typography.button,
     color: colors.primary,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   listContent: {
     paddingHorizontal: spacing.screenPadding,
     paddingTop: spacing.sm,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl,
   },
   emptyTitle: {
     ...typography.h3,
@@ -543,11 +742,98 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
-  emptyText: {
-    ...typography.body2,
+  itemCard: {
+    backgroundColor: '#fff',
+    borderRadius: borderRadius.large,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.medium,
+  },
+  taskCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  emergencyCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF3B30',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  itemTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    flex: 1,
+  },
+  badgeContainer: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: borderRadius.small,
+    marginLeft: spacing.sm,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  itemDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  itemLocation: {
+    fontSize: 12,
     color: colors.textTertiary,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  itemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  itemDate: {
+    fontSize: 12,
+    color: colors.textTertiary,
+  },
+  statusBadge: {
+    backgroundColor: colors.success,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: borderRadius.small,
+  },
+  statusText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emergencyImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: borderRadius.medium,
+    marginBottom: spacing.sm,
+  },
+  urgencyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  urgencyLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginRight: spacing.xs,
+  },
+  urgencyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: borderRadius.small,
+  },
+  urgencyText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

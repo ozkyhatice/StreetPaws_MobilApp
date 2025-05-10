@@ -18,9 +18,10 @@ import { AuthContextType } from '../types/auth';
 import { Text, Avatar, Surface, useTheme, Button, ProgressBar } from 'react-native-paper';
 import { colors } from '../config/theme';
 import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText } from 'lucide-react-native';
-import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { BadgeService } from '../services/badgeService';
+import { UserService } from '../services/userService';
 
 const { width } = Dimensions.get('window');
 
@@ -40,14 +41,91 @@ const ProfileScreen = () => {
 
   const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
 
+  const formatDateWithSlashes = (text: string) => {
+    // Sadece sayıları al
+    const numbers = text.replace(/\D/g, '');
+    
+    // Maksimum 8 karakter (GGAAYYYY)
+    const trimmed = numbers.substring(0, 8);
+    
+    // Format olarak slashları ekle
+    if (trimmed.length <= 2) {
+      return trimmed;
+    } else if (trimmed.length <= 4) {
+      return `${trimmed.substring(0, 2)}/${trimmed.substring(2)}`;
+    } else {
+      return `${trimmed.substring(0, 2)}/${trimmed.substring(2, 4)}/${trimmed.substring(4)}`;
+    }
+  };
+
+  const handleEditValueChange = (text: string) => {
+    if (editingField === 'dateOfBirth') {
+      setEditValue(formatDateWithSlashes(text));
+    } else {
+      setEditValue(text);
+    }
+  };
+
   useEffect(() => {
     if (!user?.uid) return;
 
     // Kullanıcı verilerini gerçek zamanlı dinle
-    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-      if (doc.exists()) {
-        setUserData(doc.data());
-        setBadges(doc.data()?.badges || []);
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), async (userDoc) => {
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        console.log('Kullanıcı verileri alındı:', data);
+        setUserData(data);
+        setBadges(data?.badges || []);
+      } else {
+        // Kullanıcı dokümanı yoksa oluştur
+        try {
+          console.log('Kullanıcı dokümanı bulunamadı, oluşturuluyor...');
+          const userService = UserService.getInstance();
+          
+          const newUserData = {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || '',
+            firstName: user.displayName?.split(' ')[0] || '',
+            lastName: user.displayName?.split(' ')[1] || '',
+            username: user.email?.split('@')[0] || 'kullanici',
+            photoURL: user.photoURL || '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            emailVerified: user.emailVerified || false,
+            role: 'user' as 'user' | 'admin' | 'volunteer',
+            xp: 0,
+            completedTasks: [],
+            badges: [],
+            volunteerHours: 0,
+            savedPets: [],
+            favoriteLocations: [],
+            stats: {
+              tasksCompleted: 0,
+              volunteeredHours: 0,
+              donationsCount: 0,
+              totalDonationAmount: 0,
+              xpPoints: 0,
+              level: 1,
+            },
+            preferences: {
+              notifications: true,
+              emailUpdates: true,
+              darkMode: false,
+            },
+            bio: '',
+            city: '',
+            dateOfBirth: '',
+            phoneNumber: ''
+          };
+          
+          await userService.createUser(newUserData);
+          setUserData(newUserData);
+          console.log('Yeni kullanıcı profili oluşturuldu');
+        } catch (error) {
+          console.error('Error creating user document:', error);
+          Alert.alert('Hata', 'Kullanıcı profili oluşturulurken hata oluştu');
+        }
       }
     }, (error) => {
       console.error("Error fetching user data:", error);
@@ -90,6 +168,7 @@ const ProfileScreen = () => {
     setLoading(true);
     try {
       const userRef = doc(db, 'users', user.uid);
+      const userService = UserService.getInstance();
 
       if (editingField === 'username') {
         // Username boş olamaz ve en az 3 karakter olmalı
@@ -124,7 +203,22 @@ const ProfileScreen = () => {
         ? { username: editValue }
         : { bio: editValue };
       
-      await updateDoc(userRef, updateData);
+      await userService.updateUser(user.uid, updateData);
+      
+      // Yerel state'i de güncelle
+      if (editingField === 'name') {
+        setUserData({
+          ...userData,
+          firstName: editValue.split(' ')[0],
+          lastName: editValue.split(' ')[1]
+        });
+      } else {
+        setUserData({
+          ...userData,
+          [editingField === 'phone' ? 'phoneNumber' : editingField]: editValue
+        });
+      }
+      
       setIsEditModalVisible(false);
       Alert.alert('Başarılı', 'Bilgileriniz güncellendi');
     } catch (error) {
@@ -353,22 +447,32 @@ const ProfileScreen = () => {
             </Text>
           )}
 
+          {editingField === 'dateOfBirth' && (
+            <Text style={styles.modalSubtitle}>
+              Doğum tarihinizi GG/AA/YYYY formatında giriniz.
+            </Text>
+          )}
+
           <TextInput
             style={[
               styles.input,
               editingField === 'username' && styles.usernameInput
             ]}
             value={editValue}
-            onChangeText={setEditValue}
+            onChangeText={handleEditValueChange}
             placeholder={
               editingField === 'name' ? 'Ad Soyad' : 
               editingField === 'phone' ? 'Telefon Numarası' : 
-              editingField === 'dateOfBirth' ? 'Doğum Tarihi' : 
+              editingField === 'dateOfBirth' ? 'GG/AA/YYYY' : 
               editingField === 'city' ? 'Şehir' : 
               editingField === 'username' ? 'Kullanıcı Adı' :
               editingField === 'bio' ? 'Hakkında' : 'Belirtilmemiş'
             }
-            keyboardType={editingField === 'phone' ? 'phone-pad' : 'default'}
+            keyboardType={
+              editingField === 'phone' ? 'phone-pad' : 
+              editingField === 'dateOfBirth' ? 'number-pad' : 
+              'default'
+            }
             autoCapitalize={editingField === 'username' ? 'none' : 'sentences'}
           />
 
@@ -396,6 +500,47 @@ const ProfileScreen = () => {
 
   const handlePasswordChange = () => {
     navigation.navigate('ChangePassword');
+  };
+
+  const handleNotificationSettings = () => {
+    navigation.navigate('NotificationSettings');
+  };
+
+  const handleThemeSettings = () => {
+    navigation.navigate('ThemeSettings');
+  };
+
+  const handleVerificationsList = () => {
+    navigation.navigate('Verifications');
+  };
+
+  const handleSignOut = () => {
+    signOut()
+      .then(() => {
+        // Başarılı çıkış
+      })
+      .catch((error) => {
+        console.error('Error signing out:', error);
+        Alert.alert('Hata', 'Çıkış yapılırken bir hata oluştu');
+      });
+  };
+
+  const handleMakeAdmin = async () => {
+    try {
+      const userService = UserService.getInstance();
+      await userService.makeCurrentUserAdmin();
+      
+      // Kullanıcı verilerini güncelle
+      setUserData({
+        ...userData,
+        role: 'admin'
+      });
+      
+      Alert.alert('Başarılı', 'Admin rolü atandı! Şimdi görev onaylama ekranına erişebilirsiniz.');
+    } catch (error) {
+      console.error('Error making admin:', error);
+      Alert.alert('Hata', 'Admin rolü atanırken bir hata oluştu');
+    }
   };
 
   if (!user) {
@@ -440,34 +585,42 @@ const ProfileScreen = () => {
                 Hesap Ayarları
               </Text>
               
-              <TouchableOpacity 
-                style={styles.settingItem}
-                onPress={handlePasswordChange}
-              >
-                <Lock size={24} color={colors.text} />
-                <Text style={styles.settingText}>Şifre Değiştir</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.settingItem}>
-                <Bell size={24} color={colors.text} />
-                <Text style={styles.settingText}>Bildirim Tercihleri</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.settingItem}>
-                <Paintbrush size={24} color={colors.text} />
-                <Text style={styles.settingText}>Tema Ayarları</Text>
-              </TouchableOpacity>
+              <View style={styles.settingsContainer}>
+                <TouchableOpacity style={styles.settingItem} onPress={handlePasswordChange}>
+                  <Lock size={24} color={colors.primary} />
+                  <Text style={styles.settingText}>Şifre Değiştir</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.settingItem} onPress={handleNotificationSettings}>
+                  <Bell size={24} color={colors.primary} />
+                  <Text style={styles.settingText}>Bildirim Ayarları</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.settingItem} onPress={handleThemeSettings}>
+                  <Paintbrush size={24} color={colors.primary} />
+                  <Text style={styles.settingText}>Tema Ayarları</Text>
+                </TouchableOpacity>
+                
+                {userData?.role === 'admin' && (
+                  <TouchableOpacity style={styles.settingItem} onPress={handleVerificationsList}>
+                    <FileText size={24} color={colors.primary} />
+                    <Text style={styles.settingText}>Görev Onayları</Text>
+                  </TouchableOpacity>
+                )}
+                
+                {userData?.role !== 'admin' && (
+                  <TouchableOpacity style={styles.settingItem} onPress={handleMakeAdmin}>
+                    <FileText size={24} color={colors.primary} />
+                    <Text style={styles.settingText}>Admin Ol</Text>
+                  </TouchableOpacity>
+                )}
+                
+                <TouchableOpacity style={styles.settingItem} onPress={handleSignOut}>
+                  <LogOut size={24} color={colors.error} />
+                  <Text style={[styles.settingText, { color: colors.error }]}>Çıkış Yap</Text>
+                </TouchableOpacity>
+              </View>
             </Surface>
-
-            <TouchableOpacity 
-              style={styles.logoutButton}
-              onPress={signOut}
-            >
-              <LogOut size={24} color={colors.error} />
-              <Text style={[styles.logoutText, { color: colors.error }]}>
-                Çıkış Yap
-              </Text>
-            </TouchableOpacity>
           </>
         )}
       </ScrollView>
@@ -591,6 +744,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 16,
   },
+  settingsContainer: {
+    marginBottom: 16,
+  },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -602,23 +758,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     color: '#333',
     fontSize: 16,
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 24,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: colors.error,
-    borderRadius: 8,
-  },
-  logoutText: {
-    marginLeft: 8,
-    fontSize: 16,
-    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

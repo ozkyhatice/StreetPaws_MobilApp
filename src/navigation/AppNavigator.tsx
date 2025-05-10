@@ -28,6 +28,8 @@ import ThemeSettingsScreen from '../screens/ThemeSettingsScreen';
 import AuthTestScreen from '../screens/AuthTestScreen';
 import SplashScreen from '../screens/SplashScreen';
 import VerifyEmailScreen from '../screens/VerifyEmailScreen';
+import VerificationsScreen from '../screens/VerificationsScreen';
+import EmergencyHelpScreen from '../screens/EmergencyHelpScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -329,6 +331,23 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
           </AuthGuard>
         )}
       </Stack.Screen>
+      
+      <Stack.Screen 
+        name="Verifications"
+        options={{ title: 'Görev Onayları' }}
+      >
+        {() => (
+          <AuthGuard>
+            <VerificationsScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen
+        name="EmergencyHelp"
+        component={EmergencyHelpScreen}
+        options={{ headerShown: false }}
+      />
     </Stack.Navigator>
   );
 };

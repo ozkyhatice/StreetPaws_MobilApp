@@ -4,6 +4,9 @@ export interface User {
   uid: string;
   email: string | null;
   displayName: string | null;
+  firstName?: string;
+  lastName?: string;
+  username?: string;
   phoneNumber?: string;
   photoURL: string | null;
   createdAt: string;
@@ -35,4 +38,7 @@ export interface User {
   activeTask?: string;
   savedPets: string[];
   favoriteLocations: string[];
+  bio?: string;
+  city?: string;
+  dateOfBirth?: string;
 } 

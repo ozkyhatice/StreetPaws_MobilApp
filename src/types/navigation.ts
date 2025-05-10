@@ -27,4 +27,6 @@ export type RootStackParamList = {
   AuthTest: undefined;
   Profile: undefined;
   VerifyEmail: undefined;
+  Verifications: undefined;
+  EmergencyHelp: undefined;
 }; 

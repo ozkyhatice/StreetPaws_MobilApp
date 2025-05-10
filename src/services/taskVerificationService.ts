@@ -48,4 +48,84 @@ export const updateVerificationStatus = async (
       status
     };
   }
-}; 
+};
+
+// TaskVerificationService sınıfı
+export class TaskVerificationService {
+  private static instance: TaskVerificationService;
+  private verifications: TaskVerification[] = [];
+
+  private constructor() {}
+
+  static getInstance(): TaskVerificationService {
+    if (!TaskVerificationService.instance) {
+      TaskVerificationService.instance = new TaskVerificationService();
+    }
+    return TaskVerificationService.instance;
+  }
+
+  async createVerification(data: {
+    taskId: string;
+    userId: string;
+    imageUrl?: string;
+    note?: string;
+    location?: {
+      latitude: number;
+      longitude: number;
+    };
+  }): Promise<TaskVerification> {
+    const verification: TaskVerification = {
+      id: Math.random().toString(),
+      taskId: data.taskId,
+      userId: data.userId,
+      status: TaskVerificationStatus.PENDING,
+      createdAt: new Date().toISOString(),
+      imageUrl: data.imageUrl,
+      note: data.note,
+      location: data.location
+    };
+
+    this.verifications.push(verification);
+    return verification;
+  }
+
+  async approveVerification(verificationId: string, reviewerId: string, reviewNote?: string): Promise<TaskVerification> {
+    const index = this.verifications.findIndex(v => v.id === verificationId);
+    if (index === -1) throw new Error('Verification not found');
+
+    this.verifications[index] = {
+      ...this.verifications[index],
+      status: TaskVerificationStatus.APPROVED,
+      reviewerId,
+      reviewNote
+    };
+
+    return this.verifications[index];
+  }
+
+  async rejectVerification(verificationId: string, reviewerId: string, reviewNote: string): Promise<TaskVerification> {
+    const index = this.verifications.findIndex(v => v.id === verificationId);
+    if (index === -1) throw new Error('Verification not found');
+
+    this.verifications[index] = {
+      ...this.verifications[index],
+      status: TaskVerificationStatus.REJECTED,
+      reviewerId,
+      reviewNote
+    };
+
+    return this.verifications[index];
+  }
+
+  async getVerification(verificationId: string): Promise<TaskVerification | null> {
+    return this.verifications.find(v => v.id === verificationId) || null;
+  }
+
+  async getTaskVerifications(taskId: string): Promise<TaskVerification[]> {
+    return this.verifications.filter(v => v.taskId === taskId);
+  }
+
+  async getUserVerifications(userId: string): Promise<TaskVerification[]> {
+    return this.verifications.filter(v => v.userId === userId);
+  }
+} 

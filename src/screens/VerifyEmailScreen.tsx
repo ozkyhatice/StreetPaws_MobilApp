@@ -30,6 +30,18 @@ const VerifyEmailScreen = () => {
         routes: [{ name: 'Login' }],
       });
     }
+
+    // Admin kullanıcısını doğrudan görev onayları sayfasına yönlendir
+    if (user?.role === 'admin') {
+      console.log('Admin kullanıcısı tespit edildi, doğrulama atlanıyor...');
+      navigation.reset({
+        index: 0,
+        routes: [{ 
+          name: 'MainApp', 
+          params: { screen: 'Verifications' } 
+        }],
+      });
+    }
   }, [user, navigation]);
 
   useEffect(() => {
@@ -45,9 +57,11 @@ const VerifyEmailScreen = () => {
   const handleCheckVerification = async () => {
     try {
       setIsChecking(true);
+      console.log('Doğrulama durumu kontrolü başlatıldı...');
       const isVerified = await checkEmailVerification();
       
       if (isVerified) {
+        console.log('E-posta başarıyla doğrulandı, ana sayfaya yönlendiriliyor');
         Alert.alert(
           'Başarılı',
           'E-posta adresiniz doğrulandı!',
@@ -62,10 +76,15 @@ const VerifyEmailScreen = () => {
           ]
         );
       } else {
-        Alert.alert('Bilgi', 'E-posta adresiniz henüz doğrulanmamış.');
+        console.log('E-posta henüz doğrulanmamış');
+        Alert.alert(
+          'Bilgi', 
+          'E-posta adresiniz henüz doğrulanmamış. Lütfen e-posta kutunuzu (spam klasörünü de) kontrol edin ve doğrulama bağlantısına tıklayın.'
+        );
       }
-    } catch (error) {
-      Alert.alert('Hata', 'Doğrulama durumu kontrol edilirken bir hata oluştu.');
+    } catch (error: any) {
+      console.error('Doğrulama kontrolü hatası:', error);
+      Alert.alert('Hata', `Doğrulama durumu kontrol edilirken bir hata oluştu: ${error.message}`);
     } finally {
       setIsChecking(false);
     }
@@ -75,11 +94,17 @@ const VerifyEmailScreen = () => {
     if (countdown > 0) return;
     
     try {
+      console.log('Doğrulama e-postası yeniden gönderiliyor...');
       await resendVerificationEmail();
-      Alert.alert('Başarılı', 'Doğrulama e-postası tekrar gönderildi.');
+      console.log('Doğrulama e-postası başarıyla gönderildi');
+      Alert.alert(
+        'Başarılı', 
+        `Doğrulama e-postası ${user?.email} adresine tekrar gönderildi. Lütfen e-posta kutunuzu (spam klasörünü de) kontrol edin.`
+      );
       setCountdown(60); // 60 saniyelik bekleme süresi
-    } catch (error) {
-      Alert.alert('Hata', 'Doğrulama e-postası gönderilemedi.');
+    } catch (error: any) {
+      console.error('Doğrulama e-postası gönderme hatası:', error);
+      Alert.alert('Hata', `Doğrulama e-postası gönderilemedi: ${error.message}`);
     }
   };
 
@@ -106,7 +131,11 @@ const VerifyEmailScreen = () => {
         <Text style={styles.title}>E-posta Doğrulaması</Text>
         
         <Text style={styles.description}>
-          Lütfen {user?.email} adresine gönderilen doğrulama e-postasını kontrol edin.
+          Lütfen <Text style={styles.emailText}>{user?.email}</Text> adresine gönderilen doğrulama e-postasını kontrol edin.
+        </Text>
+        
+        <Text style={styles.infoText}>
+          Doğrulama e-postası görmüyorsanız spam/önemsiz klasörünü kontrol etmeyi unutmayın.
         </Text>
 
         <TouchableOpacity
@@ -210,6 +239,16 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+  emailText: {
+    fontWeight: 'bold',
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#6D435A',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontStyle: 'italic',
   },
 });
 

@@ -155,4 +155,27 @@ export class TaskService {
       status: 'COMPLETED'
     };
   }
+
+  async verifyAndCompleteTask(taskId: string, userId: string, verification: any): Promise<Task> {
+    const taskIndex = this.tasks.findIndex(task => task.id === taskId);
+    if (taskIndex === -1) throw new Error('Task not found');
+    
+    const task = this.tasks[taskIndex];
+    
+    if (task.assignedTo !== userId) {
+      throw new Error('Task is not assigned to this user');
+    }
+    
+    if (task.status !== 'IN_PROGRESS') {
+      throw new Error('Task is not in progress');
+    }
+    
+    // Update task status to completed
+    this.tasks[taskIndex] = {
+      ...this.tasks[taskIndex],
+      status: 'COMPLETED'
+    };
+    
+    return this.tasks[taskIndex];
+  }
 } 

@@ -16,28 +16,27 @@ import { BadgeService } from '../services/badgeService';
 import { taskService } from '../services/taskService';
 
 interface TaskCompletionFormProps {
-  taskId: string;
-  userId: string;
-  requiredLocation?: {
-    latitude: number;
-    longitude: number;
-    radiusMeters: number;
-  };
-  onComplete: () => void;
+  onSubmit: (data: {
+    imageUrl?: string;
+    note?: string;
+    location?: {
+      latitude: number;
+      longitude: number;
+    };
+  }) => void;
+  onCancel: () => void;
+  loading?: boolean;
 }
 
 export function TaskCompletionForm({
-  taskId,
-  userId,
-  requiredLocation,
-  onComplete,
+  onSubmit,
+  onCancel,
+  loading = false,
 }: TaskCompletionFormProps) {
   const navigation = useNavigation();
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const pickImage = async () => {
     try {
@@ -82,45 +81,9 @@ export function TaskCompletionForm({
 
       const location = await Location.getCurrentPositionAsync({});
       setLocation(location);
-
-      if (requiredLocation) {
-        const distance = calculateDistance(
-          location.coords.latitude,
-          location.coords.longitude,
-          requiredLocation.latitude,
-          requiredLocation.longitude
-        );
-
-        if (distance > requiredLocation.radiusMeters) {
-          Alert.alert(
-            'Uyarı',
-            'Görev konumundan çok uzaktasınız. Lütfen görev konumuna gidin.'
-          );
-        }
-      }
     } catch (error) {
       Alert.alert('Hata', 'Konum alınırken bir hata oluştu');
     }
-  };
-
-  const calculateDistance = (
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ): number => {
-    const R = 6371e3; // Earth's radius in meters
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a =
-      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
   };
 
   const handleSubmit = async () => {
@@ -129,49 +92,14 @@ export function TaskCompletionForm({
       return;
     }
 
-    if (requiredLocation && !location) {
-      Alert.alert('Hata', 'Lütfen konumunuzu doğrulayın');
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const imageUrl = await uploadVerificationImage(imageUri);
-      
-      await submitTaskVerification({
-        taskId,
-        userId,
-        imageUrl,
-        note,
-        location: location ? {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        } : undefined,
-      });
-
-      // Check for new badges
-      const badgeService = BadgeService.getInstance();
-      const task = await taskService.getTask(taskId);
-      const newBadges = await badgeService.checkAndAwardBadges(userId, task);
-
-      // Show badge notification if new badges were earned
-      if (newBadges.length > 0) {
-        const badgeNames = newBadges.map(b => b.name).join(', ');
-        Alert.alert(
-          'Tebrikler! 🎉',
-          `Yeni rozet(ler) kazandınız: ${badgeNames}`,
-          [{ text: 'Tamam', onPress: () => onComplete() }]
-        );
-      } else {
-        onComplete();
-      }
-    } catch (error) {
-      console.error('Error completing task:', error);
-      Alert.alert('Hata', 'Görev tamamlanırken bir hata oluştu');
-    } finally {
-      setLoading(false);
-    }
+    onSubmit({
+      imageUrl: imageUri,
+      note: note || undefined,
+      location: location ? {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      } : undefined,
+    });
   };
 
   return (
@@ -193,20 +121,18 @@ export function TaskCompletionForm({
         )}
       </View>
 
-      {requiredLocation && (
-        <View style={styles.section}>
-          <Text variant="titleMedium">Konum Doğrulama</Text>
-          <TouchableOpacity style={styles.locationButton} onPress={getCurrentLocation}>
-            <MapPin size={24} color="#4CAF50" />
-            <Text style={styles.buttonText}>Konumu Doğrula</Text>
-          </TouchableOpacity>
-          {location && (
-            <Text style={styles.locationText}>
-              Konum: {location.coords.latitude.toFixed(6)}, {location.coords.longitude.toFixed(6)}
-            </Text>
-          )}
-        </View>
-      )}
+      <View style={styles.section}>
+        <Text variant="titleMedium">Konum Doğrulama</Text>
+        <TouchableOpacity style={styles.locationButton} onPress={getCurrentLocation}>
+          <MapPin size={24} color="#4CAF50" />
+          <Text style={styles.buttonText}>Konumu Doğrula</Text>
+        </TouchableOpacity>
+        {location && (
+          <Text style={styles.locationText}>
+            Konum: {location.coords.latitude.toFixed(6)}, {location.coords.longitude.toFixed(6)}
+          </Text>
+        )}
+      </View>
 
       <View style={styles.section}>
         <Text variant="titleMedium">Not Ekle (İsteğe Bağlı)</Text>
@@ -220,15 +146,26 @@ export function TaskCompletionForm({
         />
       </View>
 
-      <Button
-        mode="contained"
-        onPress={handleSubmit}
-        loading={loading}
-        disabled={loading}
-        style={styles.submitButton}
-      >
-        Görevi Tamamla
-      </Button>
+      <View style={styles.buttonContainer}>
+        <Button
+          mode="contained"
+          onPress={handleSubmit}
+          loading={loading}
+          disabled={loading}
+          style={styles.submitButton}
+        >
+          Görevi Tamamla
+        </Button>
+        
+        <Button
+          mode="outlined"
+          onPress={onCancel}
+          disabled={loading}
+          style={styles.cancelButton}
+        >
+          İptal
+        </Button>
+      </View>
     </ScrollView>
   );
 }
@@ -236,7 +173,6 @@ export function TaskCompletionForm({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
   },
   section: {
     marginBottom: 24,
@@ -254,34 +190,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8F5E9',
     padding: 12,
     borderRadius: 8,
-    marginHorizontal: 8,
+    marginRight: 8,
+  },
+  buttonText: {
+    marginLeft: 8,
+    color: '#2E7D32',
+  },
+  imageText: {
+    marginTop: 8,
+    color: '#2E7D32',
   },
   locationButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: '#E8F5E9',
     padding: 12,
     borderRadius: 8,
     marginTop: 8,
   },
-  buttonText: {
-    marginLeft: 8,
-    color: '#4CAF50',
-    fontWeight: '500',
-  },
-  imageText: {
-    marginTop: 8,
-    color: '#4CAF50',
-    textAlign: 'center',
-  },
   locationText: {
     marginTop: 8,
-    color: '#666',
-    textAlign: 'center',
+    color: '#2E7D32',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
   },
   submitButton: {
-    marginTop: 16,
+    flex: 1,
+    marginRight: 8,
     backgroundColor: '#4CAF50',
+  },
+  cancelButton: {
+    flex: 1,
+    marginLeft: 8,
+    borderColor: '#F44336',
   },
 }); 

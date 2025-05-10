@@ -18,6 +18,7 @@ import { Text, Button, Card, Divider, Chip, IconButton } from 'react-native-pape
 import { TaskCompletionForm } from '../components/TaskCompletionForm';
 import { Task } from '../types/task';
 import { TaskService } from '../services/taskService';
+import { TaskCompletionService } from '../services/taskCompletionService';
 import { useAuth } from '../hooks/useAuth';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MapView, { Marker, Region, Circle } from 'react-native-maps';
@@ -66,10 +67,12 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   const [loading, setLoading] = useState(true);
   const [showCompletionForm, setShowCompletionForm] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const navigation = useNavigation();
   const { user } = useAuth();
   const taskService = TaskService.getInstance();
+  const taskCompletionService = TaskCompletionService.getInstance();
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -112,10 +115,13 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
     }
     
     try {
-      await taskService.assignTask(taskId, user.uid);
+      setSubmitting(true);
+      await taskCompletionService.assignTaskToUser(taskId, user.uid);
       loadTask();
     } catch (error) {
       Alert.alert('Hata', 'Görev atanırken bir hata oluştu');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -139,6 +145,43 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
 
   const handleImageError = () => {
     setImageError(true);
+  };
+
+  const handleSubmitCompletion = async (verificationData: any) => {
+    if (!user || !task) {
+      Alert.alert('Hata', 'Giriş yapmanız gerekiyor');
+      return;
+    }
+    
+    try {
+      setSubmitting(true);
+      
+      await taskCompletionService.submitTaskCompletion(
+        taskId,
+        user.uid,
+        verificationData
+      );
+      
+      setShowCompletionForm(false);
+      Alert.alert(
+        'Başarılı',
+        'Görev tamamlama başvurunuz alındı. Onaylandığında XP kazanacaksınız.',
+        [
+          { 
+            text: 'Tamam', 
+            onPress: () => {
+              loadTask();
+              navigation.goBack();
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error completing task:', error);
+      Alert.alert('Hata', 'Görev tamamlanırken bir hata oluştu');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (loading || !task) {
@@ -256,78 +299,54 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
           </Card.Content>
         </Card>
 
-        <View style={styles.actionButtons}>
-          <Button
-            mode="contained"
-            style={[styles.actionButton, { backgroundColor: colors.primary.main }]}
-            labelStyle={{ color: colors.text.inverse }}
-            onPress={handleAssign}
-          >
-            Görevi Üstlen
-          </Button>
-          <Button
-            mode="outlined"
-            style={styles.actionButton}
-            textColor={colors.primary.main}
-            onPress={() => navigation.goBack()}
-          >
-            Geri Dön
-          </Button>
+        <View style={styles.actionContainer}>
+          {task.status === 'OPEN' && user && !isAssignedToMe && (
+            <Button 
+              mode="contained" 
+              style={styles.actionButton}
+              onPress={handleAssign}
+              loading={submitting}
+              disabled={submitting}
+            >
+              Görevi Üstlen
+            </Button>
+          )}
+          
+          {isAssignedToMe && task.status === 'IN_PROGRESS' && (
+            <>
+              <Button 
+                mode="contained" 
+                style={[styles.actionButton, { backgroundColor: '#4CAF50' }]}
+                onPress={handleComplete}
+                loading={submitting}
+                disabled={submitting}
+              >
+                Görevi Tamamla
+              </Button>
+              
+              <Button 
+                mode="outlined" 
+                style={styles.actionButton}
+                onPress={handleUnassign}
+                disabled={submitting}
+              >
+                Görevi Bırak
+              </Button>
+            </>
+          )}
         </View>
 
-        {showCompletionForm ? (
-          user && (
-            <View style={styles.completionFormContainer}>
-              <Divider style={styles.divider} />
-              <Text variant="titleLarge" style={styles.completionTitle}>
-                <CheckCircle size={20} color="#4CAF50" /> Görevi Tamamla
-              </Text>
-              <TaskCompletionForm
-                taskId={task.id}
-                userId={user.uid}
-                requiredLocation={task.location ? {
-                  latitude: task.location.latitude,
-                  longitude: task.location.longitude,
-                } : undefined}
-                onComplete={() => {
-                  setShowCompletionForm(false);
-                  loadTask();
-                }}
+        {showCompletionForm && (
+          <Card style={styles.formCard}>
+            <Card.Title title="Görev Tamamlama" />
+            <Card.Content>
+              <TaskCompletionForm 
+                onSubmit={handleSubmitCompletion}
                 onCancel={() => setShowCompletionForm(false)}
+                loading={submitting}
               />
-            </View>
-          )
-        ) : (
-          <View style={styles.actionsContainer}>
-            {task.status === 'OPEN' && !task.assignedTo && (
-              <Button
-                mode="contained"
-                onPress={handleAssign}
-                style={[styles.actionButton, styles.completeButton]}
-              >
-                Görevi Üstlen
-              </Button>
-            )}
-            
-            {isAssignedToMe && task.status === 'IN_PROGRESS' && (
-              <>
-                <Button
-                  mode="contained"
-                  onPress={handleComplete}
-                  style={[styles.actionButton, styles.completeButton]}
-                >
-                  Tamamlandı Olarak İşaretle
-                </Button>
-                <Button
-                  mode="outlined"
-                  onPress={handleUnassign}
-                  style={[styles.actionButton, styles.cancelButton]}
-                >
-                  Görevi Bırak
-                </Button>
-              </>
-            )}
-          </View>
+            </Card.Content>
+          </Card>
         )}
       </Animated.ScrollView>
     </SafeAreaView>
@@ -434,7 +453,7 @@ const styles = StyleSheet.create({
     color: colors.text.inverse,
     fontWeight: 'bold',
   },
-  actionButtons: {
+  actionContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
@@ -444,29 +463,8 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 8,
   },
-  completionFormContainer: {
+  formCard: {
     marginTop: 16,
-  },
-  completionTitle: {
-    color: '#2E7D32',
-    marginBottom: 16,
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  divider: {
-    marginVertical: 20,
-    backgroundColor: '#DEE2E6',
-  },
-  actionsContainer: {
-    marginTop: 24,
-    gap: 16,
-  },
-  completeButton: {
-    backgroundColor: '#2E7D32',
-  },
-  cancelButton: {
-    borderColor: '#DC3545',
-    borderWidth: 2,
   },
   placeholderImage: {
     backgroundColor: '#E9ECEF',

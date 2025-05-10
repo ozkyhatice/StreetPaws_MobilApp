@@ -22,12 +22,24 @@ export const useAuthNavigation = (
     // Yükleme durumunda bekle
     if (loading) return;
 
+    // Admin kullanıcısı ve doğrulama gerektiren sayfalar için kontrol
+    // Admin kullanıcısı olup olmadığını kontrol et
+    const isAdmin = user?.role === 'admin';
+
     if (requireAuth && !user) {
       // Oturum gerektiren bir sayfa için kullanıcı oturum açmamışsa Login'e yönlendir
-      console.log('Oturum açılmamış, Login ekranına yönlendiriliyor');
+      console.log('Kullanıcı oturum açmamış, giriş ekranına yönlendiriliyor...');
       navigation.reset({
         index: 0,
         routes: [{ name: 'Login' }],
+      });
+    } else if (requireAuth && user && !user.emailVerified && !isAdmin) {
+      // Kullanıcı oturum açmış ama e-posta doğrulanmamış ve admin değilse
+      // doğrulama ekranına yönlendir
+      console.log('E-posta doğrulanmamış, doğrulama ekranına yönlendiriliyor...');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'VerifyEmail' }],
       });
     } else if (!requireAuth && user && redirectTo) {
       // Login gibi oturum gerektirmeyen bir sayfada kullanıcı zaten oturum açmışsa

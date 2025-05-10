@@ -20,7 +20,7 @@ export const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children })
           index: 0,
           routes: [{ name: 'Login' }],
         });
-      } else if (!user.emailVerified) {
+      } else if (!user.emailVerified && user.role !== 'admin') {
         Alert.alert('E-posta Doğrulama', 'Lütfen e-posta adresinizi doğrulayınız.');
         navigation.reset({
           index: 0,
@@ -38,7 +38,11 @@ export const AuthGuard: React.FC<{ children: React.ReactNode }> = ({ children })
     );
   }
 
-  if (!user || !user.emailVerified) {
+  if (!user) {
+    return null;
+  }
+  
+  if (!user.emailVerified && user.role !== 'admin') {
     return null;
   }
 

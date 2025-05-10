@@ -32,7 +32,7 @@
       },
       "package": "com.streetpaws.app",
       "permissions": [
-        "android.permission.CAMERA",
+        "android.psdermission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_COARSE_LOCATION",

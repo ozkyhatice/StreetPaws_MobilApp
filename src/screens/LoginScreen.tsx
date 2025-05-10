@@ -40,7 +40,7 @@ const { width, height } = Dimensions.get("window")
 
 const LoginScreen = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
-  const { signIn } = useContext(AuthContext) as AuthContextType;
+  const { signIn, signUp } = useContext(AuthContext) as AuthContextType;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -99,6 +99,74 @@ const LoginScreen = () => {
 
   const handleForgotPassword = () => {
     navigation.navigate('ForgotPassword');
+  };
+
+  const handleAdminLogin = async () => {
+    try {
+      setIsLoading(true);
+      // Test amaçlı admin kullanıcı bilgileri
+      const adminEmail = "admin@example.com";
+      const adminPassword = "admin123";
+      
+      // UserService'i başlangıçta yükle
+      const userService = (await import('../services/userService')).UserService.getInstance();
+      
+      try {
+        // Önce normal giriş deneyin
+        await signIn(adminEmail, adminPassword);
+      } catch (signInError: any) {
+        console.log('Giriş hatası:', signInError.message);
+        
+        // Kullanıcı bulunamadıysa veya kimlik bilgileri geçersizse otomatik kayıt yap
+        if (signInError.message.includes('auth/invalid-credential') || 
+            signInError.message.includes('auth/user-not-found')) {
+          console.log('Admin kullanıcısı bulunamadı, otomatik kayıt yapılıyor...');
+          
+          // Önce kullanıcıyı oluştur
+          const userCredential = await signUp(adminEmail, adminPassword, "Admin Kullanıcı");
+          console.log('Admin kullanıcısı oluşturuldu:', userCredential.uid);
+          
+          // Kısa bir bekleme ekle
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Admin rolünü ata
+          await userService.makeCurrentUserAdmin();
+          console.log('Admin rolü atandı');
+          
+          // Tekrar giriş yap
+          await signIn(adminEmail, adminPassword);
+          console.log('Admin girişi başarılı');
+        } else {
+          // Başka bir hata olduysa yeniden fırlat
+          throw signInError;
+        }
+      }
+      
+      // Giriş başarılıysa admin rolünü kontrol et ve gerekirse ata
+      const currentUser = await userService.getCurrentUser();
+      if (currentUser && currentUser.role !== 'admin') {
+        console.log('Admin rolü atanıyor...');
+        await userService.makeCurrentUserAdmin();
+      }
+      
+      console.log('Admin girişi başarılı, görev onaylama sayfasına yönlendiriliyor...');
+      
+      // Doğrudan görev onaylama sayfasına yönlendirme
+      navigation.reset({
+        index: 0,
+        routes: [
+          { 
+            name: 'MainApp', 
+            params: { screen: 'Verifications' } 
+          }
+        ],
+      });
+    } catch (error: any) {
+      console.error('Admin login error:', error);
+      Alert.alert('Admin Giriş Hatası', `Hata: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Oturum kontrolü - Login sayfası için oturum gerekMEZ, oturum varsa MainApp'e yönlendir
@@ -202,6 +270,20 @@ const LoginScreen = () => {
               onPress={() => navigation.navigate('AuthTest')}
             >
               <Text style={styles.testButtonText}>Firebase Test</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.adminButton}
+              onPress={handleAdminLogin}
+            >
+              <LinearGradient
+                colors={['#4a6fa5', '#3f5885']}
+                style={styles.adminButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.adminButtonText}>Admin Girişi (Test)</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
         </ScrollView>
@@ -339,6 +421,24 @@ const styles = StyleSheet.create({
   testButtonText: {
     color: '#999',
     fontSize: 12,
+  },
+  adminButton: {
+    width: "100%",
+    height: 40,
+    borderRadius: borderRadius.large,
+    overflow: 'hidden',
+    marginTop: spacing.md,
+    ...shadows.small,
+  },
+  adminButtonGradient: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  adminButtonText: {
+    color: "white",
+    fontSize: 14,
+    fontWeight: "600",
   },
 })
 
