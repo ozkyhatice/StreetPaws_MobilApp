@@ -248,38 +248,7 @@ const EmergencyHelpScreen = () => {
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Fotoğraf</Text>
-            <View style={styles.imageButtonsContainer}>
-              <TouchableOpacity 
-                style={styles.imageButton} 
-                onPress={pickImage}
-              >
-                <Ionicons name="images-outline" size={24} color={colors.primary} />
-                <Text style={styles.imageButtonText}>Galeriden Seç</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.imageButton} 
-                onPress={takePicture}
-              >
-                <Ionicons name="camera-outline" size={24} color={colors.primary} />
-                <Text style={styles.imageButtonText}>Fotoğraf Çek</Text>
-              </TouchableOpacity>
-            </View>
-
-            {image && (
-              <View style={styles.imagePreviewContainer}>
-                <Image source={{ uri: image }} style={styles.imagePreview} />
-                <TouchableOpacity 
-                  style={styles.removeImageButton}
-                  onPress={() => setImage(null)}
-                >
-                  <Ionicons name="close-circle" size={24} color="#FF3B30" />
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
+          
 
           <TouchableOpacity
             style={[styles.submitButton, (isLoading || uploading) && styles.submitButtonDisabled]}

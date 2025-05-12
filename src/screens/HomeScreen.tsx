@@ -50,7 +50,7 @@ const HomeScreen = () => {
         <View style={styles.emergencyContainer}>
           <TouchableOpacity
             style={styles.emergencyButton}
-            onPress={() => navigation.navigate('EmergencyHelp')}
+            onPress={() => navigation.navigate('AddEmergency')}
             activeOpacity={0.8}
           >
             <View style={styles.emergencyContent}>

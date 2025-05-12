@@ -154,7 +154,7 @@ export function TaskCompletionForm({
           disabled={loading}
           style={styles.submitButton}
         >
-          Görevi Tamamla
+          Görevi Tamamla ve Onaya Gönder
         </Button>
         
         <Button
@@ -165,6 +165,13 @@ export function TaskCompletionForm({
         >
           İptal
         </Button>
+      </View>
+      
+      <View style={styles.approvalInfoContainer}>
+        <Text style={styles.approvalInfo}>
+          Not: Görev tamamlandıktan sonra, inceleme için onay bekleyecektir.
+          Onaylandıktan sonra tamamlanmış görevler kısmında listelenecektir.
+        </Text>
       </View>
     </ScrollView>
   );
@@ -226,5 +233,17 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
     borderColor: '#F44336',
+  },
+  approvalInfoContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  approvalInfo: {
+    color: '#0D47A1',
+    fontSize: 14,
   },
 }); 

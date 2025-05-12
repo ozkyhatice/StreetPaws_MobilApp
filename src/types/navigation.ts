@@ -29,4 +29,5 @@ export type RootStackParamList = {
   VerifyEmail: undefined;
   Verifications: undefined;
   EmergencyHelp: undefined;
+  Achievements: undefined;
 }; 

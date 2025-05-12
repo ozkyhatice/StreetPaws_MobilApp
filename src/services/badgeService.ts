@@ -1,7 +1,19 @@
-import { Badge, BADGES } from '../types/badge';
+import { BADGES, Badge } from '../types/badge';
 import { db } from '../config/firebase';
-import { Task } from '../types/task';
-import { doc, getDoc, updateDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, setDoc } from 'firebase/firestore';
+import { XPService } from './xpService';
+
+interface UserBadge extends Badge {
+  earnedAt: string;
+  progress: number;
+}
+
+interface BadgeProgress {
+  badgeId: string;
+  currentCount: number;
+  requiredCount: number;
+  percentage: number;
+}
 
 export class BadgeService {
   private static instance: BadgeService;
@@ -16,99 +28,174 @@ export class BadgeService {
     return BadgeService.instance;
   }
 
-  async getUserBadges(userId: string): Promise<Badge[]> {
-    try {
+  async getUserBadges(userId: string): Promise<UserBadge[]> {
       const userDoc = await getDoc(doc(db, this.usersCollection, userId));
       const userData = userDoc.data();
-      return userData?.badges || [];
-    } catch (error) {
-      console.error('Error getting user badges:', error);
+    
+    if (!userData || !userData.badges) {
       return [];
     }
+    
+    return userData.badges;
   }
 
-  async checkAndAwardBadges(userId: string, completedTask: Task): Promise<Badge[]> {
-    try {
-      const userDoc = await getDoc(doc(db, this.usersCollection, userId));
-      const userData = userDoc.data();
-      const currentBadges = userData?.badges || [];
-      const completedTasks = userData?.completedTasks || [];
-      const totalXP = userData?.xp || 0;
+  async getBadgeProgress(userId: string): Promise<BadgeProgress[]> {
+    const xpService = XPService.getInstance();
+    const progressData = await xpService.getTaskProgress(userId);
+    const userBadges = await this.getUserBadges(userId);
+    const earnedBadgeIds = userBadges.map(badge => badge.id);
+    
+    const badgeProgress: BadgeProgress[] = [];
+    
+    // Filtrele: Sadece kazanılmamış rozetleri göster
+    const unearnedBadges = BADGES.filter(badge => !earnedBadgeIds.includes(badge.id));
+    
+    for (const badge of unearnedBadges) {
+      let currentCount = 0;
+      const requiredCount = badge.requirement.count;
       
-      const newBadges: Badge[] = [];
-      
-      // Check each badge
-      for (const badge of BADGES) {
-        // Skip if already earned
-        if (currentBadges.find(b => b.id === badge.id)) {
-          continue;
-        }
-        
-        // Check XP requirement
-        if (totalXP < badge.requiredXP) {
-          continue;
-        }
-        
-        // Check tasks requirement if exists
-        if (badge.requiredTasks) {
-          const relevantTasks = badge.category
-            ? completedTasks.filter(t => t.category === badge.category)
-            : completedTasks;
-            
-          if (relevantTasks.length < badge.requiredTasks) {
-            continue;
+      switch (badge.requirement.type) {
+        case 'TASK_COUNT':
+          currentCount = progressData.completedTasks;
+          break;
+        case 'CATEGORY_COUNT':
+          if (badge.requirement.category && progressData.currentTasksCount[badge.requirement.category]) {
+            currentCount = progressData.currentTasksCount[badge.requirement.category];
           }
+          break;
+        case 'STREAK_DAYS':
+          currentCount = progressData.totalStreakDays;
+          break;
+        case 'EMERGENCY_COUNT':
+          // Acil durum sayısı için özel sorgu gerekebilir
+          // Bu örnekte şimdilik 0 olarak bırakıyoruz
+          currentCount = 0;
+          break;
+      }
+      
+      const percentage = Math.min((currentCount / requiredCount) * 100, 100);
+      
+      badgeProgress.push({
+        badgeId: badge.id,
+        currentCount,
+        requiredCount,
+        percentage
+      });
+    }
+    
+    // Tamamlanmaya en yakın rozetleri önce göster
+    return badgeProgress.sort((a, b) => b.percentage - a.percentage);
+  }
+  
+  async checkAndAwardBadges(userId: string): Promise<{
+    newBadges: Badge[];
+    totalXPAwarded: number;
+  }> {
+    const xpService = XPService.getInstance();
+    const progressData = await xpService.getTaskProgress(userId);
+    const userBadges = await this.getUserBadges(userId);
+    const earnedBadgeIds = userBadges.map(badge => badge.id);
+    
+    const newBadges: Badge[] = [];
+    let totalXPAwarded = 0;
+    
+    // Her rozet için kontrol et
+    for (const badge of BADGES) {
+      // Eğer rozet zaten kazanılmışsa atla
+      if (earnedBadgeIds.includes(badge.id)) {
+          continue;
         }
         
-        // Award badge
-        const newBadge: Badge = {
+      let meetsRequirement = false;
+      
+      switch (badge.requirement.type) {
+        case 'TASK_COUNT':
+          meetsRequirement = progressData.completedTasks >= badge.requirement.count;
+          break;
+        case 'CATEGORY_COUNT':
+          if (badge.requirement.category && progressData.currentTasksCount[badge.requirement.category]) {
+            meetsRequirement = progressData.currentTasksCount[badge.requirement.category] >= badge.requirement.count;
+          }
+          break;
+        case 'STREAK_DAYS':
+          meetsRequirement = progressData.totalStreakDays >= badge.requirement.count;
+          break;
+        case 'EMERGENCY_COUNT':
+          // Acil durum sayısı için özel sorgu gerekebilir
+          // Bu örnekte şimdilik false olarak bırakıyoruz
+          meetsRequirement = false;
+          break;
+        }
+        
+      // Eğer gereksinimi karşılıyorsa rozeti ver
+      if (meetsRequirement) {
+        const userBadge: UserBadge = {
           ...badge,
-          unlockedAt: new Date()
+          earnedAt: new Date().toISOString(),
+          progress: 100
         };
         
-        newBadges.push(newBadge);
-      }
-      
-      // Save new badges
-      if (newBadges.length > 0) {
+        // Kullanıcıya rozeti ekle
         await updateDoc(doc(db, this.usersCollection, userId), {
-          badges: [...currentBadges, ...newBadges]
+          badges: arrayUnion(userBadge)
         });
+        
+        // XP ödülü ver
+        await xpService.addAchievementXP(
+          userId, 
+          badge.name, 
+          badge.description, 
+          badge.level === 'BRONZE' ? 'SMALL' : badge.level === 'SILVER' || badge.level === 'GOLD' ? 'MEDIUM' : 'LARGE'
+        );
+        
+        newBadges.push(badge);
+        totalXPAwarded += badge.xpReward;
+      }
       }
       
-      return newBadges;
-    } catch (error) {
-      console.error('Error checking and awarding badges:', error);
-      return [];
-    }
+    return { newBadges, totalXPAwarded };
+  }
+  
+  async trackEmergencyTaskCompletion(userId: string): Promise<void> {
+    const userDoc = await getDoc(doc(db, this.usersCollection, userId));
+    const userData = userDoc.data();
+    
+    // Acil durum sayacını artır
+    const emergencyCount = (userData?.emergencyTasksCompleted || 0) + 1;
+    
+    await updateDoc(doc(db, this.usersCollection, userId), {
+      emergencyTasksCompleted: emergencyCount
+    });
+    
+    // Rozetleri kontrol et
+    await this.checkAndAwardBadges(userId);
   }
 
   async awardTestBadge(userId: string): Promise<Badge> {
-    try {
-      const userDoc = await getDoc(doc(db, this.usersCollection, userId));
-      const userData = userDoc.data();
-      const currentBadges = userData?.badges || [];
-
-      // Test rozeti oluştur
       const testBadge: Badge = {
         id: 'first_task',
         name: 'İlk Görev',
         description: 'İlk görevini tamamladın!',
-        icon: '🌟',
         level: 'BRONZE',
-        requiredXP: 0,
-        unlockedAt: new Date()
-      };
-
-      // Rozeti kaydet
+      category: 'GENERAL',
+      iconName: 'heart',
+      requirement: {
+        type: 'TASK_COUNT',
+        count: 1
+      },
+      xpReward: 50
+    };
+    
+    const userBadge = {
+      ...testBadge,
+      earnedAt: new Date().toISOString(),
+      progress: 100
+    };
+    
       await updateDoc(doc(db, this.usersCollection, userId), {
-        badges: [...currentBadges, testBadge]
+      badges: arrayUnion(userBadge)
       });
 
       return testBadge;
-    } catch (error) {
-      console.error('Error awarding test badge:', error);
-      throw error;
-    }
   }
 } 

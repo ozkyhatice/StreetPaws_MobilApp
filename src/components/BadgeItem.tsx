@@ -1,69 +1,34 @@
-import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, TouchableOpacity } from 'react-native';
-import { Text } from 'react-native-paper';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Badge } from '../types/badge';
+import { colors, typography, spacing, borderRadius, shadows } from '../config/theme';
+import { Badge as PaperBadge, Surface, Card } from 'react-native-paper';
+import { Star, Trophy, Shield, Award } from 'lucide-react-native';
 
 interface BadgeItemProps {
   badge: Badge;
-  isNew?: boolean;
-  onPress?: () => void;
+  onPress?: (badge: Badge) => void;
 }
 
-const BadgeItem: React.FC<BadgeItemProps> = ({ badge, isNew, onPress }) => {
-  const scaleAnim = useRef(new Animated.Value(isNew ? 0.5 : 1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(isNew ? 0 : 1)).current;
-
-  useEffect(() => {
-    if (isNew) {
-      Animated.sequence([
-        Animated.delay(300),
-        Animated.parallel([
-          Animated.spring(scaleAnim, {
-            toValue: 1.2,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 3,
-          }),
-          Animated.timing(opacityAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.sequence([
-            Animated.timing(rotateAnim, {
-              toValue: 1,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-            Animated.timing(rotateAnim, {
-              toValue: -1,
-              duration: 400,
-              useNativeDriver: true,
-            }),
-            Animated.timing(rotateAnim, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 50,
-          friction: 5,
-        }),
-      ]).start();
+export const BadgeItem = ({ badge, onPress }: BadgeItemProps) => {
+  const getBadgeIcon = () => {
+    switch (badge.level) {
+      case 'BRONZE':
+        return <Shield size={32} color="#CD7F32" />;
+      case 'SILVER':
+        return <Shield size={32} color="#C0C0C0" />;
+      case 'GOLD':
+        return <Trophy size={32} color="#FFD700" />;
+      case 'PLATINUM':
+        return <Award size={32} color="#E5E4E2" />;
+      case 'DIAMOND':
+        return <Star size={32} color="#B9F2FF" />;
+      default:
+        return <Star size={32} color={colors.primary} />;
     }
-  }, []);
+  };
 
-  const rotate = rotateAnim.interpolate({
-    inputRange: [-1, 0, 1],
-    outputRange: ['-20deg', '0deg', '20deg'],
-  });
-
-  const getBadgeColor = () => {
+  const getLevelBackgroundColor = () => {
     switch (badge.level) {
       case 'BRONZE':
         return '#CD7F32';
@@ -73,80 +38,152 @@ const BadgeItem: React.FC<BadgeItemProps> = ({ badge, isNew, onPress }) => {
         return '#FFD700';
       case 'PLATINUM':
         return '#E5E4E2';
+      case 'DIAMOND':
+        return '#B9F2FF';
       default:
-        return '#CD7F32';
+        return colors.primary;
     }
   };
 
+  const getBadgeEmoji = () => {
+    if (badge.icon) {
+      return (
+        <Text style={styles.badgeIcon}>{badge.icon}</Text>
+      );
+    }
+    return null;
+  };
+
+  const handlePress = () => {
+    if (onPress) {
+      onPress(badge);
+    }
+  };
+
+  const isUnlocked = !!badge.unlockedAt;
+
   return (
-    <TouchableOpacity onPress={onPress}>
-      <Animated.View
-        style={[
-          styles.container,
-          {
-            backgroundColor: getBadgeColor(),
-            transform: [
-              { scale: scaleAnim },
-              { rotate },
-            ],
-            opacity: opacityAnim,
-          },
-        ]}
-      >
-        <Text style={styles.icon}>{badge.icon}</Text>
-        <Text style={styles.name}>{badge.name}</Text>
-        {isNew && (
-          <View style={styles.newBadge}>
-            <Text style={styles.newText}>Yeni!</Text>
+    <TouchableOpacity onPress={handlePress} activeOpacity={0.7}>
+      <Card style={[styles.container, !isUnlocked && styles.lockedContainer]}>
+        <Surface style={styles.badgeContent}>
+          <View style={[styles.iconContainer, { backgroundColor: getLevelBackgroundColor() + '30' }]}>
+            {isUnlocked ? getBadgeIcon() : <Shield size={32} color={colors.textDisabled} />}
+            {isUnlocked && getBadgeEmoji()}
+          </View>
+          
+          <View style={styles.badgeDetails}>
+            <Text style={isUnlocked ? styles.badgeName : styles.lockedBadgeName}>
+              {badge.name}
+            </Text>
+            <Text style={isUnlocked ? styles.badgeDescription : styles.lockedBadgeDescription} numberOfLines={2}>
+              {badge.description}
+            </Text>
+            
+            <View style={styles.levelContainer}>
+              <PaperBadge
+                style={[
+                  styles.levelBadge, 
+                  isUnlocked && { backgroundColor: getLevelBackgroundColor() }
+                ]}
+              >
+                {badge.level}
+              </PaperBadge>
+              
+              {isUnlocked && badge.unlockedAt && (
+                <Text style={styles.dateText}>
+                  {new Date(badge.unlockedAt).toLocaleDateString('tr-TR')}
+                </Text>
+              )}
+            </View>
+          </View>
+        </Surface>
+        
+        {!isUnlocked && (
+          <View style={styles.lockedOverlay}>
+            <Text style={styles.lockedText}>🔒</Text>
           </View>
         )}
-      </Animated.View>
+      </Card>
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    borderRadius: 12,
+    marginVertical: spacing.sm,
+    marginHorizontal: spacing.screenPadding,
+    borderRadius: borderRadius.medium,
+    overflow: 'hidden',
+    ...shadows.small,
+  },
+  lockedContainer: {
+    opacity: 0.7,
+    backgroundColor: colors.surface + '70',
+  },
+  badgeContent: {
+    flexDirection: 'row',
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    margin: 8,
-    width: 120,
-    height: 120,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    marginRight: spacing.md,
   },
-  icon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  name: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    color: '#FFFFFF',
-  },
-  newBadge: {
+  badgeIcon: {
     position: 'absolute',
-    top: -5,
-    right: -5,
-    backgroundColor: '#FF4081',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    bottom: -10,
+    right: -10,
+    fontSize: 20,
   },
-  newText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
+  badgeDetails: {
+    flex: 1,
+    justifyContent: 'center',
   },
-});
-
-export default BadgeItem; 
+  badgeName: {
+    ...typography.subtitle1,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xxs,
+  },
+  lockedBadgeName: {
+    ...typography.subtitle1,
+    color: colors.textDisabled,
+    fontWeight: '600',
+    marginBottom: spacing.xxs,
+  },
+  badgeDescription: {
+    ...typography.body2,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  lockedBadgeDescription: {
+    ...typography.body2,
+    color: colors.textDisabled,
+    marginBottom: spacing.sm,
+  },
+  levelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  levelBadge: {
+    backgroundColor: colors.textDisabled,
+  },
+  dateText: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    marginLeft: spacing.sm,
+  },
+  lockedOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    padding: spacing.sm,
+  },
+  lockedText: {
+    fontSize: 14,
+  },
+}); 

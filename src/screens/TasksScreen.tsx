@@ -21,13 +21,23 @@ import { Task, TaskFilter } from '../types/task';
 import { TaskService } from '../services/taskService';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MapPin, Search, Filter, Plus, RefreshCw } from 'lucide-react-native';
-import { Text, Chip, Badge, Divider } from 'react-native-paper';
+import { MapPin, Search, Filter, Plus, RefreshCw, Clock, CheckCircle, AlertCircle } from 'lucide-react-native';
+import { Text, Chip, Badge, Divider, Card, Avatar, Button as PaperButton, IconButton } from 'react-native-paper';
+import { TabView, SceneMap, TabBar } from 'react-native-tab-view';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types/navigation';
 import { EmergencyService, EmergencyRequest } from '../services/emergencyService';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../hooks/useAuth';
+import { TaskList } from '../components/TaskList';
+import { EmergencyTaskList } from '../components/EmergencyTaskList';
+import { TaskProgressCard } from '../components/TaskProgressCard';
+import { Award } from 'lucide-react-native';
+
+// Debug imports
+console.log('TaskList imported as:', TaskList);
+console.log('EmergencyTaskList imported as:', EmergencyTaskList);
+console.log('TaskProgressCard imported as:', TaskProgressCard);
 
 const { width } = Dimensions.get('window');
 const isSmallScreen = width < 375;
@@ -136,9 +146,17 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<ListItem[]>([]);
-  const [filter, setFilter] = useState<'all' | 'tasks' | 'emergencies' | 'completed'>('all');
+  const [filter, setFilter] = useState<TaskFilter>({});
   const [searchText, setSearchText] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [tabIndex, setTabIndex] = useState(0);
+  const [showAchievements, setShowAchievements] = useState(false);
+  
+  // TabView configuration
+  const [tabRoutes] = useState([
+    { key: 'emergency', title: 'Acil Durumlar' },
+    { key: 'regular', title: 'Görevler' }
+  ]);
 
   const taskService = TaskService.getInstance();
   const emergencyService = EmergencyService.getInstance();
@@ -188,7 +206,14 @@ export default function TasksScreen() {
 
   const handleItemPress = (item: ListItem) => {
     if (item.type === 'task') {
-      navigation.navigate('TaskDetail', { taskId: item.data.id! });
+      if (!item.data || !(item.data as Task).id) {
+        console.error("TasksScreen - Invalid task or missing ID:", item.data);
+        return;
+      }
+      
+      const taskId = ((item.data as Task).id || '').toString();
+      console.log("TasksScreen - Navigating to TaskDetail with ID:", taskId);
+      navigation.navigate('TaskDetail', { taskId: taskId });
     } else {
       // Here you can navigate to an emergency detail screen if you have one
       Alert.alert(
@@ -199,12 +224,14 @@ export default function TasksScreen() {
   };
 
   const getFilteredItems = () => {
-    if (filter === 'all') return items;
-    if (filter === 'tasks') return items.filter(item => item.type === 'task' && !(item.data as Task).completed);
-    if (filter === 'emergencies') return items.filter(item => item.type === 'emergency');
-    if (filter === 'completed') return items.filter(item => 
-      item.type === 'task' && (item.data as Task).completed || 
-      (item.type === 'emergency' && (item.data as EmergencyRequest).status === 'resolved')
+    if (filter.filterType === 'all') return items;
+    if (filter.filterType === 'tasks') return items.filter(item => item.type === 'task' && (item.data as Task).status !== 'COMPLETED');
+    if (filter.filterType === 'emergencies') return items.filter(item => item.type === 'emergency');
+    if (filter.filterType === 'completed') return items.filter(item => 
+      item.type === 'task' && (item.data as Task).status === 'COMPLETED'
+    );
+    if (filter.filterType === 'awaiting_approval') return items.filter(item => 
+      item.type === 'task' && (item.data as Task).status === 'AWAITING_APPROVAL'
     );
     
     return items;
@@ -231,7 +258,7 @@ export default function TasksScreen() {
             <Ionicons name="location-outline" size={14} /> {typeof task.location === 'object' ? task.location.address : task.location}
           </Text>
           
-          {task.completed && task.completedBy && (
+          {task.status === 'COMPLETED' && task.completedBy && (
             <View style={styles.completedByContainer}>
               <Text style={styles.completedByLabel}>Tamamlayan:</Text>
               <View style={styles.completedByInfo}>
@@ -250,10 +277,10 @@ export default function TasksScreen() {
             </Text>
             <View style={[
               styles.statusBadge,
-              { backgroundColor: task.completed ? colors.success : colors.primary }
+              { backgroundColor: task.status === 'COMPLETED' ? colors.success : colors.primary }
             ]}>
               <Text style={styles.statusText}>
-                {task.completed ? 'Tamamlandı' : 'Açık'}
+                {task.status === 'COMPLETED' ? 'Tamamlandı' : 'Açık'}
               </Text>
             </View>
           </View>
@@ -349,7 +376,7 @@ export default function TasksScreen() {
   };
 
   const clearFilters = () => {
-    setFilter('all');
+    setFilter({ filterType: 'all' });
     setSearchText('');
   };
 
@@ -418,13 +445,13 @@ export default function TasksScreen() {
     value: any
   ) => {
     const isSelected = filter[filterKey] === value;
-    const chipColor = getChipColor(filterKey, value);
+    const chipColor = getChipColor(String(filterKey), value);
     
     return (
       <Chip
         mode={isSelected ? "flat" : "outlined"}
         selected={isSelected}
-        selectedColor={isSelected ? "white" : chipColor}
+        selectedColor={isSelected ? "#ffffff" : chipColor}
         style={[
           styles.filterChip,
           isSelected && { backgroundColor: chipColor }
@@ -458,91 +485,158 @@ export default function TasksScreen() {
 
   const activeFilterCount = Object.values(filter).filter(v => v !== undefined).length;
 
+  const toggleAchievements = () => {
+    setShowAchievements(!showAchievements);
+  };
+
+  // Tab views for regular and emergency tasks
+  const EmergencyTasksRoute = () => (
+    <EmergencyTaskList 
+      navigation={navigation}
+    />
+  );
+
+  const RegularTasksRoute = () => (
+    <View style={{flex: 1}}>
+      <TaskList 
+        filter={filter} 
+        onFilterChange={setFilter} 
+        navigation={navigation}
+      />
+      {user && user.uid && (
+        <TaskProgressCard 
+          userId={user.uid} 
+          onBadgePress={toggleAchievements} 
+        />
+      )}
+    </View>
+  );
+
+  const renderScene = SceneMap({
+    emergency: EmergencyTasksRoute,
+    regular: RegularTasksRoute,
+  });
+
+  const renderTabBar = (props: any) => (
+    <TabBar
+      {...props}
+      indicatorStyle={{ backgroundColor: colors.primary }}
+      style={{ backgroundColor: colors.background }}
+      labelStyle={{ color: colors.text, fontSize: 14, fontWeight: '600' }}
+      activeColor={colors.primary}
+      inactiveColor={colors.textSecondary}
+    />
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.pageTitle}>Görevler ve Acil Durumlar</Text>
+      <LinearGradient
+        colors={[colors.primary, colors.primaryDark]}
+        style={styles.header}
+      >
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputWrapper}>
+            <Search size={20} color={colors.textSecondary} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Görev ara..."
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholderTextColor={colors.textSecondary}
+            />
+          </View>
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <Filter size={24} color="#ffffff" />
+          </TouchableOpacity>
       </View>
       
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabsContainer}
+          contentContainerStyle={styles.filterChipsContainer}
       >
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'all' && styles.activeFilterButton]}
-          onPress={() => setFilter('all')}
-        >
-          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
-            Tümü
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'tasks' && styles.activeFilterButton]}
-          onPress={() => setFilter('tasks')}
-        >
-          <Text style={[styles.filterText, filter === 'tasks' && styles.activeFilterText]}>
-            Görevler
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'emergencies' && styles.activeFilterButton]}
-          onPress={() => setFilter('emergencies')}
-        >
-          <Text style={[styles.filterText, filter === 'emergencies' && styles.activeFilterText]}>
-            Acil Durumlar
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'completed' && styles.activeFilterButton]}
-          onPress={() => setFilter('completed')}
-        >
-          <Text style={[styles.filterText, filter === 'completed' && styles.activeFilterText]}>
-            Tamamlananlar
-          </Text>
-        </TouchableOpacity>
+          
       </ScrollView>
-      
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+      </LinearGradient>
+    
+      {/* Show summary cards */}
+      <View style={styles.summaryContainer}>
+        <Card style={styles.summaryCard}>
+          <Card.Content>
+            <View style={styles.summaryContent}>
+              <View style={styles.summaryIconContainer}>
+                <Clock size={24} color={colors.warning} />
         </View>
-      ) : (
-        <FlatList
-          data={getFilteredItems()}
-          renderItem={renderItem}
-          keyExtractor={(item) => `${item.type}-${item.data.id}`}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Gösterilecek öğe bulunamadı</Text>
+              <View>
+                <Text style={styles.summaryTitle}>Onay Bekleyen</Text>
+                <Text style={styles.summaryCount}>
+                  {items.filter(item => 
+                    item.type === 'task' && (item.data as Task).status === 'AWAITING_APPROVAL'
+                  ).length}
+                </Text>
             </View>
-          }
-        />
+            </View>
+          </Card.Content>
+        </Card>
+        
+        <Card style={styles.summaryCard}>
+          <Card.Content>
+            <View style={styles.summaryContent}>
+              <View style={[styles.summaryIconContainer, { backgroundColor: colors.success + '20' }]}>
+                <CheckCircle size={24} color={colors.success} />
+              </View>
+              <View>
+                <Text style={styles.summaryTitle}>Tamamlanan</Text>
+                <Text style={styles.summaryCount}>
+                  {items.filter(item => 
+                    item.type === 'task' && (item.data as Task).status === 'COMPLETED'
+                  ).length}
+                </Text>
+              </View>
+            </View>
+          </Card.Content>
+        </Card>
+        
+        <Card style={styles.summaryCard}>
+          <Card.Content>
+            <View style={styles.summaryContent}>
+              <View style={[styles.summaryIconContainer, { backgroundColor: colors.error + '20' }]}>
+                <AlertCircle size={24} color={colors.error} />
+              </View>
+              <View>
+                <Text style={styles.summaryTitle}>Acil Görevler</Text>
+                <Text style={styles.summaryCount}>
+                  {items.filter(item => item.type === 'emergency').length}
+                </Text>
+              </View>
+            </View>
+          </Card.Content>
+        </Card>
+      </View>
+
+      {showFilters && (
+        <View style={styles.advancedFiltersContainer}>
+          {/* ... existing filter chips ... */}
+        </View>
       )}
-      
-      <TouchableOpacity 
-        style={styles.floatingButton}
-        onPress={() => navigation.navigate('EmergencyHelp')}
-      >
-        <Ionicons name="add" size={24} color="white" />
+
+      <TabView
+        navigationState={{ index: tabIndex, routes: tabRoutes }}
+        renderScene={renderScene}
+        onIndexChange={setTabIndex}
+        initialLayout={{ width }}
+        renderTabBar={renderTabBar}
+      />
+
+      <TouchableOpacity style={styles.fab} onPress={handleCreateTask}>
+        <Plus size={24} color="#ffffff" />
       </TouchableOpacity>
     </SafeAreaView>
   );
 }
-
-const ScrollableTags = ({ children }) => (
-  <ScrollView 
-    horizontal 
-    showsHorizontalScrollIndicator={false}
-    contentContainerStyle={styles.scrollableTags}
-  >
-    {children}
-  </ScrollView>
-);
 
 const styles = StyleSheet.create({
   container: {
@@ -550,51 +644,106 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.white,
+    padding: spacing.md,
+    borderBottomLeftRadius: borderRadius.large,
+    borderBottomRightRadius: borderRadius.large,
+    ...shadows.medium,
   },
-  pageTitle: {
-    fontSize: 20,
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenPadding,
+    marginBottom: spacing.sm,
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
+    paddingHorizontal: spacing.md,
+    height: 48,
+    ...shadows.small,
+  },
+  searchIcon: {
+    marginRight: spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    height: 48,
+    marginLeft: spacing.sm,
+    color: colors.text,
+    ...typography.body1,
+  },
+  filterButton: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.medium,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: spacing.sm,
+    ...shadows.small,
+  },
+  filterChipsContainer: {
+    paddingVertical: spacing.sm,
+    flexDirection: 'row',
+  },
+  filterChip: {
+    marginRight: spacing.sm,
+    backgroundColor: "#ffffff",
+    borderRadius: 50,
+    height: 36,
+  },
+  selectedChip: {
+    backgroundColor: colors.secondary,
+  },
+  chipText: {
+    color: colors.text,
+  },
+  selectedChipText: {
+    color: "#ffffff",
+  },
+  summaryContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  summaryCard: {
+    flex: 1,
+    marginHorizontal: spacing.xxs,
+    elevation: 2,
+    borderRadius: borderRadius.medium,
+  },
+  summaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  summaryIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.warning + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  summaryTitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  summaryCount: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
+  },
+  advancedFiltersContainer: {
+    // ... existing styles ...
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  tabsContainer: {
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingHorizontal: spacing.sm,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    padding: spacing.sm,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  filterButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-    marginRight: spacing.xs,
-  },
-  activeFilterButton: {
-    borderBottomColor: colors.primary,
-  },
-  filterText: {
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  activeFilterText: {
-    color: colors.primary,
-    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,
@@ -607,7 +756,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  floatingButton: {
+  fab: {
     position: 'absolute',
     bottom: 20,
     right: 20,
@@ -653,94 +802,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.screenPadding,
-    marginBottom: spacing.sm,
-  },
-  searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.medium,
-    paddingHorizontal: spacing.md,
-    height: 48,
-    ...shadows.small,
-  },
-  searchInput: {
-    flex: 1,
-    height: 48,
-    marginLeft: spacing.sm,
-    color: colors.text,
-    ...typography.body1,
-  },
-  clearButton: {
-    color: colors.textTertiary,
-    fontSize: 16,
-    paddingHorizontal: spacing.xs,
-  },
-  filterButton: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.medium,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: spacing.sm,
-    ...shadows.small,
-  },
-  filterBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: colors.secondary,
-  },
-  filtersWrapper: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.medium,
-    marginHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    ...shadows.small,
-  },
-  filterSection: {
-    marginBottom: spacing.sm,
-  },
-  filterTitle: {
-    ...typography.subtitle2,
-    color: colors.text,
-    marginBottom: spacing.xs,
-    fontWeight: '600',
-  },
-  scrollableTags: {
-    paddingVertical: spacing.xs,
-    paddingRight: spacing.lg,
-  },
-  filterChip: {
-    marginRight: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  clearAllButton: {
-    alignSelf: 'center',
-    paddingVertical: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  clearAllText: {
-    ...typography.button,
-    color: colors.primary,
-  },
-  listContent: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.sm,
-  },
-  emptyTitle: {
-    ...typography.h3,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
   },
   itemCard: {
     backgroundColor: '#fff',
@@ -835,5 +896,53 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '600',
+  },
+  listContent: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingTop: spacing.sm,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  tabs: {
+    backgroundColor: colors.background,
+  },
+  tabIndicator: {
+    backgroundColor: colors.primary,
+  },
+  tabLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: spacing.md,
+  },
+  contentTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  contentText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  contentButton: {
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: borderRadius.medium,
+    alignItems: 'center',
+  },
+  contentButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

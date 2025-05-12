@@ -51,6 +51,8 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
         return styles.completedBadge;
       case 'CANCELLED':
         return styles.cancelledBadge;
+      case 'AWAITING_APPROVAL':
+        return styles.awaitingApprovalBadge;
       default:
         return {};
     }
@@ -66,6 +68,8 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
         return 'Tamamlandı';
       case 'CANCELLED':
         return 'İptal Edildi';
+      case 'AWAITING_APPROVAL':
+        return 'Onay Bekliyor';
       default:
         return status;
     }
@@ -102,6 +106,13 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
           <View style={[styles.statusBadge, getStatusBadgeStyle(task.status)]}>
             <Text style={styles.statusText}>{getStatusText(task.status)}</Text>
           </View>
+
+          {task.status === 'AWAITING_APPROVAL' && task.completedBy && (
+            <View style={styles.completedByInfo}>
+              <Icon name="account-check" size={14} color={colors.warning} />
+              <Text style={styles.awaitingApprovalText}>Onay Bekliyor</Text>
+            </View>
+          )}
 
           <View style={styles.metadataContainer}>
             <View style={styles.xpContainer}>
@@ -207,6 +218,11 @@ const styles = StyleSheet.create({
   cancelledBadge: {
     backgroundColor: colors.textDisabled + '20',
   },
+  awaitingApprovalBadge: {
+    backgroundColor: colors.warning + '20',
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
   statusText: {
     ...typography.caption,
     color: colors.text,
@@ -237,5 +253,16 @@ const styles = StyleSheet.create({
     height: 150,
     borderRadius: borderRadius.xs,
     marginTop: spacing.sm,
+  },
+  completedByInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.sm,
+  },
+  awaitingApprovalText: {
+    ...typography.caption,
+    color: colors.warning,
+    fontWeight: '600',
+    marginLeft: spacing.xxs,
   },
 }); 

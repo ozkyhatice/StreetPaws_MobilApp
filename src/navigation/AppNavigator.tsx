@@ -30,6 +30,7 @@ import SplashScreen from '../screens/SplashScreen';
 import VerifyEmailScreen from '../screens/VerifyEmailScreen';
 import VerificationsScreen from '../screens/VerificationsScreen';
 import EmergencyHelpScreen from '../screens/EmergencyHelpScreen';
+import { AchievementsScreen } from '../screens/AchievementsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -224,13 +225,19 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
       
       <Stack.Screen 
         name="TaskDetail"
-        options={{ title: 'Görev Detayı' }}
+        options={{ headerShown: false }}
       >
-        {({ route }) => (
-          <AuthGuard>
-            <TaskDetailScreen taskId={route.params.taskId} />
-          </AuthGuard>
-        )}
+        {({ route }) => {
+          console.log("AppNavigator - TaskDetail route params:", route.params);
+          const taskId = route.params?.taskId?.toString() || '';
+          console.log("AppNavigator - Parsed taskId:", taskId);
+          
+          return (
+            <AuthGuard>
+              <TaskDetailScreen taskId={taskId} />
+            </AuthGuard>
+          );
+        }}
       </Stack.Screen>
       
       <Stack.Screen 
@@ -346,6 +353,12 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
       <Stack.Screen
         name="EmergencyHelp"
         component={EmergencyHelpScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen
+        name="Achievements"
+        component={AchievementsScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

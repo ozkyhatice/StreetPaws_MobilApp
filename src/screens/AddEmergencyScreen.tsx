@@ -17,31 +17,35 @@ import { colors, spacing, shadows, borderRadius, typography } from '../config/th
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import { EmergencyService, EmergencyRequest } from '../services/emergencyService';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { useAuth } from '../hooks/useAuth';
 
-// Tip seçenekleri
+// Tip seçenekleri - EmergencyRequest.urgency ile uyumlu olmalı
 const URGENCY_OPTIONS = [
-  { label: 'Kritik', value: 'CRITICAL', color: colors.error },
-  { label: 'Yüksek', value: 'HIGH', color: colors.secondary },
-  { label: 'Orta', value: 'MEDIUM', color: colors.warning },
-  { label: 'Düşük', value: 'LOW', color: colors.info },
+  { label: 'Kritik', value: 'high' as const, color: colors.error },
+  { label: 'Yüksek', value: 'high' as const, color: colors.secondary },
+  { label: 'Orta', value: 'medium' as const, color: colors.warning },
+  { label: 'Düşük', value: 'low' as const, color: colors.info },
 ];
 
 // Kategori seçenekleri
 const CATEGORY_OPTIONS = [
-  { label: 'Yaralı Hayvan', value: 'INJURED', icon: 'medical-bag' },
-  { label: 'Aç/Susuz', value: 'HUNGRY', icon: 'food' },
-  { label: 'Kayıp', value: 'LOST', icon: 'compass' },
-  { label: 'Diğer', value: 'OTHER', icon: 'help-circle' },
+  { label: 'Yaralı Hayvan', value: 'Kedi', icon: 'medical-bag' },
+  { label: 'Aç/Susuz', value: 'Köpek', icon: 'food' },
+  { label: 'Kayıp', value: 'Kuş', icon: 'compass' },
+  { label: 'Diğer', value: 'Diğer', icon: 'help-circle' },
 ];
 
 export default function AddEmergencyScreen() {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
-  const [images, setImages] = useState([]);
-  const [urgency, setUrgency] = useState('MEDIUM');
-  const [category, setCategory] = useState('INJURED');
+  const [images, setImages] = useState<string[]>([]);
+  const [urgency, setUrgency] = useState<'high' | 'medium' | 'low'>('medium');
+  const [category, setCategory] = useState('Kedi');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const titleError = title.length > 0 && title.length < 3;
@@ -79,18 +83,60 @@ export default function AddEmergencyScreen() {
     setImages(newImages);
   };
   
+  // Firebase Storage'a görsel yükleme
+  const uploadImage = async (uri) => {
+    const storage = getStorage();
+    const filename = uri.substring(uri.lastIndexOf('/') + 1);
+    const storageRef = ref(storage, `emergency_images/${Date.now()}_${filename}`);
+    
+    // URI'den blob oluştur
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    
+    // Firebase'e yükle
+    await uploadBytes(storageRef, blob);
+    
+    // İndirme URL'sini al
+    return await getDownloadURL(storageRef);
+  };
+  
   // Formun gönderilmesi
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isFormValid) {
       Alert.alert('Hata', 'Lütfen tüm alanları doğru şekilde doldurunuz');
       return;
     }
     
+    if (!user) {
+      Alert.alert('Hata', 'Acil durum bildirmek için giriş yapmalısınız');
+      return;
+    }
+    
     setIsSubmitting(true);
     
-    // API isteği yapılacak yer - şimdilik simulasyon
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      let imageUrl = null;
+      if (images.length > 0) {
+        // İlk görseli yükle (şimdilik sadece bir görsel destekleniyor)
+        imageUrl = await uploadImage(images[0]);
+      }
+      
+      const emergencyService = EmergencyService.getInstance();
+      const emergencyRequest: Omit<EmergencyRequest, 'id'> = {
+        title,
+        description,
+        location,
+        animalType: category,
+        urgency,
+        imageUrl,
+        userId: user.uid,
+        userName: user.displayName || 'Kullanıcı',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+      
+      const emergencyId = await emergencyService.createEmergencyRequest(emergencyRequest);
+      
       Alert.alert(
         'Başarılı', 
         'Acil durum bildiriminiz alındı. Teşekkür ederiz!',
@@ -101,7 +147,12 @@ export default function AddEmergencyScreen() {
           }
         ]
       );
-    }, 1500);
+    } catch (error) {
+      console.error('Error creating emergency request:', error);
+      Alert.alert('Hata', 'Acil durum bildirimi gönderilirken bir hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
