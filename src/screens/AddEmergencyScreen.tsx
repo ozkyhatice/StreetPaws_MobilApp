@@ -23,7 +23,7 @@ import { useAuth } from '../hooks/useAuth';
 
 // Tip seçenekleri - EmergencyRequest.urgency ile uyumlu olmalı
 const URGENCY_OPTIONS = [
-  { label: 'Kritik', value: 'high' as const, color: colors.error },
+  { label: 'Kritik', value: 'critical' as const, color: colors.error },
   { label: 'Yüksek', value: 'high' as const, color: colors.secondary },
   { label: 'Orta', value: 'medium' as const, color: colors.warning },
   { label: 'Düşük', value: 'low' as const, color: colors.info },
@@ -44,7 +44,7 @@ export default function AddEmergencyScreen() {
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [images, setImages] = useState<string[]>([]);
-  const [urgency, setUrgency] = useState<'high' | 'medium' | 'low'>('medium');
+  const [urgency, setUrgency] = useState<'critical' | 'high' | 'medium' | 'low'>('medium');
   const [category, setCategory] = useState('Kedi');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -115,12 +115,21 @@ export default function AddEmergencyScreen() {
     setIsSubmitting(true);
     
     try {
+      // Görselleri işle
       let imageUrl = null;
       if (images.length > 0) {
         // İlk görseli yükle (şimdilik sadece bir görsel destekleniyor)
+        try {
+          console.log("Uploading image to Firebase Storage...");
         imageUrl = await uploadImage(images[0]);
+          console.log("Image uploaded successfully:", imageUrl);
+        } catch (imageError) {
+          console.error("Error uploading image:", imageError);
+          // Resim yükleme hatası durumunda bile devam ediyoruz, sadece log'a yazıyoruz
+        }
       }
       
+      // Acil durum verisini hazırla
       const emergencyService = EmergencyService.getInstance();
       const emergencyRequest: Omit<EmergencyRequest, 'id'> = {
         title,
@@ -133,23 +142,33 @@ export default function AddEmergencyScreen() {
         userName: user.displayName || 'Kullanıcı',
         status: 'pending',
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        contactPhone: user.phoneNumber || ''
       };
       
-      const emergencyId = await emergencyService.createEmergencyRequest(emergencyRequest);
+      console.log("Creating emergency request:", emergencyRequest);
       
+      // Firestore'a kaydet
+      const emergencyId = await emergencyService.createEmergencyRequest(emergencyRequest);
+      console.log("Emergency request created successfully with ID:", emergencyId);
+      
+      // Başarı mesajı göster
       Alert.alert(
         'Başarılı', 
         'Acil durum bildiriminiz alındı. Teşekkür ederiz!',
         [
           { 
             text: 'Tamam', 
-            onPress: () => navigation.goBack() 
+            onPress: () => {
+              // Görev ekranına geri dön ve sayfayı yenile
+              navigation.goBack();
+            }
           }
         ]
       );
     } catch (error) {
       console.error('Error creating emergency request:', error);
-      Alert.alert('Hata', 'Acil durum bildirimi gönderilirken bir hata oluştu. Lütfen tekrar deneyin.');
+      Alert.alert('Hata', 'Acil durum bildirimi gönderilirken bir hata oluştu: ' + error.message);
     } finally {
       setIsSubmitting(false);
     }

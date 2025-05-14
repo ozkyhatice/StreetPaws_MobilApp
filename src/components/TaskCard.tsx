@@ -75,6 +75,16 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
     }
   };
 
+  // Add a utility function for safe date formatting
+  const safeFormatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch (error) {
+      console.warn('Invalid date format:', error);
+      return 'Tarih bilgisi yok';
+    }
+  };
+
   return (
     <TouchableOpacity 
       onPress={() => onPress(task)}
@@ -124,7 +134,7 @@ export const TaskCard = ({ task, onPress }: TaskCardProps) => {
               <View style={styles.deadlineContainer}>
                 <Icon name="clock-outline" size={16} color={colors.textSecondary} />
                 <Text style={styles.deadlineText}>
-                  {new Date(task.deadline).toLocaleDateString()}
+                  {safeFormatDate(task.deadline)}
                 </Text>
               </View>
             )}

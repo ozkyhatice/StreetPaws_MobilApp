@@ -1,6 +1,6 @@
 import { XPActivity, XP_REWARDS } from '../types/xp';
 import { db } from '../config/firebase';
-import { collection, doc, getDoc, updateDoc, increment, arrayUnion, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, doc, getDoc, updateDoc, increment, arrayUnion, query, where, orderBy, limit, getDocs, setDoc } from 'firebase/firestore';
 import { EmergencyLevel } from '../types/task';
 
 interface UserXPData {
@@ -92,16 +92,28 @@ export class XPService {
   }
 
   async addXP(userId: string, activity: XPActivity): Promise<void> {
-    // Simülasyon için konsola yazdır
-    console.log(`Adding XP to user ${userId}: ${activity.xpAmount} XP for ${activity.title}`);
-    
-    // Firestore güncellemesi (gerçek uygulamada)
-    // const userRef = doc(db, this.usersCollection, userId);
-    
-    // await updateDoc(userRef, {
-    //   xp: increment(activity.xpAmount),
-    //   recentActivities: arrayUnion(activity)
-    // });
+    try {
+      // XP ekleme aktivitesini loglama
+      console.log(`Adding XP to user ${userId}: ${activity.xpAmount} XP for ${activity.title}`);
+      
+      // Aktiviteye zaman damgası ekle
+      const activityWithTimestamp = {
+        ...activity,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Firestore güncellemesi
+      const userRef = doc(db, this.usersCollection, userId);
+      
+      await updateDoc(userRef, {
+        xp: increment(activity.xpAmount),
+        recentActivities: arrayUnion(activityWithTimestamp)
+      });
+      
+      console.log(`XPService: Successfully added ${activity.xpAmount} XP to user ${userId}`);
+    } catch (error) {
+      console.error(`XPService: Error adding XP to user ${userId}: ${error.message}`);
+    }
   }
 
   async addTaskCompletionXP(
@@ -111,50 +123,70 @@ export class XPService {
     isEmergency: boolean = false, 
     emergencyLevel?: EmergencyLevel
   ): Promise<void> {
-    // Temel XP ekle
-    let xpAmount = XP_REWARDS.TASK_COMPLETION;
-    
-    // Acil durum ise ekstra XP ekle
-    if (isEmergency && emergencyLevel) {
-      if (emergencyLevel === 'URGENT') {
-        xpAmount += XP_REWARDS.EMERGENCY_TASK_URGENT;
-      } else if (emergencyLevel === 'CRITICAL') {
-        xpAmount += XP_REWARDS.EMERGENCY_TASK_CRITICAL;
+    try {
+      // Temel XP ekle
+      let xpAmount = XP_REWARDS.TASK_COMPLETION;
+      
+      // Acil durum ise ekstra XP ekle
+      if (isEmergency && emergencyLevel) {
+        if (emergencyLevel === 'URGENT') {
+          xpAmount += XP_REWARDS.EMERGENCY_TASK_URGENT;
+        } else if (emergencyLevel === 'CRITICAL') {
+          xpAmount += XP_REWARDS.EMERGENCY_TASK_CRITICAL;
+        }
       }
+      
+      console.log(`Adding task completion XP: ${xpAmount} for task "${taskTitle}"`);
+      
+      // XP ekle
+      await this.addXP(userId, {
+        title: 'Görev Tamamlandı',
+        description: `"${taskTitle}" görevi başarıyla tamamlandı`,
+        xpAmount: xpAmount,
+        type: 'TASK_COMPLETION',
+      });
+      
+      // Görev tamamlama kaydı - null veya undefined değer olmamasını sağla
+      const taskCompletion = {
+        taskId: taskId || 'unknown',
+        xp: xpAmount,
+        timestamp: new Date().toISOString(),
+        isEmergency: isEmergency || false,
+        title: taskTitle || 'Görev'
+      };
+      
+      // Kullanıcı belgesini kontrol et, yoksa oluştur
+      const userRef = doc(db, this.usersCollection, userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.log(`XPService: User does not exist, creating new document for user ${userId}`);
+        // Kullanıcı belgesi yoksa yeni oluştur
+        await setDoc(userRef, {
+          userId: userId,
+          xp: xpAmount,
+          recentActivities: [],
+          taskCompletions: [taskCompletion],
+          stats: {
+            tasksCompleted: 1
+          },
+          lastTaskCompletionDate: new Date().toISOString()
+        });
+      } else {
+        // Kullanıcı belgesi varsa güncelle
+        await updateDoc(userRef, {
+          taskCompletions: arrayUnion(taskCompletion),
+          lastTaskCompletionDate: new Date().toISOString()
+        });
+      }
+      
+      console.log(`XPService: Updated user ${userId} with task completion data`);
+      
+      // Çoklu görev ödüllerini kontrol et
+      await this.checkAndAddMultipleTaskBonus(userId);
+    } catch (error) {
+      console.error(`XPService: Error in addTaskCompletionXP for user ${userId}: ${error.message}`);
     }
-    
-    console.log(`Adding task completion XP: ${xpAmount} for task "${taskTitle}"`);
-    
-    // XP ekle
-    await this.addXP(userId, {
-      title: 'Görev Tamamlandı',
-      description: `"${taskTitle}" görevi başarıyla tamamlandı`,
-      xpAmount: xpAmount,
-      type: 'TASK_COMPLETION',
-    });
-    
-    // Kullanıcı bilgilerini al - simülasyon için atlanabilir
-    // const userDoc = await getDoc(doc(db, this.usersCollection, userId));
-    // const userData = userDoc.data();
-    
-    // Görev tamamlama ekle
-    const taskCompletion = {
-      taskId,
-      xp: xpAmount,
-      timestamp: new Date().toISOString()
-    };
-    
-    const updates: any = {
-      taskCompletions: arrayUnion(taskCompletion),
-      lastTaskCompletionDate: new Date().toISOString()
-    };
-    
-    // Streak kontrolü - simülasyon için atlanabilir
-    // Kullanıcıyı güncelle - simülasyon için atlanabilir
-    console.log(`Updating user ${userId} with task completion:`, updates);
-    
-    // Çoklu görev ödüllerini kontrol et
-    // await this.checkAndAddMultipleTaskBonus(userId);
   }
 
   async addEmergencyHelpXP(userId: string, emergencyTitle: string, emergencyLevel: EmergencyLevel = 'NORMAL', category: string): Promise<void> {
@@ -209,52 +241,97 @@ export class XPService {
     }
   }
   
+  async updateTaskProgressForCategory(userId: string, category: string): Promise<void> {
+    try {
+      // Mevcut ilerleme bilgilerini al
+      const progress = await this.getTaskProgress(userId);
+      
+      // İlgili kategori sayısını artır
+      progress.currentTasksCount[category] = (progress.currentTasksCount[category] || 0) + 1;
+      
+      // Tamamlanan toplam görev sayısını artır
+      progress.completedTasks += 1;
+      
+      console.log(`XPService: Updated task progress for user ${userId}, category ${category}:`, progress.currentTasksCount);
+      
+      // Firestore güncellemesi
+      const userRef = doc(db, this.usersCollection, userId);
+      
+      await updateDoc(userRef, {
+        [`achievements.categories.${category.toLowerCase()}`]: increment(1),
+        'stats.tasksCompleted': increment(1)
+      });
+      
+      console.log(`XPService: Firestore updated with category count for ${category}`);
+      
+      // Rozetleri kontrol et
+      await this.checkAndAwardBadgesForCategory(userId, category, progress.currentTasksCount[category]);
+    } catch (error) {
+      console.error(`XPService: Error updating task progress for category: ${error.message}`);
+    }
+  }
+
   private async checkAndAwardBadgesForCategory(userId: string, category: string, count: number): Promise<void> {
-    // Rozet eşik değerleri
-    const badgeThresholds = {
-      bronze: 5,
-      silver: 10,
-      gold: 25
-    };
-    
-    // Bronz rozet
-    if (count === badgeThresholds.bronze) {
-      await this.awardBadge(userId, `${category.toLowerCase()}_bronze`, `${category} Bronz Rozeti`);
-    }
-    
-    // Gümüş rozet
-    if (count === badgeThresholds.silver) {
-      await this.awardBadge(userId, `${category.toLowerCase()}_silver`, `${category} Gümüş Rozeti`);
-    }
-    
-    // Altın rozet
-    if (count === badgeThresholds.gold) {
-      await this.awardBadge(userId, `${category.toLowerCase()}_gold`, `${category} Altın Rozeti`);
+    try {
+      // Rozet eşik değerleri
+      const badgeThresholds = {
+        bronze: 5,
+        silver: 10,
+        gold: 25
+      };
+      
+      console.log(`XPService: Checking badges for user ${userId}, category ${category}, count ${count}`);
+      
+      // Bronz rozet
+      if (count === badgeThresholds.bronze) {
+        await this.awardBadge(userId, `${category.toLowerCase()}_bronze`, `${category} Bronz Rozeti`);
+      }
+      
+      // Gümüş rozet
+      if (count === badgeThresholds.silver) {
+        await this.awardBadge(userId, `${category.toLowerCase()}_silver`, `${category} Gümüş Rozeti`);
+      }
+      
+      // Altın rozet
+      if (count === badgeThresholds.gold) {
+        await this.awardBadge(userId, `${category.toLowerCase()}_gold`, `${category} Altın Rozeti`);
+      }
+    } catch (error) {
+      console.error(`XPService: Error checking badges for category: ${error.message}`);
     }
   }
   
   private async awardBadge(userId: string, badgeId: string, badgeName: string): Promise<void> {
-    console.log(`🏆 Awarding badge to user ${userId}: ${badgeName} (${badgeId})`);
-    
-    // XP Ödülü
-    await this.addXP(userId, {
-      title: 'Rozet Kazanıldı',
-      description: `"${badgeName}" rozeti kazanıldı!`,
-      xpAmount: 200,
-      type: 'BADGE_EARNED'
-    });
-    
-    // Firestore güncellemesi (gerçek uygulamada)
-    // await updateDoc(doc(db, this.usersCollection, userId), {
-    //   [`badges.${badgeId}`]: {
-    //     earnedAt: new Date().toISOString(),
-    //     name: badgeName
-    //   }
-    // });
+    try {
+      console.log(`XPService: Awarding badge to user ${userId}: ${badgeName} (${badgeId})`);
+      
+      // XP Ödülü
+      await this.addXP(userId, {
+        title: 'Rozet Kazanıldı',
+        description: `"${badgeName}" rozeti kazanıldı!`,
+        xpAmount: 200,
+        type: 'BADGE_EARNED'
+      });
+      
+      // Firestore güncellemesi
+      const userRef = doc(db, this.usersCollection, userId);
+      
+      await updateDoc(userRef, {
+        [`badges.${badgeId}`]: {
+          earnedAt: new Date().toISOString(),
+          name: badgeName
+        }
+      });
+      
+      console.log(`XPService: Badge ${badgeId} saved to Firestore for user ${userId}`);
+    } catch (error) {
+      console.error(`XPService: Error awarding badge: ${error.message}`);
+    }
   }
   
   async getTaskProgress(userId: string): Promise<{ 
     completedTasks: number; 
+    awaitingApprovalTasks: number;
     totalStreakDays: number;
     currentTasksCount: { [key: string]: number } 
   }> {
@@ -263,79 +340,87 @@ export class XPService {
         throw new Error('UserId is required');
       }
       
-      // Simülasyon için varsayılan değerler
-      return {
-        completedTasks: 10,
-        totalStreakDays: 3,
-        currentTasksCount: {
-          FEEDING: 2,
-          CLEANING: 1,
-          HEALTH: 4,
-          SHELTER: 3,
-          OTHER: 0
-        }
+      console.log(`XPService: Getting task progress for user ${userId}`);
+      
+      // Kullanıcı bilgilerini Firestore'dan al
+      const userDoc = await getDoc(doc(db, this.usersCollection, userId));
+      
+      // Varsayılan kategori sayaçları
+      const categoryCount: { [key: string]: number } = {
+        FEEDING: 0,
+        CLEANING: 0,
+        HEALTH: 0,
+        SHELTER: 0,
+        OTHER: 0
       };
       
-      // Kullanıcı bilgilerini al (gerçek uygulamada)
-      // const userDoc = await getDoc(doc(db, this.usersCollection, userId));
-      // 
-      // if (!userDoc.exists()) {
-      //   return {
-      //     completedTasks: 0,
-      //     totalStreakDays: 0,
-      //     currentTasksCount: {
-      //       FEEDING: 0,
-      //       CLEANING: 0,
-      //       HEALTH: 0,
-      //       SHELTER: 0,
-      //       OTHER: 0
-      //     }
-      //   };
-      // }
-      // 
-      // const userData = userDoc.data();
-      // 
-      // // Tamamlanan görev sayısı
-      // const completedTasks = userData?.taskCompletions?.length || 0;
-      // 
-      // // Toplam streak günü
-      // const totalStreakDays = userData?.streak || 0;
-      // 
-      // // Tüm tamamlanmış görevleri al
-      // const tasksQuery = query(
-      //   collection(db, this.tasksCollection),
-      //   where('completedBy.id', '==', userId),
-      //   orderBy('createdAt', 'desc')
-      // );
-      // 
-      // const tasksSnapshot = await getDocs(tasksQuery);
-      // 
-      // // Kategori bazında görev sayıları
-      // const categoryCount: { [key: string]: number } = {
-      //   FEEDING: 0,
-      //   CLEANING: 0,
-      //   HEALTH: 0,
-      //   SHELTER: 0,
-      //   OTHER: 0
-      // };
-      // 
-      // tasksSnapshot.forEach(doc => {
-      //   const task = doc.data();
-      //   if (task.category) {
-      //     categoryCount[task.category] = (categoryCount[task.category] || 0) + 1;
-      //   }
-      // });
-      // 
-      // return {
-      //   completedTasks,
-      //   totalStreakDays,
-      //   currentTasksCount: categoryCount
-      // };
+      // Kullanıcı bulunamazsa varsayılan değerleri döndür
+      if (!userDoc.exists()) {
+        console.log(`XPService: User document not found for userId: ${userId}`);
+        return {
+          completedTasks: 0,
+          awaitingApprovalTasks: 0,
+          totalStreakDays: 0,
+          currentTasksCount: categoryCount
+        };
+      }
+      
+      const userData = userDoc.data();
+      console.log(`XPService: User data retrieved for user ${userId}`);
+      
+      // Streak bilgisi
+      const totalStreakDays = userData?.streak || 0;
+      
+      // COMPLETED durumundaki görevleri sorgula
+      const completedTasksQuery = query(
+        collection(db, this.tasksCollection),
+        where('completedBy.id', '==', userId),
+        where('status', '==', 'COMPLETED')
+      );
+      
+      // AWAITING_APPROVAL durumundaki görevleri sorgula
+      const awaitingApprovalTasksQuery = query(
+        collection(db, this.tasksCollection),
+        where('completedBy.id', '==', userId),
+        where('status', '==', 'AWAITING_APPROVAL')
+      );
+      
+      // Sorguları çalıştır
+      const [completedSnapshot, awaitingApprovalSnapshot] = await Promise.all([
+        getDocs(completedTasksQuery),
+        getDocs(awaitingApprovalTasksQuery)
+      ]);
+      
+      console.log(`XPService: Found ${completedSnapshot.size} completed tasks and ${awaitingApprovalSnapshot.size} awaiting approval tasks for user ${userId}`);
+      
+      // Tamamlanan görevlerin kategori dağılımını hesapla
+      completedSnapshot.forEach(doc => {
+        const task = doc.data();
+        if (task.category && categoryCount.hasOwnProperty(task.category)) {
+          categoryCount[task.category] = (categoryCount[task.category] || 0) + 1;
+        } else if (task.category) {
+          categoryCount.OTHER = (categoryCount.OTHER || 0) + 1;
+        }
+      });
+      
+      // stats.tasksCompleted bilgisi varsa onu kullan, yoksa Firestore query sonucuna güven
+      const completedTasksCount = userData?.stats?.tasksCompleted || completedSnapshot.size;
+      
+      const result = {
+        completedTasks: completedTasksCount,
+        awaitingApprovalTasks: awaitingApprovalSnapshot.size,
+        totalStreakDays,
+        currentTasksCount: categoryCount
+      };
+      
+      console.log(`XPService: Task progress result for user ${userId}:`, result);
+      return result;
     } catch (error) {
-      console.error('Error getting task progress:', error);
+      console.error('XPService: Error getting task progress:', error);
       // Hata durumunda varsayılan değerler döndür
       return {
         completedTasks: 0,
+        awaitingApprovalTasks: 0,
         totalStreakDays: 0,
         currentTasksCount: {
           FEEDING: 0,
@@ -348,25 +433,46 @@ export class XPService {
     }
   }
   
-  async updateTaskProgressForCategory(userId: string, category: string): Promise<void> {
-    // Mevcut ilerleme bilgilerini al
-    const progress = await this.getTaskProgress(userId);
-    
-    // İlgili kategori sayısını artır
-    progress.currentTasksCount[category] = (progress.currentTasksCount[category] || 0) + 1;
-    
-    // Tamamlanan toplam görev sayısını artır
-    progress.completedTasks += 1;
-    
-    console.log(`Updated task progress for user ${userId}, category ${category}:`, progress.currentTasksCount);
-    
-    // Firestore güncellemesi (gerçek uygulamada)
-    // await updateDoc(doc(db, this.usersCollection, userId), {
-    //   [`achievements.categories.${category.toLowerCase()}`]: increment(1),
-    //   'stats.tasksCompleted': increment(1)
-    // });
-    
-    // Rozetleri kontrol et
-    await this.checkAndAwardBadgesForCategory(userId, category, progress.currentTasksCount[category]);
+  private async checkAndAddMultipleTaskBonus(userId: string): Promise<void> {
+    try {
+      // Kullanıcı belgesini al
+      const userRef = doc(db, this.usersCollection, userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.log(`XPService: User not found for bonus check: ${userId}`);
+        return;
+      }
+      
+      // Kullanıcının görev tamamlama kayıtlarını al
+      const userData = userDoc.data();
+      const taskCompletions = userData.taskCompletions || [];
+      
+      // Son 24 saat içinde tamamlanan görevleri filtrele
+      const now = new Date();
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      
+      const recentCompletions = taskCompletions.filter(task => {
+        const completionDate = new Date(task.timestamp);
+        return completionDate >= oneDayAgo;
+      });
+      
+      // Bonus XP hesapla (her görev için artan bonus)
+      if (recentCompletions.length >= 2) {
+        const bonusXP = Math.min(recentCompletions.length * 10, 50); // Max 50 XP bonus
+        
+        console.log(`XPService: User ${userId} completed ${recentCompletions.length} tasks in 24 hours. Awarding ${bonusXP} bonus XP`);
+        
+        // Bonus XP ver
+        await this.addXP(userId, {
+          title: 'Çoklu Görev Bonusu',
+          description: `24 saat içinde ${recentCompletions.length} görev tamamlandı`,
+          xpAmount: bonusXP,
+          type: 'MULTIPLE_TASK_BONUS'
+        });
+      }
+    } catch (error) {
+      console.error(`XPService: Error checking for multiple task bonus: ${error.message}`);
+    }
   }
 } 

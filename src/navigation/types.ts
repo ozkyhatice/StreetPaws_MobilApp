@@ -2,7 +2,7 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type RootStackParamList = {
   Splash: undefined;
-  TaskDetail: { taskId: string };
+  TaskDetail: { taskId: string; action?: string };
   Map: undefined;
   Donate: { campaignId: string };
 };

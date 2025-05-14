@@ -30,4 +30,5 @@ export type RootStackParamList = {
   Verifications: undefined;
   EmergencyHelp: undefined;
   Achievements: undefined;
+  DevTools: undefined;
 }; 

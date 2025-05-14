@@ -104,13 +104,51 @@ export function TaskList({ filter, onFilterChange, navigation }: TaskListProps) 
     }
   };
   
+  // Add a utility function to safely handle date formatting
+  const safeFormatDate = (dateString: string | undefined) => {
+    try {
+      // Check if dateString is undefined or empty
+      if (!dateString) {
+        console.warn('Invalid date format in TaskList: undefined or empty dateString');
+        return 'Tarih bilgisi yok';
+      }
+      
+      const date = new Date(dateString);
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date format in TaskList:', dateString);
+        return 'Geçersiz tarih';
+      }
+      
+      // Check if future date
+      const now = new Date();
+      if (date > now) {
+        // For future dates, just show the formatted date instead of using formatDistanceToNow
+        return date.toLocaleDateString('tr-TR', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      }
+      
+      // For past dates, use formatDistanceToNow
+      return formatDistanceToNow(date, { 
+        addSuffix: true,
+        locale: tr 
+      });
+    } catch (error) {
+      console.warn('Invalid date format in formatDistanceToNow:', error);
+      return 'Bilinmeyen tarih';
+    }
+  };
+  
   const renderTask = ({ item }: { item: Task }) => {
     const statusColor = getStatusColor(item.status);
     const categoryColor = getCategoryColor(item.category);
-    const timeAgo = formatDistanceToNow(new Date(item.createdAt), { 
-      addSuffix: true,
-      locale: tr 
-    });
+    const timeAgo = safeFormatDate(item.createdAt);
     
     return (
       <Card 

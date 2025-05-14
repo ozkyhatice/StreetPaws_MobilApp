@@ -7,6 +7,24 @@ import { Check, X, Clock, User, Calendar, FileText } from 'lucide-react-native';
 import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 
+// Güvenli tarih formatlama yardımcı fonksiyonu
+const formatTimeAgo = (dateString: string | Date | undefined | null): string => {
+  if (!dateString) return 'Belirtilmemiş';
+  
+  try {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    if (isNaN(date.getTime())) return 'Geçersiz Tarih';
+    
+    return formatDistanceToNow(date, {
+      addSuffix: true,
+      locale: tr,
+    });
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return 'Geçersiz Tarih';
+  }
+};
+
 interface TaskApprovalFormProps {
   task: Task;
   onApprove: (task: Task, note?: string) => void;
@@ -36,12 +54,7 @@ export function TaskApprovalForm({
     onReject(task, rejectionReason);
   };
   
-  const timeAgo = task.completedBy?.completedAt
-    ? formatDistanceToNow(new Date(task.completedBy.completedAt), {
-        addSuffix: true,
-        locale: tr,
-      })
-    : '';
+  const timeAgo = task.completedBy?.completedAt ? formatTimeAgo(task.completedBy.completedAt) : 'Belirtilmemiş';
     
   return (
     <ScrollView style={styles.container}>

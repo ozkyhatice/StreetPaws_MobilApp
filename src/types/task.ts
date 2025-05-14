@@ -1,3 +1,5 @@
+import { TaskVerification } from './taskVerification';
+
 export interface Task {
   id: string;
   title: string;
@@ -23,6 +25,7 @@ export interface Task {
   };
   isEmergency?: boolean;
   emergencyLevel?: EmergencyLevel;
+  emergencyRequestId?: string;
   rewards?: TaskReward[];
   createdAt: string;
   priority?: TaskPriority;
@@ -45,11 +48,6 @@ export interface TaskLocation {
   latitude: number;
   longitude: number;
   address: string;
-}
-
-export interface TaskVerification {
-  type: VerificationType;
-  required: boolean;
 }
 
 export type VerificationType = 'PHOTO' | 'LOCATION' | 'QR_CODE' | 'TIME_TRACKED';

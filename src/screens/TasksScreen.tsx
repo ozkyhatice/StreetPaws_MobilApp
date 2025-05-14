@@ -49,96 +49,15 @@ type ListItem = {
   data: Task | EmergencyRequest;
 };
 
-// Mock task data - servis hazır olmadığında kullanılacak
-const mockTasks: Task[] = [
-  {
-    id: '1',
-    title: 'Kadıköy Bölgesi Kedi Beslemesi',
-    description: 'Kadıköy meydandaki kedilerin beslenmesi ve su kaplarının temizlenmesi',
-    category: 'FEEDING',
-    status: 'OPEN',
-    priority: 'MEDIUM',
-    location: {
-      address: 'Kadıköy Meydan, İstanbul',
-      latitude: 40.9916,
-      longitude: 29.0291
-    },
-    createdAt: new Date().toISOString(),
-    deadline: new Date(Date.now() + 86400000).toISOString(),
-    xpReward: 150,
-    createdBy: {
-      id: '1',
-      name: 'Ahmet Yılmaz'
-    },
-    images: ['https://picsum.photos/id/237/200/300']
-  },
-  {
-    id: '2',
-    title: 'Beşiktaş Sahildeki Köpekler İçin Acil Yardım',
-    description: 'Beşiktaş sahil parkındaki yaralı sokak köpeği için veteriner yardımı gerekiyor',
-    category: 'HEALTH',
-    status: 'OPEN',
-    priority: 'URGENT',
-    location: {
-      address: 'Beşiktaş Sahil Parkı, İstanbul',
-      latitude: 41.0451,
-      longitude: 29.0047
-    },
-    createdAt: new Date().toISOString(),
-    deadline: new Date(Date.now() + 43200000).toISOString(),
-    xpReward: 300,
-    createdBy: {
-      id: '2',
-      name: 'Zeynep Demir'
-    },
-    images: ['https://picsum.photos/id/169/200/300']
-  },
-  {
-    id: '3',
-    title: 'Üsküdar Barınak Temizliği',
-    description: 'Üsküdar Hayvan Barınağının temizlenmesi ve dezenfekte edilmesi',
-    category: 'CLEANING',
-    status: 'IN_PROGRESS',
-    priority: 'HIGH',
-    location: {
-      address: 'Üsküdar Hayvan Barınağı, İstanbul',
-      latitude: 41.0219,
-      longitude: 29.0554
-    },
-    createdAt: new Date().toISOString(),
-    deadline: new Date(Date.now() + 172800000).toISOString(),
-    xpReward: 250,
-    createdBy: {
-      id: '3',
-      name: 'Canan Aksoy'
+// Add this utility function to handle date display safely
+const safeFormatDate = (dateString: string) => {
+  try {
+    return new Date(dateString).toLocaleDateString('tr-TR');
+  } catch (error) {
+    console.warn('Invalid date format:', error);
+    return 'Tarih bilgisi yok';
     }
-  },
-  {
-    id: '4',
-    title: 'Bakırköy Sahil Kedileri İçin Yeni Kulübe',
-    description: 'Bakırköy sahilindeki kediler için kış öncesi yeni kulübe yapımı',
-    category: 'SHELTER',
-    status: 'COMPLETED',
-    priority: 'MEDIUM',
-    location: {
-      address: 'Bakırköy Sahil, İstanbul',
-      latitude: 40.9795,
-      longitude: 28.8730
-    },
-    createdAt: new Date().toISOString(),
-    deadline: new Date(Date.now() + 259200000).toISOString(),
-    xpReward: 200,
-    createdBy: {
-      id: '4',
-      name: 'Murat Yıldız'
-    },
-    completedBy: {
-      id: '5',
-      name: 'Ayşe Kaya',
-      completedAt: new Date().toISOString(),
-    }
-  }
-];
+};
 
 export default function TasksScreen() {
   const navigation = useNavigation<TasksScreenNavigationProp>();
@@ -164,40 +83,67 @@ export default function TasksScreen() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [tasks, emergencies] = await Promise.all([
-        taskService.getTasks(),
-        emergencyService.getEmergencyRequests()
-      ]);
+      console.log("TasksScreen - Starting data fetch from Firestore");
+      
+      // Only fetch tasks from Firestore
+      const tasks = await taskService.getTasks();
+      console.log(`TasksScreen - Fetched ${tasks.length} tasks from Firestore`);
+      
+      // Fetch emergency requests
+      const emergencies = await emergencyService.getEmergencyRequests();
+      console.log(`TasksScreen - Fetched ${emergencies.length} emergency requests`);
 
+      // Create ListItems from tasks
       const taskItems: ListItem[] = tasks.map(task => ({
         type: 'task',
         data: task
       }));
 
+      // Create ListItems from emergencies
       const emergencyItems: ListItem[] = emergencies.map(emergency => ({
         type: 'emergency',
         data: emergency
       }));
 
+      // Sort both arrays by creation date
       const allItems = [...taskItems, ...emergencyItems].sort((a, b) => {
+        try {
         const dateA = new Date(a.data.createdAt);
         const dateB = new Date(b.data.createdAt);
         return dateB.getTime() - dateA.getTime(); // Sort by newest first
+        } catch (error) {
+          console.warn("Error sorting items by date:", error);
+          return 0;
+        }
       });
 
       setItems(allItems);
+      console.log(`TasksScreen - Total ${allItems.length} items set to state`);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      Alert.alert('Hata', 'Veriler yüklenirken bir hata oluştu.');
+      console.error('Error fetching data from Firestore:', error);
+      Alert.alert('Veri Hatası', 'Firestore verilerini yüklerken bir hata oluştu. Lütfen tekrar deneyin.');
+      setItems([]); // Set empty array on error
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  // Initial data loading
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Add a focus listener to refresh data when the screen comes into focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log("TasksScreen focused - refreshing data");
+      fetchData();
+    });
+    
+    // Clean up the listener when component unmounts
+    return unsubscribe;
+  }, [navigation]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -266,14 +212,14 @@ export default function TasksScreen() {
                 <Text style={styles.completedByText}>{task.completedBy.name}</Text>
               </View>
               <Text style={styles.completedAtText}>
-                {new Date(task.completedBy.completedAt).toLocaleDateString('tr-TR')}
+                {safeFormatDate(task.completedBy.completedAt)}
               </Text>
             </View>
           )}
           
           <View style={styles.itemFooter}>
             <Text style={styles.itemDate}>
-              {new Date(task.createdAt).toLocaleDateString('tr-TR')}
+              {safeFormatDate(task.createdAt)}
             </Text>
             <View style={[
               styles.statusBadge,
@@ -341,14 +287,14 @@ export default function TasksScreen() {
                 <Text style={styles.completedByText}>{emergency.resolvedBy.name}</Text>
               </View>
               <Text style={styles.completedAtText}>
-                {new Date(emergency.resolvedBy.resolvedAt).toLocaleDateString('tr-TR')}
+                {safeFormatDate(emergency.resolvedBy.resolvedAt)}
               </Text>
             </View>
           )}
           
           <View style={styles.itemFooter}>
             <Text style={styles.itemDate}>
-              {new Date(emergency.createdAt).toLocaleDateString('tr-TR')}
+              {safeFormatDate(emergency.createdAt)}
             </Text>
             <View style={[
               styles.statusBadge,
@@ -491,9 +437,9 @@ export default function TasksScreen() {
 
   // Tab views for regular and emergency tasks
   const EmergencyTasksRoute = () => (
-    <EmergencyTaskList 
-      navigation={navigation}
-    />
+    <View style={{ flex: 1 }}>
+      <EmergencyTaskList navigation={navigation} />
+    </View>
   );
 
   const RegularTasksRoute = () => (
@@ -545,12 +491,6 @@ export default function TasksScreen() {
               placeholderTextColor={colors.textSecondary}
             />
           </View>
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setShowFilters(!showFilters)}
-          >
-            <Filter size={24} color="#ffffff" />
-          </TouchableOpacity>
       </View>
       
       <ScrollView
@@ -592,7 +532,8 @@ export default function TasksScreen() {
                 <Text style={styles.summaryTitle}>Tamamlanan</Text>
                 <Text style={styles.summaryCount}>
                   {items.filter(item => 
-                    item.type === 'task' && (item.data as Task).status === 'COMPLETED'
+                    item.type === 'task' && 
+                    ((item.data as Task).status === 'COMPLETED')
                   ).length}
                 </Text>
               </View>
@@ -600,21 +541,6 @@ export default function TasksScreen() {
           </Card.Content>
         </Card>
         
-        <Card style={styles.summaryCard}>
-          <Card.Content>
-            <View style={styles.summaryContent}>
-              <View style={[styles.summaryIconContainer, { backgroundColor: colors.error + '20' }]}>
-                <AlertCircle size={24} color={colors.error} />
-              </View>
-              <View>
-                <Text style={styles.summaryTitle}>Acil Görevler</Text>
-                <Text style={styles.summaryCount}>
-                  {items.filter(item => item.type === 'emergency').length}
-                </Text>
-              </View>
-            </View>
-          </Card.Content>
-        </Card>
       </View>
 
       {showFilters && (
@@ -758,7 +684,7 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 100,
     right: 20,
     width: 56,
     height: 56,

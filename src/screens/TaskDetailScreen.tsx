@@ -21,12 +21,16 @@ import { Task } from '../types/task';
 import { TaskService } from '../services/taskService';
 import { TaskCompletionService } from '../services/taskCompletionService';
 import { BadgeService } from '../services/badgeService';
+import { EmergencyService } from '../services/emergencyService';
 import { useAuth } from '../hooks/useAuth';
 import MapView, { Marker, Region, Circle } from 'react-native-maps';
 import { MapPin, Clock, Award, User, CheckCircle, AlertTriangle, Tag, Star } from 'lucide-react-native';
 import { colors, spacing, borderRadius } from '../config/theme';
 import { RootStackParamList } from '../types/navigation';
 import { RouteProp } from '@react-navigation/native';
+import { XPService } from '../services/xpService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 // Yardımcı fonksiyonlar
 const getStatusColor = (status: string) => {
@@ -48,6 +52,20 @@ const getStatusText = (status: string) => {
     case 'CANCELLED': return 'İptal Edildi';
     case 'AWAITING_APPROVAL': return 'Onay Bekliyor';
     default: return status;
+  }
+};
+
+// Güvenli tarih formatlama yardımcı fonksiyonu
+const safeFormatDate = (dateString: string | Date | undefined | null): string => {
+  if (!dateString) return 'Belirtilmemiş';
+  
+  try {
+    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    if (isNaN(date.getTime())) return 'Geçersiz Tarih';
+    return date.toLocaleDateString('tr-TR');
+  } catch (error) {
+    console.error('Date formatting error:', error);
+    return 'Geçersiz Tarih';
   }
 };
 
@@ -132,7 +150,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   const [submitting, setSubmitting] = useState(false);
 
   const route = useRoute<RouteProp<RootStackParamList, 'TaskDetail'>>();
-  const routeParams = route.params as { taskId?: string } || {};
+  const routeParams = route.params as { taskId?: string, action?: string } || {};
   console.log("TaskDetailScreen - Route full params:", route.params);
   
   // String olarak taskId'yi al (undefined değilse)
@@ -147,6 +165,8 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   const taskService = TaskService.getInstance();
   const taskCompletionService = TaskCompletionService.getInstance();
   const badgeService = BadgeService.getInstance();
+  const emergencyService = EmergencyService.getInstance();
+  const xpService = XPService.getInstance();
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -175,6 +195,25 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       headerShown: false
     });
   }, [navigation]);
+  
+  // Otomatik görev üstlenme veya onay formu için useEffect
+  useEffect(() => {
+    // Route parametrelerinden action'ı al
+    const routeParams = route.params as { taskId?: string, action?: string } || {};
+    
+    // Görev yüklenmiş ve hazır olduğunda routeParams'dan gelen action'a göre işlem yap
+    if (task && !loading && !submitting) {
+      if (routeParams.action === 'take' && canTakeTask) {
+        // Görev üstlenme
+        console.log("TaskDetailScreen - Auto taking task from route params action");
+        handleAssign();
+      } else if (routeParams.action === 'showApproval' && canApprove) {
+        // Onay formunu göster
+        console.log("TaskDetailScreen - Showing approval form from route params action");
+        setShowApprovalForm(true);
+      }
+    }
+  }, [task, loading]); // task ve loading değiştiğinde kontrol et
 
   const loadTask = async () => {
     try {
@@ -187,162 +226,66 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
         return;
       }
       
-      // ---- YÖNTEM 1: TaskService singleton kullanarak ----
-      console.log("TaskDetailScreen - Trying TaskService instance...");
-      let taskData = null;
+      // Görev ID'sini temizle (boşluk veya geçersiz karakterleri kaldır)
+      const cleanTaskId = actualTaskId.toString().trim();
       
+      if (cleanTaskId === '') {
+        console.error("TaskDetailScreen - Empty taskId after cleaning");
+        Alert.alert("Hata", "Geçersiz görev ID'si");
+        navigation.goBack();
+        return;
+      }
+      
+      console.log("TaskDetailScreen - Using clean taskId:", cleanTaskId);
+      
+      // Firestore'dan görevi yüklemeyi dene
       try {
-        taskData = await taskService.getTask(actualTaskId);
-        console.log("TaskDetailScreen - TaskService.getInstance() result:", 
-          taskData ? `Found: ${taskData.title}` : "Not found");
-      } catch (serviceError) {
-        console.error("TaskDetailScreen - TaskService instance error:", serviceError);
-      }
-      
-      // ---- YÖNTEM 2: TaskService'den global metot kullanarak ----
-      if (!taskData) {
-        console.log("TaskDetailScreen - Trying global getTask...");
-        try {
-          // Global getTask fonksiyonunu dinamik olarak import et
-          const { getTask } = require('../services/taskService');
-          if (typeof getTask === 'function') {
-            taskData = await getTask(actualTaskId);
-            console.log("TaskDetailScreen - Global getTask result:", 
-              taskData ? `Found: ${taskData.title}` : "Not found");
-          }
-        } catch (globalError) {
-          console.error("TaskDetailScreen - Global getTask error:", globalError);
-        }
-      }
-      
-      // ---- YÖNTEM 3: Elimizdeki task listesinde ID ile arama ----
-      if (!taskData) {
-        console.log("TaskDetailScreen - Trying to manually find task by ID, creating mock tasks...");
+        console.log("TaskDetailScreen - Querying Firestore for task with ID:", cleanTaskId);
         
-        // Manuel task listesi oluştur
-        const manualTasks = [
-          {
-            id: '1',
-            title: 'Sokak Hayvanlarını Besle',
-            description: 'Mahallemizdeki sokak hayvanlarını beslemek için yardıma ihtiyacımız var.',
-            status: 'OPEN',
-            priority: 'MEDIUM',
-            category: 'FEEDING',
-            location: {
-              latitude: 41.0082,
-              longitude: 28.9784,
-              address: 'Taksim Meydanı, İstanbul'
-            },
-            xpReward: 100,
-            images: ['https://picsum.photos/seed/animal1/400/300'],
-            createdAt: new Date().toISOString(),
-            deadline: new Date(Date.now() + 86400000).toISOString(),
-            createdBy: {
-              id: '1',
-              name: 'Hayvansever Derneği'
-            }
-          },
-          {
-            id: '2',
-            title: 'Veteriner Ziyareti',
-            description: 'Yaralı bir kedi için veteriner ziyareti gerekiyor.',
-            status: 'IN_PROGRESS',
-            priority: 'HIGH',
-            category: 'HEALTH',
-            location: {
-              latitude: 41.0422,
-              longitude: 29.0089,
-              address: 'Beşiktaş, İstanbul'
-            },
-            xpReward: 150,
-            images: ['https://picsum.photos/seed/vet/400/300'],
-            createdAt: new Date().toISOString(),
-            deadline: new Date(Date.now() + 43200000).toISOString(),
-            createdBy: {
-              id: '1',
-              name: 'Hayvansever Derneği'
-            }
-          },
-          {
-            id: '3',
-            title: 'Sokak Köpeklerinin Aşılanması',
-            description: 'Kadıköy bölgesindeki sokak köpeklerinin aşılanması gerekiyor.',
-            status: 'OPEN',
-            priority: 'HIGH',
-            category: 'HEALTH',
-            location: {
-              latitude: 40.9914,
-              longitude: 29.0303,
-              address: 'Kadıköy, İstanbul'
-            },
-            xpReward: 200,
-            images: ['https://picsum.photos/seed/vaccine/400/300'],
-            createdAt: new Date().toISOString(),
-            deadline: new Date(Date.now() + 172800000).toISOString(),
-            createdBy: {
-              id: '1',
-              name: 'Hayvansever Derneği'
-            }
-          }
-        ];
+        // Firestore'da kullanılan task koleksiyonu ismi
+        const tasksCollectionName = 'tasks';
         
-        try {
-          // Manuel listedeki tüm ID'leri yazdır
-          console.log("TaskDetailScreen - All manual task IDs:", manualTasks.map(t => t.id).join(", "));
+        const docRef = doc(db, tasksCollectionName, cleanTaskId);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const taskData = {
+            id: docSnap.id,
+            ...data,
+            createdAt: data.createdAt?.toDate?.() ? data.createdAt.toDate().toISOString() : data.createdAt,
+            deadline: data.deadline?.toDate?.() ? data.deadline.toDate().toISOString() : data.deadline,
+          } as Task;
           
-          // Hem doğrudan eşleşme hem de string değerler için kontrol
-          taskData = manualTasks.find(t => 
-            t.id === actualTaskId || 
-            t.id.toString() === actualTaskId.toString()
-          );
-          
-          console.log("TaskDetailScreen - Manual task search result:", 
-            taskData ? `Found: ${taskData.title}` : "Not found");
-        } catch (manualError) {
-          console.error("TaskDetailScreen - Manual task search error:", manualError);
+          console.log("TaskDetailScreen - Task found in Firestore:", taskData.title);
+          setTask(taskData);
+          return;
+        } else {
+          console.log("TaskDetailScreen - No task found in Firestore with ID:", cleanTaskId);
         }
+      } catch (firestoreError) {
+        console.error("TaskDetailScreen - Firestore error:", firestoreError);
       }
       
-      // ---- YÖNTEM 4: ID'ye göre yedek task oluşturma ----
-      if (!taskData) {
-        console.log("TaskDetailScreen - Creating backup task with ID:", actualTaskId);
-        
-        taskData = {
-          id: actualTaskId,
-          title: `Görev #${actualTaskId}`,
-          description: 'Bu görev detaylarına ulaşılamadı, ancak uygulamanın çalışması için yedek görev oluşturuldu.',
-          status: 'OPEN',
-          priority: 'MEDIUM',
-          category: 'OTHER',
-          location: {
-            latitude: 41.0082,
-            longitude: 28.9784,
-            address: 'İstanbul'
-          },
-          xpReward: 100,
-          images: ['https://picsum.photos/seed/backup/400/300'],
-          createdAt: new Date().toISOString(),
-          deadline: new Date(Date.now() + 86400000).toISOString(),
-          createdBy: {
-            id: '1',
-            name: 'Sistem'
-          }
-        };
-      }
+      // TaskService instance'dan yüklemeyi dene
+      console.log("TaskDetailScreen - Trying to load task from TaskService");
+      const taskData = await taskService.getTask(cleanTaskId);
       
-      // En sonunda task verisini al ve state'e ata
       if (taskData) {
-        console.log("TaskDetailScreen - Setting task state with:", taskData.title);
+        console.log("TaskDetailScreen - Task found via TaskService:", taskData.title);
         setTask(taskData);
-      } else {
-        console.error("TaskDetailScreen - Still no task data after all attempts");
-        Alert.alert("Hata", "Görev bulunamadı", [
-          { text: "Tamam", onPress: () => navigation.goBack() }
-        ]);
+        return;
       }
+      
+      // Hiçbir şekilde bulunamazsa hata göster
+      console.error("TaskDetailScreen - Task not found anywhere with ID:", cleanTaskId);
+      Alert.alert("Hata", "Görev bulunamadı. Lütfen görevler listesine dönüp tekrar deneyin.", [
+        { text: "Tamam", onPress: () => navigation.goBack() }
+      ]);
+      
     } catch (error) {
       console.error('Error loading task:', error);
-      Alert.alert('Hata', 'Görev yüklenirken bir hata oluştu', [
+      Alert.alert('Hata', 'Görev yüklenirken bir hata oluştu: ' + error.message, [
         { text: "Tamam", onPress: () => navigation.goBack() }
       ]);
     } finally {
@@ -356,12 +299,48 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       return;
     }
     
+    if (!task) {
+      Alert.alert('Hata', 'Görev bilgisi yüklenemedi');
+      return;
+    }
+    
+    if (!actualTaskId || actualTaskId.trim() === '') {
+      Alert.alert('Hata', 'Geçersiz görev ID\'si');
+      return;
+    }
+    
     try {
       setSubmitting(true);
+      
+      console.log(`TaskDetailScreen - Attempting to assign task: ${actualTaskId} to user: ${user.uid}`);
+      
       await taskCompletionService.assignTaskToUser(actualTaskId, user.uid);
+      console.log(`TaskDetailScreen - Successfully assigned task: ${actualTaskId} to user: ${user.uid}`);
+      
+      // For emergency tasks, also update emergency status
+      if (task?.isEmergency && task.emergencyRequestId) {
+        console.log(`TaskDetailScreen - Updating emergency status for request: ${task.emergencyRequestId}`);
+        
+        await emergencyService.updateEmergencyStatus(
+          task.emergencyRequestId, 
+          'in-progress', 
+          user.uid, 
+          user.displayName || 'User'
+        );
+      }
+      
+      // Görev atama başarılı olduysa kullanıcıya bildir
+      Alert.alert(
+        'Başarılı', 
+        'Görev başarıyla üstlenildi. Tamamladığınızda bildirimde bulunabilirsiniz.',
+        [{ text: 'Tamam' }]
+      );
+      
+      // Görevi yeniden yükle
       loadTask();
     } catch (error) {
-      Alert.alert('Hata', 'Görev atanırken bir hata oluştu');
+      console.error('Error assigning task:', error);
+      Alert.alert('Hata', `Görev atanırken bir hata oluştu: ${error.message}`);
     } finally {
       setSubmitting(false);
     }
@@ -407,6 +386,16 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
         verificationData
       );
       
+      // For emergency tasks, also update emergency status
+      if (task?.isEmergency && task.emergencyRequestId) {
+        await emergencyService.updateEmergencyStatus(
+          task.emergencyRequestId, 
+          'resolved', 
+          user.uid, 
+          user.displayName || 'User'
+        );
+      }
+      
       setShowCompletionForm(false);
       Alert.alert(
         'Başarılı',
@@ -448,33 +437,43 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       setSubmitting(true);
       
       // Call service to approve task
-      const approvedTask = await taskService.approveTask(
+      await taskService.approveTask(
         actualTaskId, 
         user.uid,
-        user.displayName || 'Admin'
+        user.displayName || 'Admin',
+        note
       );
       
-      // Badge kontrolü burada yapılması gerekiyor ama şimdilik atlıyoruz
-      // Badge servis metodu mevcut değil
+      // If this is an emergency task, give extra XP
+      if (task.isEmergency && task.completedBy && task.completedBy.id) {
+        await xpService.addTaskCompletionXP(
+          task.completedBy.id,
+          task.id,
+          task.title,
+          true,
+          task.emergencyLevel || 'NORMAL'
+        );
+      }
       
       setShowApprovalForm(false);
       
-      // Show success message
+      // Show success message and reload task
       Alert.alert(
         'Başarılı',
         'Görev başarıyla onaylandı.',
         [
           { 
             text: 'Tamam', 
-            onPress: () => {
-              loadTask();
+            onPress: async () => {
+              await loadTask(); // Görevi yeniden yükle
+              navigation.goBack(); // Ana sayfaya dön
             }
           }
         ]
       );
     } catch (error) {
       console.error('Error approving task:', error);
-      Alert.alert('Hata', 'Görev onaylanırken bir hata oluştu');
+      Alert.alert('Hata', 'Görev onaylanırken bir hata oluştu: ' + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -518,7 +517,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
     }
   };
 
-  if (loading || !task) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -526,13 +525,27 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       </View>
     );
   }
-
+  
+  if (!task) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>Görev bulunamadı</Text>
+        <Button mode="outlined" onPress={() => navigation.goBack()}>
+          Geri Dön
+        </Button>
+      </View>
+    );
+  }
+  
   const isAssignedToMe = user && task.assignedTo === user.uid;
-  const canComplete = isAssignedToMe && task.status === 'IN_PROGRESS';
-  const canApprove = user && task.status === 'AWAITING_APPROVAL' && (user as any).isAdmin;
+  const isEmergencyTask = task.isEmergency === true;
+  const canTakeTask = user && task.status === 'OPEN' && !task.assignedTo;
+  const canApprove = user && task.status === 'AWAITING_APPROVAL';
+  const isAwaitingApproval = task.status === 'AWAITING_APPROVAL';
+  const isCompleted = task.status === 'COMPLETED';
   const { width } = Dimensions.get('window');
   const isSmallScreen = width < 375;
-
+  
   if (showCompletionForm) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -575,6 +588,74 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       </SafeAreaView>
     );
   }
+  
+  // Render action buttons
+  const renderActionButtons = () => {
+    return (
+      <View style={styles.actionContainer}>
+        {/* Görev üstlenme butonu - sadece açık görevler için */}
+        {canTakeTask && (
+          <Button
+            mode="contained"
+            onPress={handleAssign}
+            style={styles.mainButton}
+            disabled={submitting}
+            loading={submitting}
+            icon={({ size, color }) => <CheckCircle size={size} color={color} />}
+          >
+            {isEmergencyTask ? 'ACİL GÖREVİ ÜSTLEN' : 'Görevi Üstlen'}
+          </Button>
+        )}
+
+        {/* Görevi tamamla butonu - sadece bana atanmış ve IN_PROGRESS durumundaki görevler için */}
+        {isAssignedToMe && task.status === 'IN_PROGRESS' && (
+          <Button
+            mode="contained"
+            onPress={handleComplete}
+            style={styles.mainButton}
+            icon={({ size, color }) => <CheckCircle size={size} color={color} />}
+          >
+            Görevi Tamamla
+          </Button>
+        )}
+
+        {/* Görev onay butonu - admin kullanıcıları için ve onay bekleyen görevler için */}
+        {canApprove && (
+          <Button
+            mode="contained"
+            onPress={handleShowApprovalForm}
+            style={styles.mainButton}
+            icon={({ size, color }) => <CheckCircle size={size} color={color} />}
+          >
+            Görevi Onayla
+          </Button>
+        )}
+
+        {/* Görevi bırak butonu - sadece bana atanmış görevler için */}
+        {isAssignedToMe && task.status === 'IN_PROGRESS' && (
+          <Button
+            mode="outlined"
+            onPress={handleUnassign}
+            style={styles.secondaryButton}
+            disabled={submitting}
+          >
+            Görevi Bırak
+          </Button>
+        )}
+        
+        {/* Geri dön butonu - diğer durumlar için */}
+        {(isCompleted || isAwaitingApproval || (!canTakeTask && !isAssignedToMe && !canApprove)) && (
+          <Button
+            mode="outlined"
+            onPress={() => navigation.goBack()}
+            style={styles.mainButton}
+          >
+            Geri Dön
+          </Button>
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -589,10 +670,43 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
             iconColor="#fff" 
             onPress={() => navigation.goBack()} 
           />
-          <Text style={styles.headerTitle}>Görev Detayı</Text>
+          <Animated.Text
+            style={[
+              styles.headerTitle,
+              { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }
+            ]}
+          >
+            {task.title}
+          </Animated.Text>
+          <View style={styles.emptySpace} />
         </View>
         
-        <Animated.View style={[styles.imageContainer, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={styles.statusContainer}>
+          <Chip
+            style={[styles.statusChip, { backgroundColor: getStatusColor(task.status) }]}
+          >
+            <Text style={styles.statusText}>{getStatusText(task.status)}</Text>
+          </Chip>
+          
+          {isEmergencyTask && (
+            <Chip
+              style={[styles.emergencyChip]}
+              icon={() => <AlertTriangle size={16} color={colors.error} />}
+            >
+              <Text style={styles.emergencyText}>ACİL</Text>
+            </Chip>
+          )}
+        </View>
+
+        <Animated.View
+          style={[
+            styles.imageContainer,
+            {
+              opacity: fadeAnim,
+              transform: isEmergencyTask ? [{ scale: pulseAnim }] : []
+            }
+          ]}
+        >
           {task.images && task.images.length > 0 && !imageError ? (
             <Image 
               source={{ uri: task.images[0] }} 
@@ -601,9 +715,9 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
               onError={handleImageError}
             />
           ) : (
-            <View style={[styles.noImageContainer]}>
-              <AlertTriangle size={48} color="#E0E0E0" />
-              <Text style={styles.noImageText}>Görsel bulunamadı</Text>
+            <View style={[styles.imageContainer, styles.placeholderImage]}>
+              <AlertTriangle size={60} color={colors.textDisabled} />
+              <Text style={styles.placeholderText}>Görsel Yok</Text>
             </View>
           )}
           <View style={styles.overlay}>
@@ -619,6 +733,23 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
             </Chip>
           </View>
         </Animated.View>
+
+        {isEmergencyTask && (
+          <Animated.View
+            style={[
+              styles.emergencyContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }]
+              }
+            ]}
+          >
+            <AlertTriangle size={20} color={colors.error} />
+            <Text style={styles.emergencyNote}>
+              Bu bir acil durum görevidir ve hızlı müdahale gerektirir. Lütfen olabildiğince çabuk yardım edin.
+            </Text>
+          </Animated.View>
+        )}
 
         <Card style={styles.detailsCard}>
           <Card.Content>
@@ -702,7 +833,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
             <View style={styles.deadlineContainer}>
               <Text style={styles.sectionTitle}>Son Tarih</Text>
               <Text style={styles.deadline}>
-                {new Date(task.deadline).toLocaleDateString('tr-TR')}
+                {safeFormatDate(task.deadline)}
               </Text>
             </View>
 
@@ -715,56 +846,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
           </Card.Content>
         </Card>
 
-        <View style={styles.actionContainer}>
-          {task.status === 'OPEN' && user && !isAssignedToMe && (
-            <Button 
-              mode="contained" 
-              style={styles.actionButton}
-              onPress={handleAssign}
-              loading={submitting}
-              disabled={submitting}
-            >
-              Görevi Üstlen
-            </Button>
-          )}
-          
-          {isAssignedToMe && task.status === 'IN_PROGRESS' && (
-            <>
-              <Button 
-                mode="contained" 
-                style={[styles.actionButton, { backgroundColor: colors.success }]}
-                onPress={handleComplete}
-                loading={submitting}
-                disabled={submitting}
-              >
-                Görevi Tamamla
-              </Button>
-              
-              <Button 
-                mode="outlined" 
-                style={styles.actionButton}
-                onPress={handleUnassign}
-                disabled={submitting}
-              >
-                Görevi Bırak
-              </Button>
-            </>
-          )}
-        </View>
-
-        {canApprove && (
-          <View style={styles.buttonContainer}>
-            <Button
-              mode="contained"
-              onPress={handleShowApprovalForm}
-              style={[styles.actionButton, { backgroundColor: colors.warning }]}
-              disabled={submitting}
-              loading={submitting}
-            >
-              Görevi İncele ve Onayla
-            </Button>
-          </View>
-        )}
+        {renderActionButtons()}
         
         {task.status === 'AWAITING_APPROVAL' && (
           <Card style={styles.statusCard}>
@@ -783,18 +865,6 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
               )}
             </Card.Content>
           </Card>
-        )}
-        
-        {!canApprove && task.status !== 'OPEN' && !isAssignedToMe && (
-          <View style={styles.buttonContainer}>
-            <Button
-              mode="outlined"
-              onPress={() => navigation.goBack()}
-              style={styles.actionButton}
-            >
-              Geri Dön
-            </Button>
-          </View>
         )}
       </Animated.ScrollView>
     </SafeAreaView>
@@ -942,9 +1012,14 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 16,
   },
-  actionButton: {
+  mainButton: {
     flex: 1,
     borderRadius: 8,
+  },
+  secondaryButton: {
+    flex: 1,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceVariant,
   },
   safeArea: {
     flex: 1,
@@ -991,5 +1066,60 @@ const styles = StyleSheet.create({
   mapPlaceholderText: {
     color: colors.textSecondary,
     fontSize: 14,
+  },
+  emergencyChip: {
+    backgroundColor: 'rgba(255, 107, 107, 0.2)',
+    marginLeft: spacing.sm,
+  },
+  emergencyText: {
+    color: colors.error,
+    fontWeight: 'bold',
+  },
+  emergencyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 107, 107, 0.2)',
+    padding: spacing.md,
+    borderRadius: borderRadius.medium,
+    marginBottom: spacing.md,
+  },
+  emergencyNote: {
+    flex: 1,
+    marginLeft: spacing.sm,
+    color: colors.error,
+  },
+  emptySpace: {
+    flex: 1,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statusText: {
+    color: colors.text,
+    fontWeight: 'bold',
+  },
+  placeholderImage: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceVariant,
+  },
+  placeholderText: {
+    color: colors.textDisabled,
+    fontSize: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    padding: spacing.lg,
+  },
+  errorText: {
+    fontSize: 18,
+    color: colors.error,
+    textAlign: 'center',
+    marginBottom: spacing.md,
   },
 });

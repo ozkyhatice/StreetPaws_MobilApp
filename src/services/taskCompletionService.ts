@@ -30,17 +30,45 @@ export class TaskCompletionService {
    * Kullanıcının bir görevi üstlenmesini sağlayan fonksiyon
    */
   async assignTaskToUser(taskId: string, userId: string): Promise<Task> {
+    try {
+      console.log(`TaskCompletionService: Attempting to assign task ${taskId} to user ${userId}`);
+      
+      // Önce görevin var olduğunu kontrol et
+      const taskBefore = await this.taskService.getTask(taskId);
+      if (!taskBefore) {
+        console.error(`Task with ID ${taskId} not found`);
+        throw new Error('Görev bulunamadı');
+      }
+      
+      console.log(`TaskCompletionService: Task found: ${taskBefore.title}`);
+      
+      // Görevin zaten atanmış olmadığını kontrol et
+      if (taskBefore.assignedTo) {
+        console.error(`Task ${taskId} is already assigned to user ${taskBefore.assignedTo}`);
+        throw new Error('Bu görev zaten başka bir kullanıcıya atanmış');
+      }
+      
     // Görev atama işlemi
     await this.taskService.assignTask(taskId, userId);
+      console.log(`TaskCompletionService: Task ${taskId} assigned to user ${userId}`);
     
     // Kullanıcının aktif görevini güncelleme
     await this.userService.updateUser(userId, { activeTask: taskId });
+      console.log(`TaskCompletionService: User ${userId} activeTask updated to ${taskId}`);
     
     // Atanan görevi döndürür
     const task = await this.taskService.getTask(taskId);
-    if (!task) throw new Error('Task not found after assignment');
+      if (!task) {
+        console.error(`Task ${taskId} not found after assignment`);
+        throw new Error('Görev atama sonrası bulunamadı');
+      }
     
+      console.log(`TaskCompletionService: Successfully assigned task: ${task.title}`);
     return task;
+    } catch (error) {
+      console.error(`Error in assignTaskToUser: ${error.message}`);
+      throw error;
+    }
   }
 
   /**

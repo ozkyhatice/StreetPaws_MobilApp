@@ -8,7 +8,7 @@ export interface EmergencyRequest {
   description: string;
   location: string;
   animalType?: string;
-  urgency: 'low' | 'medium' | 'high';
+  urgency: 'critical' | 'low' | 'medium' | 'high';
   contactPhone?: string;
   imageUrl?: string | null;
   userId: string;
