@@ -17,7 +17,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
 import { Text, Avatar, Surface, useTheme, Button, ProgressBar } from 'react-native-paper';
 import { colors } from '../config/theme';
-import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText, Award } from 'lucide-react-native';
+import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText } from 'lucide-react-native';
 import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { BadgeService } from '../services/badgeService';
@@ -543,10 +543,6 @@ const ProfileScreen = () => {
     }
   };
 
-  const navigateToAchievements = () => {
-    navigation.navigate('Achievements');
-  };
-
   if (!user) {
     return (
       <View style={styles.loadingContainer}>
@@ -618,11 +614,6 @@ const ProfileScreen = () => {
                     <Text style={styles.settingText}>Admin Ol</Text>
                   </TouchableOpacity>
                 )}
-                
-                <TouchableOpacity style={styles.settingItem} onPress={navigateToAchievements}>
-                  <Award size={24} color={colors.primary} />
-                  <Text style={styles.settingText}>Başarılar ve Rozetler</Text>
-                </TouchableOpacity>
                 
                 <TouchableOpacity style={styles.settingItem} onPress={handleSignOut}>
                   <LogOut size={24} color={colors.error} />
