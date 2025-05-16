@@ -296,10 +296,50 @@ export class TaskService {
   }
 
   private getCategoryFromEmergency(emergency: EmergencyRequest): TaskCategory {
-    if (emergency.animalType?.toLowerCase().includes('kedi') || 
-        emergency.animalType?.toLowerCase().includes('köpek')) {
+    // Convert description and animal type to lowercase for easier matching
+    const description = (emergency.description || '').toLowerCase();
+    const animalType = (emergency.animalType || '').toLowerCase();
+    
+    // Check for feeding-related keywords
+    if (description.includes('aç') || 
+        description.includes('besle') || 
+        description.includes('yemek') || 
+        description.includes('mama') || 
+        description.includes('su')) {
+      return 'FEEDING';
+    }
+    
+    // Check for shelter-related keywords
+    if (description.includes('barınak') || 
+        description.includes('yuva') || 
+        description.includes('barınma') || 
+        description.includes('soğuk') || 
+        description.includes('sıcak') ||
+        description.includes('korunma') ||
+        description.includes('ev')) {
+      return 'SHELTER';
+    }
+    
+    // Check for cleaning-related keywords
+    if (description.includes('temiz') || 
+        description.includes('kirli') || 
+        description.includes('çöp') ||
+        description.includes('atık')) {
+      return 'CLEANING';
+    }
+    
+    // Default to HEALTH for medical emergencies for cats and dogs
+    if (animalType.includes('kedi') || 
+        animalType.includes('köpek') ||
+        description.includes('hasta') ||
+        description.includes('yaralı') ||
+        description.includes('kaza') ||
+        description.includes('tedavi') ||
+        description.includes('veteriner')) {
       return 'HEALTH';
     }
+    
+    // If no specific category is detected, return OTHER
     return 'OTHER';
   }
 
