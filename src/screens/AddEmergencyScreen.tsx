@@ -17,9 +17,11 @@ import { colors, spacing, shadows, borderRadius, typography } from '../config/th
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { EmergencyService, EmergencyRequest } from '../services/emergencyService';
+import { EmergencyService } from '../services/emergencyService';
+import { EmergencyRequest } from '../types/emergency';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../hooks/useAuth';
+import MapView, { Marker } from 'react-native-maps';
 
 // Tip seçenekleri - EmergencyRequest.urgency ile uyumlu olmalı
 const URGENCY_OPTIONS = [
@@ -43,10 +45,12 @@ export default function AddEmergencyScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
+  const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [urgency, setUrgency] = useState<'critical' | 'high' | 'medium' | 'low'>('medium');
   const [category, setCategory] = useState('Kedi');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   const titleError = title.length > 0 && title.length < 3;
   const descriptionError = description.length > 0 && description.length < 10;
@@ -62,6 +66,11 @@ export default function AddEmergencyScreen() {
   const pickImage = async () => {
     if (images.length >= 3) {
       Alert.alert('Uyarı', 'En fazla 3 fotoğraf ekleyebilirsiniz');
+      return;
+    }
+    if (images.length < 1)
+    {
+      Alert.alert('Uyarı', 'Lütfen en az bir fotoğraf ekleyiniz');
       return;
     }
     
@@ -100,6 +109,12 @@ export default function AddEmergencyScreen() {
     return await getDownloadURL(storageRef);
   };
   
+  const handleLocationSelect = (coords: { latitude: number; longitude: number }) => {
+    setCoordinates(coords);
+    setLocation(`${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`);
+    setShowMap(false);
+  };
+  
   // Formun gönderilmesi
   const handleSubmit = async () => {
     if (!isFormValid) {
@@ -112,20 +127,23 @@ export default function AddEmergencyScreen() {
       return;
     }
     
+    if (!coordinates) {
+      Alert.alert('Hata', 'Lütfen haritadan bir konum seçin');
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
       // Görselleri işle
       let imageUrl = null;
       if (images.length > 0) {
-        // İlk görseli yükle (şimdilik sadece bir görsel destekleniyor)
         try {
           console.log("Uploading image to Firebase Storage...");
-        imageUrl = await uploadImage(images[0]);
+          imageUrl = await uploadImage(images[0]);
           console.log("Image uploaded successfully:", imageUrl);
         } catch (imageError) {
           console.error("Error uploading image:", imageError);
-          // Resim yükleme hatası durumunda bile devam ediyoruz, sadece log'a yazıyoruz
         }
       }
       
@@ -135,6 +153,10 @@ export default function AddEmergencyScreen() {
         title,
         description,
         location,
+        coordinates: {
+          latitude: coordinates.latitude,
+          longitude: coordinates.longitude
+        },
         animalType: category,
         urgency,
         imageUrl,
@@ -160,7 +182,6 @@ export default function AddEmergencyScreen() {
           { 
             text: 'Tamam', 
             onPress: () => {
-              // Görev ekranına geri dön ve sayfayı yenile
               navigation.goBack();
             }
           }
@@ -192,183 +213,209 @@ export default function AddEmergencyScreen() {
           <View style={styles.placeholder} />
         </View>
         
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <View style={styles.infoBox}>
-            <AlertTriangle size={20} color={colors.warning} />
-            <Text style={styles.infoText}>
-              Lütfen acil durumu ayrıntılı bir şekilde açıklayın. Bu bilgiler yardım ekiplerine ulaşacak.
-            </Text>
+        {showMap ? (
+          <View style={styles.mapContainer}>
+            <MapView
+              style={styles.map}
+              initialRegion={{
+                latitude: 41.0082,
+                longitude: 28.9784,
+                latitudeDelta: 0.0922,
+                longitudeDelta: 0.0421,
+              }}
+              onPress={(e) => handleLocationSelect(e.nativeEvent.coordinate)}
+            >
+              {coordinates && (
+                <Marker
+                  coordinate={coordinates}
+                  title="Seçilen Konum"
+                />
+              )}
+            </MapView>
+            <TouchableOpacity 
+              style={styles.closeMapButton}
+              onPress={() => setShowMap(false)}
+            >
+              <Text style={styles.closeMapButtonText}>Kapat</Text>
+            </TouchableOpacity>
           </View>
-          
-          <Text style={styles.sectionTitle}>Acil Durum Bilgileri</Text>
-          
-          <TextInput
-            label="Başlık"
-            value={title}
-            onChangeText={setTitle}
-            mode="outlined"
-            style={styles.input}
-            error={titleError}
-            outlineColor={colors.border}
-            activeOutlineColor={colors.primary}
-          />
-          {titleError && (
-            <HelperText type="error" visible={titleError}>
-              Başlık en az 3 karakter olmalıdır
-            </HelperText>
-          )}
-          
-          <TextInput
-            label="Açıklama"
-            value={description}
-            onChangeText={setDescription}
-            mode="outlined"
-            multiline
-            numberOfLines={4}
-            style={styles.textArea}
-            error={descriptionError}
-            outlineColor={colors.border}
-            activeOutlineColor={colors.primary}
-          />
-          {descriptionError && (
-            <HelperText type="error" visible={descriptionError}>
-              Açıklama en az 10 karakter olmalıdır
-            </HelperText>
-          )}
-          
-          <View style={styles.locationInputContainer}>
+        ) : (
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
+            <View style={styles.infoBox}>
+              <AlertTriangle size={20} color={colors.warning} />
+              <Text style={styles.infoText}>
+                Lütfen acil durumu ayrıntılı bir şekilde açıklayın. Bu bilgiler yardım ekiplerine ulaşacak.
+              </Text>
+            </View>
+            
+            <Text style={styles.sectionTitle}>Acil Durum Bilgileri</Text>
+            
             <TextInput
-              label="Konum"
-              value={location}
-              onChangeText={setLocation}
+              label="Başlık"
+              value={title}
+              onChangeText={setTitle}
               mode="outlined"
-              style={styles.locationInput}
-              error={locationError}
+              style={styles.input}
+              error={titleError}
               outlineColor={colors.border}
               activeOutlineColor={colors.primary}
-              right={
-                <TextInput.Icon 
-                  icon={({ size, color }) => <MapPin size={size} color={color} />}
-                  onPress={() => {
-                    // Konum seçici açılabilir
-                    Alert.alert('Bilgi', 'Harita üzerinden konum seçimi eklenecek');
-                  }}
-                />
-              }
             />
-          </View>
-          {locationError && (
-            <HelperText type="error" visible={locationError}>
-              Konum bilgisi gereklidir
-            </HelperText>
-          )}
-          
-          <Text style={styles.sectionTitle}>Kategori</Text>
-          <View style={styles.categoryContainer}>
-            {CATEGORY_OPTIONS.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.categoryButton,
-                  category === option.value && styles.selectedCategoryButton
-                ]}
-                onPress={() => setCategory(option.value)}
-              >
-                <Text 
-                  style={[
-                    styles.categoryText,
-                    category === option.value && styles.selectedCategoryText
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          
-          <Text style={styles.sectionTitle}>Öncelik Seviyesi</Text>
-          <View style={styles.urgencyContainer}>
-            {URGENCY_OPTIONS.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.urgencyButton,
-                  urgency === option.value && {
-                    backgroundColor: option.color + '20',
-                    borderColor: option.color
-                  }
-                ]}
-                onPress={() => setUrgency(option.value)}
-              >
-                <View 
-                  style={[
-                    styles.urgencyDot,
-                    { backgroundColor: option.color }
-                  ]} 
-                />
-                <Text 
-                  style={[
-                    styles.urgencyText,
-                    urgency === option.value && { color: option.color }
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          
-          <Text style={styles.sectionTitle}>Fotoğraflar</Text>
-          <Text style={styles.photoInfo}>En fazla 3 fotoğraf ekleyebilirsiniz</Text>
-          
-          <View style={styles.imageContainer}>
-            {images.map((img, index) => (
-              <View key={index} style={styles.imageWrapper}>
-                <Image source={{ uri: img }} style={styles.image} />
-                <TouchableOpacity 
-                  style={styles.removeImageButton} 
-                  onPress={() => removeImage(index)}
-                >
-                  <Text style={styles.removeImageText}>×</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-            
-            {images.length < 3 && (
-              <TouchableOpacity 
-                style={styles.addImageButton} 
-                onPress={pickImage}
-              >
-                <Camera size={24} color={colors.primary} />
-                <Text style={styles.addImageText}>Fotoğraf Ekle</Text>
-              </TouchableOpacity>
+            {titleError && (
+              <HelperText type="error" visible={titleError}>
+                Başlık en az 3 karakter olmalıdır
+              </HelperText>
             )}
-          </View>
-          
-          <View style={styles.buttonContainer}>
-            <Button
-              mode="contained"
-              style={styles.submitButton}
-              onPress={handleSubmit}
-              loading={isSubmitting}
-              disabled={!isFormValid || isSubmitting}
-            >
-              Acil Durumu Bildir
-            </Button>
             
-            <Button
+            <TextInput
+              label="Açıklama"
+              value={description}
+              onChangeText={setDescription}
               mode="outlined"
-              style={styles.cancelButton}
-              onPress={() => navigation.goBack()}
-              disabled={isSubmitting}
-            >
-              İptal Et
-            </Button>
-          </View>
-        </ScrollView>
+              multiline
+              numberOfLines={4}
+              style={styles.textArea}
+              error={descriptionError}
+              outlineColor={colors.border}
+              activeOutlineColor={colors.primary}
+            />
+            {descriptionError && (
+              <HelperText type="error" visible={descriptionError}>
+                Açıklama en az 10 karakter olmalıdır
+              </HelperText>
+            )}
+            
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Konum</Text>
+              <TouchableOpacity
+                style={styles.locationButton}
+                onPress={() => setShowMap(true)}
+              >
+                <View style={styles.locationButtonContent}>
+                  <MapPin size={20} color={colors.primary} />
+                  <Text style={styles.locationButtonText}>
+                    {coordinates ? 'Konumu Değiştir' : 'Haritadan Konum Seç'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              {coordinates && (
+                <Text style={styles.selectedLocation}>
+                  Seçilen Konum: {location}
+                </Text>
+              )}
+              {locationError && (
+                <HelperText type="error">
+                  Lütfen bir konum seçin
+                </HelperText>
+              )}
+            </View>
+            
+            <Text style={styles.sectionTitle}>Kategori</Text>
+            <View style={styles.categoryContainer}>
+              {CATEGORY_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.categoryButton,
+                    category === option.value && styles.selectedCategoryButton
+                  ]}
+                  onPress={() => setCategory(option.value)}
+                >
+                  <Text 
+                    style={[
+                      styles.categoryText,
+                      category === option.value && styles.selectedCategoryText
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <Text style={styles.sectionTitle}>Öncelik Seviyesi</Text>
+            <View style={styles.urgencyContainer}>
+              {URGENCY_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.urgencyButton,
+                    urgency === option.value && {
+                      backgroundColor: option.color + '20',
+                      borderColor: option.color
+                    }
+                  ]}
+                  onPress={() => setUrgency(option.value)}
+                >
+                  <View 
+                    style={[
+                      styles.urgencyDot,
+                      { backgroundColor: option.color }
+                    ]} 
+                  />
+                  <Text 
+                    style={[
+                      styles.urgencyText,
+                      urgency === option.value && { color: option.color }
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            
+            <Text style={styles.sectionTitle}>Fotoğraflar</Text>
+            <Text style={styles.photoInfo}>En fazla 3 fotoğraf ekleyebilirsiniz</Text>
+            
+            <View style={styles.imageContainer}>
+              {images.map((img, index) => (
+                <View key={index} style={styles.imageWrapper}>
+                  <Image source={{ uri: img }} style={styles.image} />
+                  <TouchableOpacity 
+                    style={styles.removeImageButton} 
+                    onPress={() => removeImage(index)}
+                  >
+                    <Text style={styles.removeImageText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              
+              {images.length < 3 && (
+                <TouchableOpacity 
+                  style={styles.addImageButton} 
+                  onPress={pickImage}
+                >
+                  <Camera size={24} color={colors.primary} />
+                  <Text style={styles.addImageText}>Fotoğraf Ekle</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            <View style={styles.buttonContainer}>
+              <Button
+                mode="contained"
+                style={styles.submitButton}
+                onPress={handleSubmit}
+                loading={isSubmitting}
+                disabled={!isFormValid || isSubmitting}
+              >
+                Acil Durumu Bildir
+              </Button>
+              
+              <Button
+                mode="outlined"
+                style={styles.cancelButton}
+                onPress={() => navigation.goBack()}
+                disabled={isSubmitting}
+              >
+                İptal Et
+              </Button>
+            </View>
+          </ScrollView>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -439,11 +486,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     minHeight: 100,
   },
-  locationInputContainer: {
+  inputContainer: {
     marginBottom: spacing.xs,
   },
-  locationInput: {
+  label: {
+    ...typography.body2,
+    color: colors.textSecondary,
+  },
+  locationButton: {
     backgroundColor: colors.surface,
+    padding: 12,
+    borderRadius: borderRadius.medium,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  locationButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationButtonText: {
+    marginLeft: 8,
+    color: colors.primary,
+    fontSize: 16,
+  },
+  selectedLocation: {
+    marginTop: 8,
+    color: colors.text,
+    fontSize: 14,
   },
   categoryContainer: {
     flexDirection: 'row',
@@ -567,5 +637,25 @@ const styles = StyleSheet.create({
   cancelButton: {
     borderRadius: borderRadius.medium,
     borderColor: colors.border,
+  },
+  mapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  map: {
+    flex: 1,
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: colors.surface,
+    padding: 8,
+    borderRadius: 8,
+    ...shadows.medium,
+  },
+  closeMapButtonText: {
+    color: colors.primary,
+    fontWeight: 'bold',
   },
 });
