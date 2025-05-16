@@ -84,7 +84,7 @@ export default function TasksScreen() {
   // TabView configuration
   const [tabRoutes] = useState([
     { key: 'emergency', title: 'Acil Durumlar' },
-    { key: 'regular', title: 'Görevler' }
+    { key: 'regular', title: 'Görev İlerlemem' }
   ]);
 
   const taskService = TaskService.getInstance();
@@ -549,10 +549,15 @@ export default function TasksScreen() {
           navigation={navigation}
         />
         {user && user.uid && (
-          <TaskProgressCard 
-            userId={user.uid} 
-            onBadgePress={toggleAchievements} 
-          />
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={() => navigation.navigate('TaskProgress')}
+          >
+            <TaskProgressCard 
+              userId={user.uid} 
+              onBadgePress={toggleAchievements} 
+            />
+          </TouchableOpacity>
         )}
       </View>
     );

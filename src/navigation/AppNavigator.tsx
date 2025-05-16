@@ -32,6 +32,7 @@ import VerificationsScreen from '../screens/VerificationsScreen';
 import EmergencyHelpScreen from '../screens/EmergencyHelpScreen';
 import { AchievementsScreen } from '../screens/AchievementsScreen';
 import DevToolsScreen from '../screens/DevToolsScreen';
+import TaskProgressScreen from '../screens/TaskProgressScreen';
 import CompletedTasksScreen from '../screens/CompletedTasksScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -226,6 +227,17 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
       </Stack.Screen>
       
       <Stack.Screen 
+        name="TaskProgress"
+        options={{ title: 'Görev İlerlemen' }}
+      >
+        {() => (
+          <AuthGuard>
+            <TaskProgressScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+      
+      <Stack.Screen 
         name="TaskDetail"
         options={{ headerShown: false }}
       >
@@ -370,11 +382,16 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
         options={{ headerShown: false }}
       />
 
-      <Stack.Screen
+      <Stack.Screen 
         name="CompletedTasks"
-        component={CompletedTasksScreen}
-        options={{ headerShown: false }}
-      />
+        options={{ title: 'Tamamlanan Görevler' }}
+      >
+        {() => (
+          <AuthGuard>
+            <CompletedTasksScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 };

@@ -55,6 +55,22 @@ const getStatusText = (status: string) => {
   }
 };
 
+// Aciliyet metni ve rengini belirleyen yardımcı fonksiyon
+const getEmergencyInfo = (isEmergency: boolean, priority: string) => {
+  if (!isEmergency) return null;
+  
+  switch(priority) {
+    case 'HIGH':
+      return { text: 'ACİL', color: colors.error, bgColor: 'rgba(255, 107, 107, 0.2)' };
+    case 'MEDIUM':
+      return { text: 'ÖNEMLİ', color: colors.warning, bgColor: 'rgba(255, 193, 7, 0.2)' };
+    case 'LOW':
+      return { text: 'DÜŞÜK ÖNCELİK', color: colors.info, bgColor: 'rgba(33, 150, 243, 0.2)' };
+    default:
+      return { text: 'ACİL', color: colors.error, bgColor: 'rgba(255, 107, 107, 0.2)' };
+  }
+};
+
 // Güvenli tarih formatlama yardımcı fonksiyonu
 const safeFormatDate = (dateString: string | Date | undefined | null): string => {
   if (!dateString) return 'Belirtilmemiş';
@@ -623,7 +639,11 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
             loading={submitting}
             icon={({ size, color }) => <CheckCircle size={size} color={color} />}
           >
-            {isEmergencyTask ? 'ACİL GÖREVİ ÜSTLEN' : 'Görevi Üstlen'}
+            {isEmergencyTask && task.priority === 'HIGH' 
+              ? 'ACİL GÖREVİ ÜSTLEN' 
+              : isEmergencyTask && task.priority === 'MEDIUM'
+                ? 'ÖNEMLİ GÖREVİ ÜSTLEN'
+                : 'Görevi Üstlen'}
           </Button>
         )}
 
@@ -708,14 +728,21 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
             <Text style={styles.statusText}>{getStatusText(task.status)}</Text>
           </Chip>
           
-          {isEmergencyTask && (
-            <Chip
-              style={[styles.emergencyChip]}
-              icon={() => <AlertTriangle size={16} color={colors.error} />}
-            >
-              <Text style={styles.emergencyText}>ACİL</Text>
-            </Chip>
-          )}
+          {isEmergencyTask && (() => {
+            const emergencyInfo = getEmergencyInfo(isEmergencyTask, task.priority);
+            if (!emergencyInfo) return null;
+            
+            return (
+              <Chip
+                style={[styles.emergencyChip, { backgroundColor: emergencyInfo.bgColor }]}
+                icon={() => <AlertTriangle size={16} color={emergencyInfo.color} />}
+              >
+                <Text style={[styles.emergencyText, { color: emergencyInfo.color }]}>
+                  {emergencyInfo.text}
+                </Text>
+              </Chip>
+            );
+          })()}
         </View>
 
         <Animated.View
@@ -754,22 +781,32 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
           </View>
         </Animated.View>
 
-        {isEmergencyTask && (
-          <Animated.View
-            style={[
-              styles.emergencyContainer,
-              {
-                opacity: fadeAnim,
-                transform: [{ scale: scaleAnim }]
-              }
-            ]}
-          >
-            <AlertTriangle size={20} color={colors.error} />
-            <Text style={styles.emergencyNote}>
-              Bu bir acil durum görevidir ve hızlı müdahale gerektirir. Lütfen olabildiğince çabuk yardım edin.
-            </Text>
-          </Animated.View>
-        )}
+        {isEmergencyTask && (() => {
+          const emergencyInfo = getEmergencyInfo(isEmergencyTask, task.priority);
+          if (!emergencyInfo) return null;
+          
+          return (
+            <Animated.View
+              style={[
+                styles.emergencyContainer,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ scale: scaleAnim }],
+                  backgroundColor: emergencyInfo.bgColor
+                }
+              ]}
+            >
+              <AlertTriangle size={20} color={emergencyInfo.color} />
+              <Text style={[styles.emergencyNote, { color: emergencyInfo.color }]}>
+                {task.priority === 'HIGH' 
+                  ? 'Bu bir acil durum görevidir ve hızlı müdahale gerektirir. Lütfen olabildiğince çabuk yardım edin.' 
+                  : task.priority === 'MEDIUM'
+                    ? 'Bu önemli bir görevdir. Lütfen en kısa sürede tamamlamaya çalışın.'
+                    : 'Bu görev düşük öncelikli bir görevdir.'}
+              </Text>
+            </Animated.View>
+          );
+        })()}
 
         <Card style={styles.detailsCard}>
           <Card.Content>
@@ -1092,21 +1129,19 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   emergencyText: {
-    color: colors.error,
     fontWeight: 'bold',
   },
   emergencyContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 107, 107, 0.2)',
     padding: spacing.md,
     borderRadius: borderRadius.medium,
+    marginHorizontal: spacing.md,
     marginBottom: spacing.md,
   },
   emergencyNote: {
     flex: 1,
     marginLeft: spacing.sm,
-    color: colors.error,
   },
   emptySpace: {
     flex: 1,

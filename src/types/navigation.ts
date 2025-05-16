@@ -32,4 +32,5 @@ export type RootStackParamList = {
   Achievements: undefined;
   DevTools: undefined;
   CompletedTasks: undefined;
+  TaskProgress: undefined;
 }; 
