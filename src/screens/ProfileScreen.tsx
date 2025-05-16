@@ -31,6 +31,16 @@ const { width } = Dimensions.get('window');
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
+// TaskStats tipini tanımlayalım
+interface TaskStats {
+  completedTasks: number;
+  awaitingApprovalTasks: number;
+  totalStreakDays: number;
+  currentTasksCount: {
+    [key: string]: number;
+  };
+}
+
 const ProfileScreen = () => {
   const { user, signOut } = useContext(AuthContext) as AuthContextType;
   const [activeTab, setActiveTab] = useState('Bilgilerim');
@@ -47,7 +57,7 @@ const ProfileScreen = () => {
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [levelUpBadge, setLevelUpBadge] = useState<any>(null);
   const [xpData, setXpData] = useState(null);
-  const [taskStats, setTaskStats] = useState(null);
+  const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [profileImage, setProfileImage] = useState(null);
 
   const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
@@ -106,55 +116,61 @@ const ProfileScreen = () => {
         setLoading(true);
         
         if (user) {
+          console.log("ProfileScreen - Loading user data for", user.uid);
+          
+          // Kullanıcı belgesini al
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (!userDoc.exists()) {
+            console.log("ProfileScreen - User document not found");
+            setLoading(false);
+            return;
+          }
+          
+          const userData = userDoc.data();
+          setUserData(userData);
+          
           // XP verilerini al
           const xpService = XPService.getInstance();
           const userXpData = await xpService.getUserXP(user.uid);
           setXpData(userXpData);
           
+          // XP değerini ayarla
+          if (userData.xp) {
+            setActualXP(userData.xp);
+          }
+          
+          // Profil resmini ayarla
+          if (userData.photoURL) {
+            setProfileImage(userData.photoURL);
+          }
+          
+          // Rozet verilerini ayarla
+          if (userData.badges && Array.isArray(userData.badges)) {
+            setBadges(userData.badges);
+          }
+          
           // Görev istatistiklerini al
           const taskProgress = await xpService.getTaskProgress(user.uid);
           
-          // Toplam tamamlanan görev sayısını hesapla (kategorilerin toplamı)
+          // Kategori toplamını hesapla (daha doğru görev sayısı)
           const categoryTotal = Object.values(taskProgress.currentTasksCount).reduce((sum, count) => sum + count, 0);
           
-          // Eğer kategorilerin toplamı, completedTasks değerinden farklıysa, doğru olanı kullan
-          // Bu, görev sayısının 3 katına çıkması sorununu çözer
-          if (categoryTotal > 0 && categoryTotal !== taskProgress.completedTasks) {
-            console.log(`Fixing task count: Using category total ${categoryTotal} instead of ${taskProgress.completedTasks}`);
+          // Eğer kategori toplamı varsa, onu kullan
+          if (categoryTotal > 0) {
             taskProgress.completedTasks = categoryTotal;
+            setActualCompletedTaskCount(categoryTotal);
+            console.log(`ProfileScreen - Using category total for task count: ${categoryTotal}`);
+          } else {
+            setActualCompletedTaskCount(taskProgress.completedTasks);
+            console.log(`ProfileScreen - Using completedTasks from taskProgress: ${taskProgress.completedTasks}`);
           }
           
+          // TaskStats'ı ayarla
           setTaskStats(taskProgress);
-          
-          // Doğru görev sayısını actualCompletedTaskCount'a ayarla
-          setActualCompletedTaskCount(taskProgress.completedTasks);
           
           // Rozetleri kontrol et ve gerekirse yeni rozetler ver
           const badgeService = BadgeService.getInstance();
           await badgeService.checkAllCategoryBadges(user.uid);
-          
-          // Kullanıcı belgesini al
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setUserData(userData);
-            
-            // Rozet verilerini ayarla
-            if (userData.badges && Array.isArray(userData.badges)) {
-              setBadges(userData.badges);
-            }
-            
-            // Profil resmini ayarla
-            if (userData.photoURL) {
-              setProfileImage(userData.photoURL);
-            }
-            
-            // XP değerini ayarla
-            if (userData.xp) {
-              setActualXP(userData.xp);
-            }
-          }
         }
       } catch (error) {
         console.error('Error loading user data:', error);
@@ -344,12 +360,31 @@ const ProfileScreen = () => {
   };
 
   const renderProfileInfo = () => {
+    // Tamamlanan görev sayısını doğru şekilde hesapla
+    let completedTasksCount = 0;
+    
+    if (taskStats && taskStats.currentTasksCount) {
+      // Kategori toplamlarını kullanarak gerçek görev sayısını hesapla
+      const categoryTotal = Object.values(taskStats.currentTasksCount).reduce((sum, count) => sum + count, 0);
+      
+      // Eğer kategori toplamı varsa, onu kullan (daha doğru)
+      // Yoksa taskStats.completedTasks veya actualCompletedTaskCount'u kullan
+      completedTasksCount = categoryTotal > 0 ? 
+        categoryTotal : 
+        (taskStats.completedTasks || actualCompletedTaskCount || 0);
+    } else {
+      // TaskStats yoksa, actualCompletedTaskCount'u kullan
+      completedTasksCount = actualCompletedTaskCount || 0;
+    }
+    
+    // Görev sayısını konsola yazdır (debug için)
+    console.log(`ProfileScreen - Showing task count: ${completedTasksCount}`);
+    
     const currentXP = actualXP || userData?.xp || 0;
     const currentLevel = calculateLevel(currentXP);
     const progress = calculateProgress(currentXP, currentLevel);
     const nextLevelXP = calculateXPForNextLevel(currentLevel);
     const currentLevelXP = calculateXPForNextLevel(currentLevel - 1);
-    const completedTasksCount = actualCompletedTaskCount || 0;
 
     return (
       <View>
