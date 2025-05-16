@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -33,6 +33,8 @@ import { TaskList } from '../components/TaskList';
 import { EmergencyTaskList } from '../components/EmergencyTaskList';
 import { TaskProgressCard } from '../components/TaskProgressCard';
 import { Award } from 'lucide-react-native';
+import { TaskSearch } from '../components/TaskSearch';
+import { TaskSummaryCards } from '../components/TaskSummaryCards';
 
 // Debug imports
 console.log('TaskList imported as:', TaskList);
@@ -70,6 +72,10 @@ export default function TasksScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
   const [showAchievements, setShowAchievements] = useState(false);
+  const [showCompletedTasks, setShowCompletedTasks] = useState(false);
+  const [showAwaitingApprovalTasks, setShowAwaitingApprovalTasks] = useState(false);
+  const listRef = useRef<FlatList>(null);
+  const lastTabPress = useRef<{ [key: string]: number }>({});
   
   // TabView configuration
   const [tabRoutes] = useState([
@@ -170,17 +176,35 @@ export default function TasksScreen() {
   };
 
   const getFilteredItems = () => {
-    if (filter.filterType === 'all') return items;
-    if (filter.filterType === 'tasks') return items.filter(item => item.type === 'task' && (item.data as Task).status !== 'COMPLETED');
-    if (filter.filterType === 'emergencies') return items.filter(item => item.type === 'emergency');
-    if (filter.filterType === 'completed') return items.filter(item => 
-      item.type === 'task' && (item.data as Task).status === 'COMPLETED'
-    );
-    if (filter.filterType === 'awaiting_approval') return items.filter(item => 
-      item.type === 'task' && (item.data as Task).status === 'AWAITING_APPROVAL'
-    );
-    
+    if (showCompletedTasks) {
+      return items.filter(item => 
+        item.type === 'task' && 
+        (item.data as Task).status === 'COMPLETED' &&
+        (item.data as Task).completedBy?.id === user?.uid
+      );
+    }
+
+    if (showAwaitingApprovalTasks) {
+      return items.filter(item => 
+        item.type === 'task' && 
+        (item.data as Task).status === 'AWAITING_APPROVAL' &&
+        (item.data as Task).completedBy?.id === user?.uid
+      );
+    }
+
     return items;
+  };
+
+  const handleCompletedPress = () => {
+    setShowCompletedTasks(true);
+    setShowAwaitingApprovalTasks(false);
+    setTabIndex(1);
+  };
+
+  const handleAwaitingApprovalPress = () => {
+    setShowAwaitingApprovalTasks(true);
+    setShowCompletedTasks(false);
+    setTabIndex(1);
   };
 
   const renderItem = ({ item }: { item: ListItem }) => {
@@ -463,103 +487,130 @@ export default function TasksScreen() {
     regular: RegularTasksRoute,
   });
 
-  const renderTabBar = (props: any) => (
-    <TabBar
-      {...props}
-      indicatorStyle={{ backgroundColor: colors.primary }}
-      style={{ backgroundColor: colors.background }}
-      labelStyle={{ color: colors.text, fontSize: 14, fontWeight: '600' }}
-      activeColor={colors.primary}
-      inactiveColor={colors.textSecondary}
-    />
-  );
+  const handleTabPress = (route: string) => {
+    const now = Date.now();
+    const lastPress = lastTabPress.current[route] || 0;
+    
+    if (now - lastPress < 300) { // Double tap within 300ms
+      // Scroll to top
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }
+    
+    lastTabPress.current[route] = now;
+  };
+
+  const handleBack = () => {
+    setShowCompletedTasks(false);
+    setShowAwaitingApprovalTasks(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
         colors={[colors.primary, colors.primaryDark]}
-        style={styles.header}
+        style={[styles.header, (showCompletedTasks || showAwaitingApprovalTasks) && styles.specialHeader]}
       >
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputWrapper}>
-            <Search size={20} color={colors.textSecondary} style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Görev ara..."
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholderTextColor={colors.textSecondary}
-            />
+        {!showCompletedTasks && !showAwaitingApprovalTasks ? (
+          <TaskSearch
+            searchText={searchText}
+            onSearchChange={setSearchText}
+            filter={filter}
+            onFilterChange={setFilter}
+          />
+        ) : (
+          <View style={styles.specialHeaderContent}>
+            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <View style={styles.specialTitleContainer}>
+              {showCompletedTasks ? (
+                <CheckCircle size={24} color="#fff" />
+              ) : (
+                <Clock size={24} color="#fff" />
+              )}
+              <Text style={styles.specialTitle}>
+                {showCompletedTasks ? 'Tamamladığım Görevler' : 'Onay Bekleyen Görevler'}
+              </Text>
+            </View>
           </View>
-      </View>
-      
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterChipsContainer}
-      >
-          
-      </ScrollView>
+        )}
       </LinearGradient>
-    
-      {/* Show summary cards */}
-      <View style={styles.summaryContainer}>
-        <Card style={styles.summaryCard}>
-          <Card.Content>
-            <View style={styles.summaryContent}>
-              <View style={styles.summaryIconContainer}>
-                <Clock size={24} color={colors.warning} />
-        </View>
-              <View>
-                <Text style={styles.summaryTitle}>Onay Bekleyen</Text>
-                <Text style={styles.summaryCount}>
-                  {items.filter(item => 
-                    item.type === 'task' && (item.data as Task).status === 'AWAITING_APPROVAL'
-                  ).length}
-                </Text>
-            </View>
-            </View>
-          </Card.Content>
-        </Card>
-        
-        <Card style={styles.summaryCard}>
-          <Card.Content>
-            <View style={styles.summaryContent}>
-              <View style={[styles.summaryIconContainer, { backgroundColor: colors.success + '20' }]}>
-                <CheckCircle size={24} color={colors.success} />
-              </View>
-              <View>
-                <Text style={styles.summaryTitle}>Tamamlanan</Text>
-                <Text style={styles.summaryCount}>
-                  {items.filter(item => 
-                    item.type === 'task' && 
-                    ((item.data as Task).status === 'COMPLETED')
-                  ).length}
-                </Text>
-              </View>
-            </View>
-          </Card.Content>
-        </Card>
-        
-      </View>
 
-      {showFilters && (
-        <View style={styles.advancedFiltersContainer}>
-          {/* ... existing filter chips ... */}
+      {!showCompletedTasks && !showAwaitingApprovalTasks ? (
+        <>
+          <TaskSummaryCards 
+            items={items} 
+            onCompletedPress={handleCompletedPress}
+            onAwaitingApprovalPress={handleAwaitingApprovalPress}
+          />
+          <TabView
+            navigationState={{ index: tabIndex, routes: tabRoutes }}
+            renderScene={renderScene}
+            onIndexChange={setTabIndex}
+            initialLayout={{ width }}
+            renderTabBar={(props) => (
+              <TabBar
+                {...props}
+                indicatorStyle={{ backgroundColor: colors.primary }}
+                style={{ backgroundColor: colors.background }}
+                labelStyle={{ color: colors.text, fontSize: 14, fontWeight: '600' }}
+                activeColor={colors.primary}
+                inactiveColor={colors.textSecondary}
+                onTabPress={({ route }) => handleTabPress(route.key)}
+              />
+            )}
+          />
+        </>
+      ) : (
+        <View style={styles.specialContent}>
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>
+                {showCompletedTasks ? 'Toplam Tamamlanan' : 'Onay Bekleyen'}
+              </Text>
+              <Text style={styles.statValue}>
+                {getFilteredItems().length}
+              </Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Toplam XP</Text>
+              <Text style={styles.statValue}>
+                {getFilteredItems().reduce((sum, item) => sum + ((item.data as Task).xpReward || 0), 0)}
+              </Text>
+            </View>
+          </View>
+          <FlatList
+            ref={listRef}
+            data={getFilteredItems()}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.type + '-' + item.data.id}
+            contentContainerStyle={styles.specialList}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                {showCompletedTasks ? (
+                  <CheckCircle size={64} color={colors.textTertiary} style={{ opacity: 0.5 }} />
+                ) : (
+                  <Clock size={64} color={colors.textTertiary} style={{ opacity: 0.5 }} />
+                )}
+                <Text style={styles.emptyTitle}>
+                  {showCompletedTasks ? 'Henüz Görev Tamamlanmamış' : 'Onay Bekleyen Görev Yok'}
+                </Text>
+                <Text style={styles.emptyText}>
+                  {showCompletedTasks 
+                    ? 'Tamamladığınız görevler burada listelenecek.'
+                    : 'Onay bekleyen görevleriniz burada listelenecek.'}
+                </Text>
+              </View>
+            }
+          />
         </View>
       )}
 
-      <TabView
-        navigationState={{ index: tabIndex, routes: tabRoutes }}
-        renderScene={renderScene}
-        onIndexChange={setTabIndex}
-        initialLayout={{ width }}
-        renderTabBar={renderTabBar}
-      />
-
-      <TouchableOpacity style={styles.fab} onPress={handleCreateTask}>
-        <Plus size={24} color="#ffffff" />
-      </TouchableOpacity>
+      {!showCompletedTasks && !showAwaitingApprovalTasks && (
+        <TouchableOpacity style={styles.fab} onPress={handleCreateTask}>
+          <Plus size={24} color="#ffffff" />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -870,5 +921,59 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  specialHeader: {
+    paddingBottom: spacing.lg,
+  },
+  specialHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  specialTitleContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  specialTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: spacing.sm,
+  },
+  backButton: {
+    padding: spacing.sm,
+    marginRight: spacing.sm,
+  },
+  specialContent: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    padding: spacing.md,
+    backgroundColor: '#fff',
+    marginBottom: spacing.sm,
+    borderRadius: borderRadius.medium,
+    margin: spacing.md,
+    ...shadows.medium,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    padding: spacing.sm,
+  },
+  statLabel: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginBottom: spacing.xs,
+  },
+  statValue: {
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  specialList: {
+    padding: spacing.md,
   },
 });
