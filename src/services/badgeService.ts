@@ -138,18 +138,25 @@ export class BadgeService {
         }
         
         let meetsRequirement = false;
+        let taskCount = 0;
         
         switch (badge.requirement.type) {
           case 'TASK_COUNT':
-            meetsRequirement = progressData.completedTasks >= badge.requirement.count;
+            taskCount = progressData.completedTasks;
+            meetsRequirement = taskCount >= badge.requirement.count;
             break;
           case 'CATEGORY_COUNT':
             if (badge.requirement.category && progressData.currentTasksCount[badge.requirement.category]) {
-              meetsRequirement = progressData.currentTasksCount[badge.requirement.category] >= badge.requirement.count;
+              taskCount = progressData.currentTasksCount[badge.requirement.category];
+              meetsRequirement = taskCount >= badge.requirement.count;
+              
+              // Debug için logla
+              console.log(`Badge check for ${badge.id}: Category ${badge.requirement.category} has ${taskCount} tasks, requirement is ${badge.requirement.count}`);
             }
             break;
           case 'STREAK_DAYS':
-            meetsRequirement = progressData.totalStreakDays >= badge.requirement.count;
+            taskCount = progressData.totalStreakDays;
+            meetsRequirement = taskCount >= badge.requirement.count;
             break;
           case 'EMERGENCY_COUNT':
             // Acil durum sayısı için özel sorgu gerekebilir
@@ -218,6 +225,149 @@ export class BadgeService {
     }
   }
 
+  // Özel bir metot ekleyelim: Sağlık kategorisi için rozet kontrolü
+  async checkAndAwardHealthBadge(userId: string): Promise<boolean> {
+    try {
+      const xpService = XPService.getInstance();
+      const progressData = await xpService.getTaskProgress(userId);
+      
+      // Sağlık kategorisindeki görev sayısını kontrol et
+      const healthTaskCount = progressData.currentTasksCount['HEALTH'] || 0;
+      console.log(`Health category task count for user ${userId}: ${healthTaskCount}`);
+      
+      if (healthTaskCount < 10) {
+        console.log(`Not enough health tasks (${healthTaskCount}) for badge`);
+        return false;
+      }
+      
+      // Kullanıcının rozetlerini al
+      const userDoc = await getDoc(doc(db, this.usersCollection, userId));
+      if (!userDoc.exists()) {
+        console.log(`User ${userId} not found`);
+        return false;
+      }
+      
+      const userData = userDoc.data();
+      const userBadges = userData.badges || [];
+      
+      // Sağlık rozeti var mı kontrol et
+      const healthBadge = userBadges.find((badge: UserBadge) => badge.id === 'health_hero_bronze');
+      
+      if (healthBadge) {
+        console.log(`User ${userId} already has health badge`);
+        return false;
+      }
+      
+      // BADGES listesinden sağlık rozetini bul
+      const healthBadgeTemplate = BADGES.find(badge => badge.id === 'health_hero_bronze');
+      
+      if (!healthBadgeTemplate) {
+        console.log('Health badge template not found in BADGES');
+        return false;
+      }
+      
+      // Rozeti oluştur ve kullanıcıya ver
+      const level = Math.floor(healthTaskCount / 10) + 1;
+      const remainingCount = healthTaskCount % 10;
+      
+      const userBadge: UserBadge = {
+        ...healthBadgeTemplate,
+        earnedAt: new Date().toISOString(),
+        progress: Math.floor((remainingCount / 10) * 100),
+        level: level,
+        currentCount: remainingCount,
+        maxCount: 10
+      };
+      
+      // Kullanıcıya rozeti ekle
+      await updateDoc(doc(db, this.usersCollection, userId), {
+        badges: arrayUnion(userBadge)
+      });
+      
+      // XP ödülü ver
+      const xpAmount = healthBadgeTemplate.xpReward * level;
+      await xpService.addAchievementXP(
+        userId,
+        `${healthBadgeTemplate.name} - Seviye ${level}`,
+        `${healthBadgeTemplate.description} rozetini kazandın!`,
+        'MEDIUM'
+      );
+      
+      console.log(`Successfully awarded health badge to user ${userId} at level ${level}`);
+      return true;
+    } catch (error) {
+      console.error('Error checking health badge:', error);
+      return false;
+    }
+  }
+  
+  // Mevcut tüm kategorileri kontrol edip rozet ver
+  async checkAllCategoryBadges(userId: string): Promise<{
+    badgesAwarded: string[];
+  }> {
+    try {
+      const xpService = XPService.getInstance();
+      const progressData = await xpService.getTaskProgress(userId);
+      const badgesAwarded: string[] = [];
+      
+      // Tüm kategorileri kontrol et
+      const categories = ['FEEDING', 'HEALTH', 'SHELTER', 'CLEANING'];
+      
+      for (const category of categories) {
+        const taskCount = progressData.currentTasksCount[category] || 0;
+        
+        // 10 veya daha fazla görev tamamlanmışsa rozet ver
+        if (taskCount >= 10) {
+          const badgeId = `${category.toLowerCase()}_specialist_bronze`;
+          if (category === 'HEALTH') {
+            const awarded = await this.checkAndAwardHealthBadge(userId);
+            if (awarded) {
+              badgesAwarded.push('health_hero_bronze');
+            }
+          } else {
+            // Diğer kategoriler için benzer işlem
+            const badgeTemplate = BADGES.find(badge => badge.id === badgeId);
+            if (badgeTemplate) {
+              const userDoc = await getDoc(doc(db, this.usersCollection, userId));
+              if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const userBadges = userData.badges || [];
+                
+                // Kullanıcının bu rozeti var mı kontrol et
+                const hasBadge = userBadges.some((badge: UserBadge) => badge.id === badgeId);
+                
+                if (!hasBadge) {
+                  const level = Math.floor(taskCount / 10) + 1;
+                  const remainingCount = taskCount % 10;
+                  
+                  const userBadge: UserBadge = {
+                    ...badgeTemplate,
+                    earnedAt: new Date().toISOString(),
+                    progress: Math.floor((remainingCount / 10) * 100),
+                    level: level,
+                    currentCount: remainingCount,
+                    maxCount: 10
+                  };
+                  
+                  await updateDoc(doc(db, this.usersCollection, userId), {
+                    badges: arrayUnion(userBadge)
+                  });
+                  
+                  badgesAwarded.push(badgeId);
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      return { badgesAwarded };
+    } catch (error) {
+      console.error('Error checking all category badges:', error);
+      return { badgesAwarded: [] };
+    }
+  }
+
   // Update badge progress when completing a task
   async updateBadgeProgress(userId: string, taskCategoryType?: string): Promise<{
     levelsGained: {badgeId: string, newLevel: number}[];
@@ -235,112 +385,126 @@ export class BadgeService {
       const updatedBadges = [...userBadges];
       const levelsGained: {badgeId: string, newLevel: number}[] = [];
       let totalXPAwarded = 0;
-      const xpService = XPService.getInstance();
-
-      // Update each badge's progress
-      for (let i = 0; i < updatedBadges.length; i++) {
-        const badge = updatedBadges[i] as UserBadge;
+      let badgesChanged = false;
+      
+      // Kategori bazlı rozetleri güncelle
+      if (taskCategoryType) {
+        console.log(`Updating badges for category: ${taskCategoryType}`);
         
-        // Skip if badge doesn't have level or counts (for backward compatibility)
-        if (badge.level === undefined || badge.currentCount === undefined || badge.maxCount === undefined) {
-          // Initialize these properties if they don't exist
-          badge.level = 1;
-          badge.currentCount = 0;
-          badge.maxCount = 10;
-        }
-        
-        let shouldIncrementCount = false;
-        
-        // Check if this task counts for this badge
-        switch (badge.requirement.type) {
-          case 'TASK_COUNT':
-            // Any task counts
-            shouldIncrementCount = true;
-            break;
-          case 'CATEGORY_COUNT':
-            if (!badge.requirement.category) break;
+        // İlgili kategoriye ait rozetleri bul
+        for (let i = 0; i < updatedBadges.length; i++) {
+          const badge = updatedBadges[i];
+          
+          // Kategori rozeti mi kontrol et
+          if (badge.requirement?.type === 'CATEGORY_COUNT' && 
+              badge.requirement?.category === taskCategoryType) {
             
-            // Direct category match
-            if (taskCategoryType === badge.requirement.category) {
-              shouldIncrementCount = true;
-              break;
-            }
+            // Rozet ilerlemesini güncelle
+            badge.currentCount = (badge.currentCount || 0) + 1;
+            badge.progress = Math.floor((badge.currentCount / badge.maxCount) * 100);
             
-            // Handle special category mapping for emergency tasks
-            // Some emergency tasks might be categorized differently in the UI than in the badge system
-            if (taskCategoryType) {
-              // Map 'OTHER' to appropriate badge categories for backwards compatibility
-              if (taskCategoryType === 'OTHER') {
-                const badgeCategory = badge.requirement.category;
-                // Map OTHER to all categories to ensure badges progress
-                // This ensures emergency tasks that default to OTHER or HEALTH 
-                // will still increment all category badges
-                shouldIncrementCount = ['FEEDING', 'CLEANING', 'HEALTH', 'SHELTER'].includes(badgeCategory);
-              }
+            console.log(`Updated badge ${badge.id}: ${badge.currentCount}/${badge.maxCount} (${badge.progress}%)`);
+            
+            // Seviye atlama kontrolü
+            if (badge.currentCount >= badge.maxCount) {
+              const oldLevel = badge.level;
+              badge.level = (badge.level || 1) + 1;
+              badge.currentCount = 0; // Sayacı sıfırla
+              badge.progress = 0; // İlerlemeyi sıfırla
               
-              // Map HEALTH emergency tasks to appropriate badge categories as needed
-              if (taskCategoryType === 'HEALTH') {
-                const badgeCategory = badge.requirement.category;
-                // For emergency tasks that are health-related but need to count for other badge categories
-                if (['FEEDING', 'SHELTER'].includes(badgeCategory)) {
-                  shouldIncrementCount = true;
-                }
+              levelsGained.push({
+                badgeId: badge.id,
+                newLevel: badge.level
+              });
+              
+              console.log(`Badge ${badge.id} leveled up from ${oldLevel} to ${badge.level}!`);
+              
+              // XP ödülü
+              const badgeTemplate = BADGES.find(b => b.id === badge.id);
+              if (badgeTemplate) {
+                const xpAmount = badgeTemplate.xpReward * (badge.level - 1); // Önceki seviyeye göre XP
+                totalXPAwarded += xpAmount;
+                
+                // XP ekle
+                const xpService = XPService.getInstance();
+                await xpService.addXP(userId, {
+                  title: 'Rozet Seviye Atladı',
+                  description: `"${badge.name}" rozeti seviye ${badge.level} oldu!`,
+                  xpAmount: xpAmount,
+                  type: 'BADGE_LEVEL_UP'
+                });
               }
             }
-            break;
-          // Other badge types don't increment on task completion directly
+            
+            badgesChanged = true;
+          }
         }
+      }
+      
+      // Genel görev tamamlama rozetlerini güncelle
+      for (let i = 0; i < updatedBadges.length; i++) {
+        const badge = updatedBadges[i];
         
-        if (shouldIncrementCount) {
-          // Increment current count
+        // Genel görev rozeti mi kontrol et
+        if (badge.requirement?.type === 'TASK_COUNT') {
+          // Rozet ilerlemesini güncelle
           badge.currentCount = (badge.currentCount || 0) + 1;
+          badge.progress = Math.floor((badge.currentCount / badge.maxCount) * 100);
           
-          console.log(`Incrementing badge ${badge.id} (${badge.name}) from ${badge.currentCount-1} to ${badge.currentCount}/${badge.maxCount}`);
+          console.log(`Updated general badge ${badge.id}: ${badge.currentCount}/${badge.maxCount} (${badge.progress}%)`);
           
-          // Check if badge should level up
+          // Seviye atlama kontrolü
           if (badge.currentCount >= badge.maxCount) {
-            // Level up the badge
+            const oldLevel = badge.level;
             badge.level = (badge.level || 1) + 1;
-            badge.currentCount = 0; // Reset count for next level
+            badge.currentCount = 0; // Sayacı sıfırla
+            badge.progress = 0; // İlerlemeyi sıfırla
             
-            console.log(`Badge ${badge.id} (${badge.name}) leveled up to level ${badge.level} with 0/${badge.maxCount} progress`);
-            
-            // Add XP reward for leveling up (increase reward by level)
-            const xpReward = badge.xpReward * badge.level;
-            totalXPAwarded += xpReward;
-            
-            // Record level gain
             levelsGained.push({
               badgeId: badge.id,
               newLevel: badge.level
             });
             
-            // Award XP for leveling up
-            await xpService.addAchievementXP(
-              userId,
-              `${badge.name} - Seviye ${badge.level}`,
-              `${badge.description} rozetiniz seviye ${badge.level} oldu!`,
-              badge.level <= 2 ? 'SMALL' : badge.level <= 4 ? 'MEDIUM' : 'LARGE'
-            );
+            console.log(`General badge ${badge.id} leveled up from ${oldLevel} to ${badge.level}!`);
+            
+            // XP ödülü
+            const badgeTemplate = BADGES.find(b => b.id === badge.id);
+            if (badgeTemplate) {
+              const xpAmount = badgeTemplate.xpReward * (badge.level - 1); // Önceki seviyeye göre XP
+              totalXPAwarded += xpAmount;
+              
+              // XP ekle
+              const xpService = XPService.getInstance();
+              await xpService.addXP(userId, {
+                title: 'Rozet Seviye Atladı',
+                description: `"${badge.name}" rozeti seviye ${badge.level} oldu!`,
+                xpAmount: xpAmount,
+                type: 'BADGE_LEVEL_UP'
+              });
+            }
           }
           
-          // Update progress percentage for visual display
-          badge.progress = Math.floor((badge.currentCount / badge.maxCount) * 100);
-          
-          // Update badge in array
-          updatedBadges[i] = badge;
+          badgesChanged = true;
         }
       }
       
-      // Update badges in Firestore
-      await updateDoc(doc(db, this.usersCollection, userId), {
-        badges: updatedBadges
-      });
+      // Değişiklik varsa Firestore'a kaydet
+      if (badgesChanged) {
+        await updateDoc(doc(db, this.usersCollection, userId), {
+          badges: updatedBadges
+        });
+      }
       
-      return { levelsGained, totalXPAwarded };
+      return {
+        levelsGained,
+        totalXPAwarded
+      };
     } catch (error) {
       console.error('Error updating badge progress:', error);
-      return { levelsGained: [], totalXPAwarded: 0 };
+      return {
+        levelsGained: [],
+        totalXPAwarded: 0
+      };
     }
   }
   
