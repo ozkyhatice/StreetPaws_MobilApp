@@ -249,23 +249,46 @@ export class XPService {
       // İlgili kategori sayısını artır
       progress.currentTasksCount[category] = (progress.currentTasksCount[category] || 0) + 1;
       
-      // Tamamlanan toplam görev sayısını artır
-      progress.completedTasks += 1;
-      
       console.log(`XPService: Updated task progress for user ${userId}, category ${category}:`, progress.currentTasksCount);
       
       // Firestore güncellemesi
       const userRef = doc(db, this.usersCollection, userId);
+      const userDoc = await getDoc(userRef);
       
+      if (!userDoc.exists()) {
+        console.log(`XPService: User document not found, creating new document for user ${userId}`);
+        // Kullanıcı belgesi yoksa yeni oluştur
+        await setDoc(userRef, {
+          userId: userId,
+          stats: {
+            tasksCompleted: 1
+          },
+          [`achievements.categories.${category.toLowerCase()}`]: 1
+        });
+        return;
+      }
+      
+      // Kullanıcı verilerini al
+      const userData = userDoc.data();
+      
+      // Mevcut kategori sayısını kontrol et
+      const currentCategoryCount = userData?.achievements?.categories?.[category.toLowerCase()] || 0;
+      
+      // Mevcut görev sayısını kontrol et
+      const currentTaskCount = userData?.stats?.tasksCompleted || 0;
+      
+      // Kategori sayısını güncelle (sadece mevcut sayıdan büyükse)
+      const newCategoryCount = Math.max(currentCategoryCount + 1, progress.currentTasksCount[category]);
+      
+      // Firestore güncellemesi
       await updateDoc(userRef, {
-        [`achievements.categories.${category.toLowerCase()}`]: increment(1),
-        'stats.tasksCompleted': increment(1)
+        [`achievements.categories.${category.toLowerCase()}`]: newCategoryCount
       });
       
-      console.log(`XPService: Firestore updated with category count for ${category}`);
+      console.log(`XPService: Firestore updated with category count for ${category}: ${newCategoryCount}`);
       
       // Rozetleri kontrol et
-      await this.checkAndAwardBadgesForCategory(userId, category, progress.currentTasksCount[category]);
+      await this.checkAndAwardBadgesForCategory(userId, category, newCategoryCount);
     } catch (error) {
       console.error(`XPService: Error updating task progress for category: ${error.message}`);
     }
@@ -403,11 +426,20 @@ export class XPService {
         }
       });
       
-      // stats.tasksCompleted bilgisi varsa onu kullan, yoksa Firestore query sonucuna güven
-      const completedTasksCount = userData?.stats?.tasksCompleted || completedSnapshot.size;
+      // Kategori sayılarının toplamını hesapla - bu daha doğru bir görev sayısı olacaktır
+      const categoryTotal = Object.values(categoryCount).reduce((sum, count) => sum + count, 0);
+      
+      // Eğer kategori toplamı varsa onu kullan, yoksa Firestore sorgu sonucunu kullan
+      // Bu, görev sayısının yanlış hesaplanmasını önler
+      const completedTasksCount = categoryTotal > 0 ? categoryTotal : completedSnapshot.size;
+      
+      // Eğer kullanıcı dokümanında stats.tasksCompleted değeri varsa ve kategori toplamından büyük değilse,
+      // kategori toplamını kullan (bu, görev sayısının 3 katına çıkması sorununu önler)
+      const storedTaskCount = userData?.stats?.tasksCompleted || 0;
+      const finalTaskCount = (storedTaskCount > 0 && storedTaskCount <= categoryTotal) ? categoryTotal : completedTasksCount;
       
       const result = {
-        completedTasks: completedTasksCount,
+        completedTasks: finalTaskCount,
         awaitingApprovalTasks: awaitingApprovalSnapshot.size,
         totalStreakDays,
         currentTasksCount: categoryCount
