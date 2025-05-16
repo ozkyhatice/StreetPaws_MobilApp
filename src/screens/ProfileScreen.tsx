@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  AlertButton,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -17,12 +18,13 @@ import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
 import { Text, Avatar, Surface, useTheme, Button, ProgressBar } from 'react-native-paper';
 import { colors } from '../config/theme';
-import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText } from 'lucide-react-native';
+import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText, Award } from 'lucide-react-native';
 import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { BadgeService } from '../services/badgeService';
 import { UserService } from '../services/userService';
 import { TaskService } from '../services/taskService';
+import { BadgeCollection } from '../components/BadgeCollection';
 
 const { width } = Dimensions.get('window');
 
@@ -41,6 +43,8 @@ const ProfileScreen = () => {
   const [actualCompletedTaskCount, setActualCompletedTaskCount] = useState(0);
   const [actualXP, setActualXP] = useState(0);
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+  const [levelUpBadge, setLevelUpBadge] = useState<any>(null);
 
   const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
 
@@ -100,6 +104,25 @@ const ProfileScreen = () => {
       if (userDoc.exists()) {
         const data = userDoc.data();
         console.log('Kullanıcı verileri alındı:', data);
+        
+        // Check if there's been any badge level ups since last time
+        if (userData && userData.badges) {
+          const prevBadges = userData.badges || [];
+          const newBadges = data.badges || [];
+          
+          // Look for any badge that has leveled up
+          for (const newBadge of newBadges) {
+            const prevBadge = prevBadges.find(b => b.id === newBadge.id);
+            
+            if (prevBadge && newBadge.level && prevBadge.level && newBadge.level > prevBadge.level) {
+              // Found a badge that leveled up!
+              setLevelUpBadge(newBadge);
+              setShowLevelUpModal(true);
+              break;
+            }
+          }
+        }
+        
         setUserData(data);
         setBadges(data?.badges || []);
         loadTaskStats();
@@ -307,6 +330,37 @@ const ProfileScreen = () => {
     const nextLevelXP = calculateXPForNextLevel(level);
     const currentLevelXP = calculateXPForNextLevel(level - 1);
     return (xp - currentLevelXP) / (nextLevelXP - currentLevelXP);
+  };
+
+  const handleTestBadgeLevelUp = async () => {
+    try {
+      const badgeService = BadgeService.getInstance();
+      
+      // First, check if user has any badges
+      if (badges.length === 0) {
+        // Award a test badge first
+        await badgeService.awardTestBadge(user.uid);
+        Alert.alert('Başarılı', 'Test rozeti eklendi. Şimdi rozet seviyesini artırabilirsiniz.');
+        return;
+      }
+      
+      // Advance the first badge by 10 tasks (enough to level up)
+      const firstBadge = badges[0];
+      const result = await badgeService.testAdvanceBadge(user.uid, firstBadge.id, 10);
+      
+      if (result.badgeUpdated) {
+        if (result.leveledUp) {
+          Alert.alert('Başarılı', `Rozet seviye ${result.newLevel} oldu! Yeni ilerleme: ${result.currentCount}/${result.maxCount}`);
+        } else {
+          Alert.alert('Başarılı', `Rozet ilerlemesi: ${result.currentCount}/${result.maxCount}`);
+        }
+      } else {
+        Alert.alert('Hata', 'Rozet güncellenemedi.');
+      }
+    } catch (error) {
+      console.error('Error testing badge:', error);
+      Alert.alert('Hata', 'Rozet test edilirken bir hata oluştu');
+    }
   };
 
   const renderProfileInfo = () => {
@@ -596,6 +650,71 @@ const ProfileScreen = () => {
     }
   };
 
+  // Add the LevelUp modal render function
+  const renderLevelUpModal = () => (
+    <Modal
+      visible={showLevelUpModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setShowLevelUpModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <Surface style={styles.levelUpModalContent}>
+          <Text variant="titleLarge" style={styles.levelUpTitle}>
+            Tebrikler! 🎉
+          </Text>
+          
+          {levelUpBadge && (
+            <>
+              <Text style={styles.levelUpText}>
+                <Text style={styles.boldText}>{levelUpBadge.name}</Text> rozetin seviye atladı!
+              </Text>
+              
+              <View style={styles.levelUpBadgeContainer}>
+                <View style={[
+                  styles.levelUpIconContainer, 
+                  { backgroundColor: getBadgeColor(levelUpBadge.level) + '30' }
+                ]}>
+                  <Award size={48} color={getBadgeColor(levelUpBadge.level)} />
+                  <View style={styles.levelUpIndicator}>
+                    <Text style={styles.levelUpIndicatorText}>{levelUpBadge.level}</Text>
+                  </View>
+                </View>
+                <Text style={styles.levelUpMessage}>
+                  Seviye {levelUpBadge.level}
+                </Text>
+              </View>
+              
+              <Text style={styles.levelUpRewardText}>
+                +{levelUpBadge.xpReward * levelUpBadge.level} XP Kazanıldı!
+              </Text>
+            </>
+          )}
+          
+          <Button 
+            mode="contained" 
+            onPress={() => setShowLevelUpModal(false)}
+            style={styles.levelUpButton}
+          >
+            Harika!
+          </Button>
+        </Surface>
+      </View>
+    </Modal>
+  );
+  
+  // Add a helper function to get badge color based on level
+  const getBadgeColor = (level: string) => {
+    switch (level) {
+      case 'BRONZE': return '#CD7F32';
+      case 'SILVER': return '#C0C0C0';
+      case 'GOLD': return '#FFD700';
+      case 'PLATINUM': return '#E5E4E2';
+      case 'DIAMOND': return '#B9F2FF';
+      default: return colors.primary;
+    }
+  };
+
   if (!user) {
     return (
       <View style={styles.loadingContainer}>
@@ -676,9 +795,77 @@ const ProfileScreen = () => {
             </Surface>
           </>
         )}
+
+        {activeTab === 'Rozetlerim' && (
+          <View style={styles.badgesContainer}>
+            <Surface style={styles.badgesCard} elevation={0}>
+              <Text variant="titleMedium" style={styles.badgesTitle}>
+                Kazanılan Rozetler
+              </Text>
+              <Text style={styles.badgesSubtitle}>
+                Görevleri tamamlayarak rozetleri kazanabilir ve seviyelerini yükseltebilirsin.
+                Her rozet 10 seviyeye kadar yükseltilebilir.
+              </Text>
+              
+              {badges.length === 0 ? (
+                <View style={styles.emptyBadgesContainer}>
+                  <Text style={styles.emptyBadgesText}>
+                    Henüz rozet kazanmadınız. Görevleri tamamlayarak rozetler kazanabilirsiniz.
+                  </Text>
+                  <Button 
+                    mode="contained" 
+                    onPress={() => navigation.navigate('Tasks')}
+                    style={{marginTop: 16}}
+                  >
+                    Görevlere Git
+                  </Button>
+                </View>
+              ) : (
+                <>
+                  <BadgeCollection 
+                    badges={badges} 
+                    loading={loading}
+                  />
+                  
+                  <Text style={styles.badgeTip}>
+                    Her rozet 10 görevde bir seviye atlar. Seviye atladıkça kazandığın XP miktarı da artar!
+                  </Text>
+                </>
+              )}
+              
+              {/* Test Button for Development */}
+              <View style={styles.testButtonContainer}>
+                <Button 
+                  mode="outlined" 
+                  onPress={handleTestBadgeLevelUp}
+                  style={styles.testButton}
+                >
+                  Test Rozeti Seviye Atlat
+                </Button>
+              </View>
+            </Surface>
+          </View>
+        )}
+
+        {activeTab === 'Etkinliklerim' && (
+          <View style={styles.activityContainer}>
+            <Surface style={styles.activityCard} elevation={0}>
+              <Text variant="titleMedium" style={styles.activityTitle}>
+                Son Etkinlikler
+              </Text>
+              
+              <View style={styles.emptyActivityContainer}>
+                <Text style={styles.emptyActivityText}>
+                  Yakında burada etkinlik geçmişinizi görebileceksiniz.
+                </Text>
+              </View>
+            </Surface>
+          </View>
+        )}
       </ScrollView>
 
       {renderEditModal()}
+      {renderLevelUpModal()}
     </SafeAreaView>
   );
 };
@@ -814,9 +1001,10 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
-    padding: 20,
+    alignItems: 'center',
+    padding: 24,
   },
   modalContent: {
     backgroundColor: '#fff',
@@ -907,6 +1095,136 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     marginTop: 4,
+  },
+  badgesContainer: {
+    paddingBottom: 16,
+  },
+  badgesCard: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+  badgesTitle: {
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  badgesSubtitle: {
+    color: '#666',
+    marginBottom: 16,
+    fontSize: 14,
+  },
+  emptyBadgesContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  emptyBadgesText: {
+    textAlign: 'center',
+    color: '#999',
+  },
+  badgeTip: {
+    backgroundColor: '#F0F7FF',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 14,
+    color: '#0066CC',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  activityContainer: {
+    paddingBottom: 16,
+  },
+  activityCard: {
+    margin: 16,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+  activityTitle: {
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  emptyActivityContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  emptyActivityText: {
+    textAlign: 'center',
+    color: '#999',
+  },
+  levelUpModalContent: {
+    width: '90%',
+    maxWidth: 400,
+    padding: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  levelUpTitle: {
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  levelUpText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  boldText: {
+    fontWeight: 'bold',
+  },
+  levelUpBadgeContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  levelUpIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    position: 'relative',
+  },
+  levelUpIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.primary,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  levelUpIndicatorText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  levelUpMessage: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  levelUpRewardText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.success,
+    marginBottom: 24,
+  },
+  levelUpButton: {
+    paddingHorizontal: 32,
+  },
+  testButtonContainer: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  testButton: {
+    borderColor: colors.primary,
   },
 });
 
