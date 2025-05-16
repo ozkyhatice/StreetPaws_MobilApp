@@ -477,38 +477,46 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       if (task.completedBy && task.completedBy.id) {
         const completedUserId = task.completedBy.id;
         
-        // Add task to user's XP
+        // Add task completion XP
         await xpService.addTaskCompletionXP(
           completedUserId,
           task.id,
           task.title,
-          task.isEmergency || false,
-          task.emergencyLevel || 'NORMAL' // Make sure emergencyLevel is never undefined
+          task.isEmergency,
+          task.emergencyLevel
         );
         
-        // Update user's badges
-        await badgeService.checkAndAwardBadges(completedUserId);
+        // Update badge progress
+        const badgeService = BadgeService.getInstance();
+        const result = await badgeService.updateBadgeProgress(completedUserId, task.category);
+        
+        // Check and award all category badges
+        await badgeService.checkAllCategoryBadges(completedUserId);
+        
+        if (result.levelsGained.length > 0) {
+          console.log('Badge levels gained:', result.levelsGained);
+        }
+        
+        // Update task category counts
+        await xpService.updateTaskProgressForCategory(completedUserId, task.category || 'OTHER');
+        
+        // If the task was completed by the current user, update local state
+        if (completedUserId === user.uid) {
+          // Refresh XP data if needed
+          await xpService.getUserXP(user.uid);
+          // Note: We're not setting state here since we're navigating away
+        }
       }
       
-      setShowApprovalForm(false);
-      
-      // Show success message and reload task
+      // Show success message
       Alert.alert(
         'Başarılı',
-        'Görev başarıyla onaylandı.',
-        [
-          { 
-            text: 'Tamam', 
-            onPress: async () => {
-              await loadTask(); // Görevi yeniden yükle
-              navigation.goBack(); // Ana sayfaya dön
-            }
-          }
-        ]
+        'Görev onaylandı ve XP ödülü verildi!',
+        [{ text: 'Tamam', onPress: () => navigation.goBack() }]
       );
     } catch (error) {
       console.error('Error approving task:', error);
-      Alert.alert('Hata', 'Görev onaylanırken bir hata oluştu: ' + (error instanceof Error ? error.message : 'Bilinmeyen hata'));
+      Alert.alert('Hata', 'Görev onaylanırken bir hata oluştu');
     } finally {
       setSubmitting(false);
     }
