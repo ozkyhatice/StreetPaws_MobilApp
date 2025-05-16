@@ -45,6 +45,14 @@ export default function CompletedTasksScreen() {
   const confettiRef = useRef<LottieView>(null);
   const trophyRef = useRef<LottieView>(null);
 
+  // Item animation references - define these at the component level, not inside render functions
+  const itemFades = useRef<{[key: string]: Animated.Value}>({}).current;
+  const itemSlides = useRef<{[key: string]: Animated.Value}>({}).current;
+  
+  // Category animation references
+  const categoryFades = useRef<{[key: string]: Animated.Value}>({}).current;
+  const categoryScales = useRef<{[key: string]: Animated.Value}>({}).current;
+
   useEffect(() => {
     // Animasyonları başlat
     Animated.parallel([
@@ -85,6 +93,73 @@ export default function CompletedTasksScreen() {
       }, 500);
     }
   }, [loading, tasks]);
+
+  // Initialize item animations whenever tasks change
+  useEffect(() => {
+    // Create animations for each task item
+    tasks.forEach((task, index) => {
+      const itemDelay = index * 150;
+      
+      // Create animation values if they don't exist
+      if (!itemFades[task.id]) {
+        itemFades[task.id] = new Animated.Value(0);
+      }
+      if (!itemSlides[task.id]) {
+        itemSlides[task.id] = new Animated.Value(50);
+      }
+      
+      // Start animations
+      Animated.parallel([
+        Animated.timing(itemFades[task.id], {
+          toValue: 1,
+          duration: 500,
+          delay: itemDelay,
+          useNativeDriver: true,
+        }),
+        Animated.timing(itemSlides[task.id], {
+          toValue: 0,
+          duration: 400,
+          delay: itemDelay,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }, [tasks]);
+
+  // Initialize category animations when category counts change
+  useEffect(() => {
+    // Create animations for each category
+    Object.keys(statsCategoryCount).forEach((category, index) => {
+      if (statsCategoryCount[category] === 0) return;
+      
+      const delay = 300 + index * 100;
+      
+      // Create animation values if they don't exist
+      if (!categoryFades[category]) {
+        categoryFades[category] = new Animated.Value(0);
+      }
+      if (!categoryScales[category]) {
+        categoryScales[category] = new Animated.Value(0.8);
+      }
+      
+      // Start animations
+      Animated.parallel([
+        Animated.timing(categoryFades[category], {
+          toValue: 1,
+          duration: 400,
+          delay: delay,
+          useNativeDriver: true,
+        }),
+        Animated.spring(categoryScales[category], {
+          toValue: 1,
+          friction: 6,
+          tension: 40,
+          delay: delay,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+  }, [statsCategoryCount]);
 
   const loadCompletedTasks = async () => {
     if (!user) return;
@@ -154,32 +229,10 @@ export default function CompletedTasksScreen() {
   };
 
   const renderItem = ({ item, index }: { item: Task, index: number }) => {
-    // Her bir öğe için gecikme ile animasyon
-    const itemDelay = index * 150;
-    const itemFade = useRef(new Animated.Value(0)).current;
-    const itemSlide = useRef(new Animated.Value(50)).current;
-    
-    useEffect(() => {
-      Animated.parallel([
-        Animated.timing(itemFade, {
-          toValue: 1,
-          duration: 500,
-          delay: itemDelay,
-          useNativeDriver: true,
-        }),
-        Animated.timing(itemSlide, {
-          toValue: 0,
-          duration: 400,
-          delay: itemDelay,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, []);
-
     return (
       <Animated.View style={{ 
-        opacity: itemFade,
-        transform: [{ translateY: itemSlide }]
+        opacity: itemFades[item.id] || 0,
+        transform: [{ translateY: itemSlides[item.id] || 50 }]
       }}>
         <TouchableOpacity 
           style={styles.taskCard}
@@ -234,36 +287,14 @@ export default function CompletedTasksScreen() {
       // Kategori adını kontrol et
       if (statsCategoryCount[category] === 0) return null;
       
-      const delay = 300 + index * 100;
-      const categoryFade = useRef(new Animated.Value(0)).current;
-      const categoryScale = useRef(new Animated.Value(0.8)).current;
-      
-      useEffect(() => {
-        Animated.parallel([
-          Animated.timing(categoryFade, {
-            toValue: 1,
-            duration: 400,
-            delay: delay,
-            useNativeDriver: true,
-          }),
-          Animated.spring(categoryScale, {
-            toValue: 1,
-            friction: 6,
-            tension: 40,
-            delay: delay,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }, []);
-      
       return (
         <Animated.View 
           key={category}
           style={[
             styles.categoryItem,
             { 
-              opacity: categoryFade,
-              transform: [{ scale: categoryScale }]
+              opacity: categoryFades[category] || 0,
+              transform: [{ scale: categoryScales[category] || 0.8 }]
             }
           ]}
         >
