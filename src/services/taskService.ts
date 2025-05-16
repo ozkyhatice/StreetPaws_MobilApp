@@ -5,16 +5,79 @@ import { db } from '../config/firebase';
 import { EmergencyRequest } from '../services/emergencyService';
 import { XPService } from './xpService';
 
-// Firestore'a gönderilecek objelerde undefined alanları temizler
+// Yardımcı fonksiyonlar
 function removeUndefinedFields<T extends object>(obj: T): Partial<T> {
   return Object.fromEntries(
     Object.entries(obj).filter(([_, v]) => v !== undefined)
   ) as Partial<T>;
 }
 
+// Tarih işlemleri için yardımcı fonksiyonlar
+const DateUtils = {
+  toISOString: (timestampObj: any): string => {
+    try {
+      return timestampObj.toDate().toISOString();
+    } catch (error) {
+      console.warn('Invalid date conversion:', error);
+      return new Date().toISOString();
+    }
+  },
+
+  processFirestoreTimestamps: (data: any): any => {
+    const result = { ...data };
+    if (data.createdAt?.toDate) {
+      result.createdAt = DateUtils.toISOString(data.createdAt);
+    }
+    if (data.deadline?.toDate) {
+      result.deadline = DateUtils.toISOString(data.deadline);
+    }
+    return result;
+  }
+};
+
+// Firestore işlemleri için yardımcı sınıf
+class FirestoreHelper {
+  static async getDocument(collectionName: string, docId: string) {
+    const docRef = doc(db, collectionName, docId);
+    const docSnap = await getDoc(docRef);
+    if (!docSnap.exists()) {
+      throw new Error('Document not found');
+    }
+    return {
+      id: docSnap.id,
+      ...DateUtils.processFirestoreTimestamps(docSnap.data())
+    };
+  }
+
+  static async updateDocument(collectionName: string, docId: string, data: any) {
+    const docRef = doc(db, collectionName, docId);
+    await updateDoc(docRef, removeUndefinedFields(data));
+  }
+}
+
+// Tip tanımlamaları
+type TaskStatusUpdate = {
+  status: TaskStatus;
+  updatedAt: string;
+  assignedTo?: string;
+  completedBy?: {
+    id: string;
+    name: string;
+    completedAt: string;
+  };
+  approvedBy?: {
+    id: string;
+    name: string;
+    approvedAt: string;
+    note?: string;
+  };
+  approvalStatus?: string;
+};
+
 export class TaskService {
   private static instance: TaskService;
   private readonly tasksCollection = 'tasks';
+  private readonly xpService = XPService.getInstance();
   
   private constructor() {}
 
@@ -25,127 +88,249 @@ export class TaskService {
     return TaskService.instance;
   }
 
+  // Görev durumlarını yönetmek için yardımcı fonksiyonlar
+  private getTaskStatusUpdate(status: TaskStatus, userId?: string, userName?: string): TaskStatusUpdate {
+    const baseUpdate: TaskStatusUpdate = {
+      status,
+      updatedAt: new Date().toISOString()
+    };
+
+    switch (status) {
+      case 'IN_PROGRESS':
+        return {
+          ...baseUpdate,
+          assignedTo: userId
+        };
+      case 'AWAITING_APPROVAL':
+        return {
+          ...baseUpdate,
+          completedBy: {
+            id: userId!,
+            name: userName!,
+            completedAt: new Date().toISOString()
+          },
+          approvalStatus: 'PENDING'
+        };
+      case 'COMPLETED':
+        return {
+          ...baseUpdate,
+          approvedBy: {
+            id: userId!,
+            name: userName!,
+            approvedAt: new Date().toISOString()
+          }
+        };
+      default:
+        return baseUpdate;
+    }
+  }
+
+  // Ana işlevler
   async getTasks(filters?: Partial<Task>): Promise<Task[]> {
     try {
-      console.log("TaskService: Getting regular tasks");
-      
-      // Build Firestore query
-      let firebaseQuery;
-      try {
-        // Start with a query that excludes completed tasks by default
-        console.log("TaskService: Creating Firestore query for tasks");
-        
-        // Create base query
-        const baseQuery = query(
-          collection(db, this.tasksCollection),
-          where('status', '!=', 'COMPLETED') // Filter out completed tasks by default
+      const baseQuery = query(
+        collection(db, this.tasksCollection)
+      );
+
+      const querySnapshot = await getDocs(baseQuery);
+      let tasks = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...DateUtils.processFirestoreTimestamps(doc.data())
+      })) as Task[];
+
+      if (filters) {
+        tasks = tasks.filter(task => 
+          Object.entries(filters).every(([key, value]) => 
+            task[key as keyof Task] === value
+          )
         );
-        
-        firebaseQuery = baseQuery;
-        
-        // Apply additional filters if provided
-        if (filters) {
-          // If explicitly requesting completed tasks, use a different query
-          if (filters.status === 'COMPLETED') {
-            console.log("TaskService: Explicitly requesting COMPLETED tasks");
-            firebaseQuery = query(
-              collection(db, this.tasksCollection),
-              where('status', '==', 'COMPLETED')
-            );
-          }
-          
-          // Other filters can be applied in memory after fetching from Firestore
-        }
-        
-        // Execute query
-        console.log("TaskService: Executing Firestore query");
-        const querySnapshot = await getDocs(firebaseQuery);
-        console.log(`TaskService: Retrieved ${querySnapshot.size} tasks from Firestore`);
-        
-        // Process results
-        let tasks = querySnapshot.docs.map(doc => {
-          const data = doc.data() as Record<string, any>;
-          return {
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate ? 
-              this.safeGetISOString(data.createdAt) : 
-              data.createdAt,
-            deadline: data.deadline?.toDate ? 
-              this.safeGetISOString(data.deadline) : 
-              data.deadline
-          } as Task;
-        });
-        
-        // Apply any remaining filters in memory
-        if (filters) {
-          Object.entries(filters).forEach(([key, value]) => {
-            // Skip the status filter which was already handled in the query
-            if (key !== 'status' || (key === 'status' && value !== 'COMPLETED')) {
-              tasks = tasks.filter(task => task[key as keyof Task] === value);
-            }
-          });
-        }
-        
-        // Sort tasks by creation date (newest first)
-        tasks.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0);
-          const dateB = new Date(b.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
-        });
-        
-        console.log(`TaskService: Returning ${tasks.length} filtered tasks`);
-        return tasks;
-      } catch (firestoreError) {
-        console.error("TaskService: Error querying Firestore:", firestoreError);
-        // Return empty array for Firestore errors - never use mock data
-        return [];
       }
+
+      return tasks.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
     } catch (error) {
-      console.error("TaskService: General error in getTasks:", error);
-      // Return empty array in case of error
+      console.error('Error fetching tasks:', error);
       return [];
     }
   }
 
   async getTask(id: string): Promise<Task | null> {
-    console.log(`TaskService instance getTask called with id: ${id}`);
-    
-    if (!id) {
-      console.warn("getTask called without an ID");
+    try {
+      return await FirestoreHelper.getDocument(this.tasksCollection, id) as Task;
+    } catch (error) {
+      console.error('Error fetching task:', error);
       return null;
     }
-    
+  }
+
+  async approveTask(taskId: string, approverId: string, approverName: string, note?: string): Promise<void> {
     try {
-      // Try to get the task from Firestore
-      console.log(`Trying to fetch task ${id} from Firestore`);
-      const docRef = doc(db, this.tasksCollection, id);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        console.log(`Found task in Firestore: ${data.title}`);
-        
-        const task = {
-          id: docSnap.id,
-          ...data,
-          createdAt: data.createdAt?.toDate ? 
-            this.safeGetISOString(data.createdAt) : 
-            data.createdAt,
-          deadline: data.deadline?.toDate ? 
-            this.safeGetISOString(data.deadline) : 
-            data.deadline
-        } as Task;
-        
-        return task;
+      // Check if user is admin
+      const userDoc = await getDoc(doc(db, 'users', approverId));
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
       }
       
-      console.log(`Task ${id} not found in Firestore`);
-      return null;
+      const userData = userDoc.data();
+      if (userData.role !== 'admin') {
+        throw new Error('Only admin users can approve tasks');
+      }
+
+      // Get the task first
+      const taskDoc = await getDoc(doc(db, this.tasksCollection, taskId));
+      if (!taskDoc.exists()) {
+        throw new Error('Task not found');
+      }
+
+      const taskData = taskDoc.data();
+      if (!taskData.completedBy?.id) {
+        throw new Error('Task completion information is missing');
+      }
+
+      const updateData = {
+        ...this.getTaskStatusUpdate('COMPLETED', approverId, approverName),
+        approvedBy: {
+          id: approverId,
+          name: approverName,
+          approvedAt: Timestamp.now().toDate().toISOString(),
+          note: note || undefined
+        }
+      };
+
+      // Update task status in Firestore
+      await updateDoc(doc(db, this.tasksCollection, taskId), updateData);
+      
+      // Update user stats
+      const userStatsRef = doc(db, 'users', taskData.completedBy.id);
+      await updateDoc(userStatsRef, {
+        'stats.tasksCompleted': increment(1),
+        'stats.xpPoints': increment(taskData.xpReward || 0)
+      });
+
+      // Update achievements and give XP
+      const task: Task = {
+        id: taskId,
+        title: taskData.title,
+        description: taskData.description,
+        category: taskData.category,
+        location: taskData.location,
+        xpReward: taskData.xpReward,
+        status: updateData.status,
+        approvalStatus: 'APPROVED',
+        approvedBy: updateData.approvedBy,
+        completedBy: taskData.completedBy,
+        createdAt: taskData.createdAt?.toDate?.() ? 
+          this.safeGetISOString(taskData.createdAt) : 
+          taskData.createdAt,
+        deadline: taskData.deadline?.toDate?.() ? 
+          this.safeGetISOString(taskData.deadline) : 
+          taskData.deadline
+      };
+      
+      await this.updateUserAchievements(task);
+
     } catch (error) {
-      console.error(`Error fetching task from Firestore: ${error.message}`);
-      return null;
+      console.error('Error approving task:', error);
+      throw error;
     }
+  }
+
+  private async updateUserAchievements(task: Task): Promise<void> {
+    if (!task.completedBy?.id) return;
+
+    try {
+      const userId = task.completedBy.id;
+      
+      // Kullanıcı istatistiklerini güncelle
+      await FirestoreHelper.updateDocument('users', userId, {
+        [`achievements.${task.category.toLowerCase()}`]: increment(1),
+        'stats.tasksCompleted': increment(1)
+      });
+
+      // Kategori bazlı ilerlemeyi güncelle
+      await this.xpService.updateTaskProgressForCategory(userId, task.category);
+
+      // XP ödülünü ver
+      await this.xpService.addTaskCompletionXP(
+        userId,
+        task.id,
+        task.title,
+        task.isEmergency,
+        task.isEmergency ? task.emergencyLevel : undefined
+      );
+    } catch (error) {
+      console.error('Error updating achievements:', error);
+      throw error;
+    }
+  }
+
+  // Acil durum görevleri için yardımcı fonksiyonlar
+  private getEmergencyTaskData(emergency: EmergencyRequest): Omit<Task, 'id'> {
+    const now = new Date();
+    const twoHoursLater = new Date(now.getTime() + 7200000);
+
+    return {
+      title: emergency.title,
+      description: emergency.description,
+      status: 'OPEN',
+      category: this.getCategoryFromEmergency(emergency),
+      location: {
+        address: emergency.location,
+        latitude: 41.0082,
+        longitude: 28.9784
+      },
+      priority: this.getPriorityFromEmergency(emergency.urgency),
+      xpReward: this.getXpRewardFromUrgency(emergency.urgency),
+      isEmergency: true,
+      emergencyLevel: this.getEmergencyLevel(emergency.urgency),
+      emergencyRequestId: emergency.id,
+      images: emergency.imageUrl ? [emergency.imageUrl] : [],
+      createdAt: now.toISOString(),
+      deadline: twoHoursLater.toISOString(),
+      createdBy: {
+        id: emergency.userId,
+        name: emergency.userName
+      }
+    };
+  }
+
+  private getCategoryFromEmergency(emergency: EmergencyRequest): TaskCategory {
+    if (emergency.animalType?.toLowerCase().includes('kedi') || 
+        emergency.animalType?.toLowerCase().includes('köpek')) {
+      return 'HEALTH';
+    }
+    return 'OTHER';
+  }
+
+  private getEmergencyLevel(urgency: string): 'CRITICAL' | 'URGENT' | 'NORMAL' {
+    const levels = {
+      critical: 'CRITICAL',
+      high: 'CRITICAL',
+      medium: 'URGENT',
+      default: 'NORMAL'
+    } as const;
+    return levels[urgency as keyof typeof levels] || levels.default;
+  }
+
+  private getXpRewardFromUrgency(urgency: string): number {
+    const rewards = {
+      critical: 350,
+      high: 300,
+      medium: 200,
+      default: 100
+    };
+    return rewards[urgency as keyof typeof rewards] || rewards.default;
+  }
+
+  private getPriorityFromEmergency(urgency: string): 'HIGH' | 'MEDIUM' | 'LOW' {
+    const priorities = {
+      critical: 'HIGH',
+      high: 'HIGH',
+      medium: 'MEDIUM',
+      default: 'LOW'
+    } as const;
+    return priorities[urgency as keyof typeof priorities] || priorities.default;
   }
 
   async createTask(task: Omit<Task, 'id'>): Promise<Task> {
@@ -220,53 +405,6 @@ export class TaskService {
       console.error('Error creating emergency task:', error);
       throw error;
     }
-  }
-
-  private getCategoryFromEmergency(emergency: EmergencyRequest): TaskCategory {
-    if (emergency.animalType?.toLowerCase().includes('kedi') || 
-        emergency.animalType?.toLowerCase().includes('köpek')) {
-      return 'HEALTH';
-    }
-    return 'OTHER';
-  }
-
-  private getEmergencyLevel(urgency: string): 'CRITICAL' | 'URGENT' | 'NORMAL' {
-    switch (urgency) {
-      case 'critical': return 'CRITICAL';
-      case 'high': return 'CRITICAL';
-      case 'medium': return 'URGENT';
-      default: return 'NORMAL';
-    }
-  }
-
-  private getXpRewardFromUrgency(urgency: string): number {
-    switch (urgency) {
-      case 'critical': return 350;
-      case 'high': return 300;
-      case 'medium': return 200;
-      default: return 100;
-    }
-  }
-
-  private getPriorityFromEmergency(urgency: string): 'HIGH' | 'MEDIUM' | 'LOW' {
-    switch (urgency) {
-      case 'critical': return 'HIGH';
-      case 'high': return 'HIGH';
-      case 'medium': return 'MEDIUM';
-      default: return 'LOW';
-    }
-  }
-
-  private isUrgencyEmergency(urgency: string): boolean {
-    // Tüm acil durum isteklerinin isEmergency alanı true olmalı
-    return true;
-    
-    // Artık sadece belirli aciliyet seviyeleri değil, tüm acil istekler acil görev olarak işaretleniyor
-    // switch (urgency) {
-    //   case 'critical': return true;
-    //   case 'high': return true;
-    //   default: return false;
-    // }
   }
 
   async assignTask(taskId: string, userId: string): Promise<void> {
@@ -533,146 +671,69 @@ export class TaskService {
     }
   }
 
-  async approveTask(taskId: string, approverId: string, approverName: string, note?: string): Promise<void> {
+  async rejectTask(taskId: string, approverId: string, approverName: string, reason?: string): Promise<Task> {
     try {
-      const taskRef = doc(db, this.tasksCollection, taskId);
-      const taskDoc = await getDoc(taskRef);
-      
-      if (!taskDoc.exists()) {
-        throw new Error('Görev bulunamadı');
+      // Check if user is admin
+      const userDoc = await getDoc(doc(db, 'users', approverId));
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
       }
       
+      const userData = userDoc.data();
+      if (userData.role !== 'admin') {
+        throw new Error('Only admin users can reject tasks');
+      }
+
+      // Get the task
+      const taskDoc = await getDoc(doc(db, this.tasksCollection, taskId));
+      if (!taskDoc.exists()) {
+        throw new Error('Task not found');
+      }
+
       const taskData = taskDoc.data();
-      
-      // Update task status and add approval info
-      await updateDoc(taskRef, {
-        status: 'COMPLETED',
+      if (taskData.status !== 'AWAITING_APPROVAL') {
+        throw new Error('Task is not awaiting approval');
+      }
+
+      // Update task status back to IN_PROGRESS and mark as rejected
+      const updateData = {
+        status: 'IN_PROGRESS' as TaskStatus,
+        approvalStatus: 'REJECTED' as ApprovalStatus,
         approvedBy: {
           id: approverId,
           name: approverName,
-          approvedAt: new Date().toISOString(),
-          note: note || null
+          approvedAt: Timestamp.now().toDate().toISOString()
         },
-        updatedAt: new Date().toISOString()
-      });
+        rejectionReason: reason || 'No reason provided'
+      };
+
+      await updateDoc(doc(db, this.tasksCollection, taskId), updateData);
+
+      // Convert to Task type with all required fields
+      const task: Task = {
+        id: taskDoc.id,
+        title: taskData.title,
+        description: taskData.description,
+        category: taskData.category,
+        location: taskData.location,
+        xpReward: taskData.xpReward,
+        status: updateData.status,
+        approvalStatus: updateData.approvalStatus,
+        approvedBy: updateData.approvedBy,
+        rejectionReason: updateData.rejectionReason,
+        createdAt: taskData.createdAt?.toDate?.() ? 
+          this.safeGetISOString(taskData.createdAt) : 
+          taskData.createdAt,
+        deadline: taskData.deadline?.toDate?.() ? 
+          this.safeGetISOString(taskData.deadline) : 
+          taskData.deadline
+      };
+
+      return task;
     } catch (error) {
-      console.error('Error approving task:', error);
+      console.error('Error rejecting task:', error);
       throw error;
     }
-  }
-
-  private async updateUserAchievementForTask(task: Task): Promise<void> {
-    if (!task.completedBy || !task.completedBy.id) {
-      console.warn('No completedBy information in task');
-      return;
-    }
-    
-    try {
-      const userId = task.completedBy.id;
-      const category = task.category;
-      
-      console.log(`Updating achievements for user ${userId} for category ${category}`);
-      
-      // Firestore'dan kullanıcı verilerini al
-      try {
-        // Kullanıcı istatistiklerini güncelle
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
-        
-        if (userDoc.exists()) {
-          // Kategori bazlı sayaç alanını belirle
-          const categoryField = `achievements.${category.toLowerCase()}`;
-          
-          // Kullanıcının kategori bazlı tamamlanan görev sayısını ve toplam görev sayısını güncelle
-          await updateDoc(userRef, {
-            [categoryField]: increment(1),
-            'stats.tasksCompleted': increment(1)
-          });
-          
-          console.log(`TaskService: User stats updated in Firestore for user ${userId}`);
-          
-          // Tamamlanan görevin kategorisine göre XPService üzerinden kategori sayacını da güncelle
-          // Bu işlem, kategori bazlı rozetlerin kazanılmasını kontrol edecek
-          const xpService = XPService.getInstance();
-          await xpService.updateTaskProgressForCategory(userId, category);
-          
-          console.log(`TaskService: Updated task progress for category ${category}`);
-        } else {
-          console.log(`TaskService: User ${userId} not found in Firestore, skipping stats update`);
-        }
-      } catch (error) {
-        console.error(`TaskService: Error updating user stats in Firestore: ${error.message}`);
-      }
-      
-      // XP ödülünü ver
-      const xpService = XPService.getInstance();
-      
-      if (task.isEmergency) {
-        // Acil görev için XP ekle
-        await xpService.addTaskCompletionXP(
-          userId, 
-          task.id, 
-          task.title, 
-          true, 
-          task.emergencyLevel
-        );
-        console.log(`TaskService: Added XP for emergency task completion to user ${userId}`);
-      } else {
-        // Normal görev için XP ekle
-        await xpService.addTaskCompletionXP(
-          userId,
-          task.id,
-          task.title,
-          false
-        );
-        console.log(`TaskService: Added XP for normal task completion to user ${userId}`);
-      }
-      
-      console.log(`TaskService: Successfully updated achievements and XP for user ${userId}`);
-    } catch (error) {
-      console.error('Error updating user achievement:', error);
-      throw error;
-    }
-  }
-
-  async rejectTask(taskId: string, approverId: string, approverName: string, reason?: string): Promise<Task> {
-    // const taskIndex = this.tasks.findIndex(task => task.id === taskId);
-    // if (taskIndex === -1) throw new Error('Task not found');
-    
-    // const task = this.tasks[taskIndex];
-    
-    // if (task.status !== 'AWAITING_APPROVAL') {
-    //   throw new Error('Task is not awaiting approval');
-    // }
-    
-    console.log(`Rejecting task ${taskId} by user ${approverId} (${approverName})`);
-    
-    // Update task status back to IN_PROGRESS and mark as rejected
-    // this.tasks[taskIndex] = {
-    //   ...this.tasks[taskIndex],
-    //   status: 'IN_PROGRESS',
-    //   approvalStatus: 'REJECTED',
-    //   approvedBy: {
-    //     id: approverId,
-    //     name: approverName,
-    //     approvedAt: new Date().toISOString()
-    //   },
-    //   rejectionReason: reason
-    // };
-    
-    // Firestore güncellemesi (gerçek uygulamada)
-    // await updateDoc(doc(db, this.tasksCollection, taskId), {
-    //   status: 'IN_PROGRESS',
-    //   approvalStatus: 'REJECTED',
-    //   approvedBy: {
-    //     id: approverId,
-    //     name: approverName,
-    //     approvedAt: Timestamp.now()
-    //   },
-    //   rejectionReason: reason
-    // });
-    
-    throw new Error('Task not found');
   }
 
   async getEmergencyTasks(): Promise<Task[]> {
