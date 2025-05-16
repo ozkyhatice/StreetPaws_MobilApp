@@ -6,6 +6,9 @@ import { XPService } from './xpService';
 interface UserBadge extends Badge {
   earnedAt: string;
   progress: number;
+  level: number; // Level number for the badge (1, 2, 3, etc.)
+  currentCount: number; // Current count toward next level
+  maxCount: number; // Maximum count needed to level up (usually 10)
 }
 
 interface BadgeProgress {
@@ -160,8 +163,28 @@ export class BadgeService {
           const userBadge: UserBadge = {
             ...badge,
             earnedAt: new Date().toISOString(),
-            progress: 100
+            progress: 0, // Start at 0% progress for level 1
+            level: 1,  // Start at level 1
+            currentCount: 0, // Start at 0 count
+            maxCount: 10  // Need 10 to level up
           };
+          
+          // For CATEGORY_COUNT badges, if the count is already ≥ 10, start at level 2 with 0/10
+          if (badge.requirement.type === 'CATEGORY_COUNT' && 
+              badge.requirement.category && 
+              progressData.currentTasksCount[badge.requirement.category] >= 10) {
+            
+            // Calculate what level this badge should start at
+            const taskCount = progressData.currentTasksCount[badge.requirement.category];
+            const startingLevel = Math.floor(taskCount / 10) + 1;
+            const remainingCount = taskCount % 10;
+            
+            userBadge.level = startingLevel;
+            userBadge.currentCount = remainingCount;
+            userBadge.progress = Math.floor((remainingCount / 10) * 100);
+            
+            console.log(`Awarding ${badge.name} badge at level ${startingLevel} with ${remainingCount}/10 progress`);
+          }
           
           try {
             // Kullanıcıya rozeti ekle
@@ -169,16 +192,17 @@ export class BadgeService {
               badges: arrayUnion(userBadge)
             });
             
-            // XP ödülü ver
+            // XP ödülü ver (the XP amount is multiplied by the badge's level)
+            const xpAmount = badge.xpReward * userBadge.level;
             await xpService.addAchievementXP(
               userId, 
-              badge.name, 
-              badge.description, 
+              `${badge.name} - Seviye ${userBadge.level}`,
+              `${badge.description} rozetini kazandın!`,
               badge.level === 'BRONZE' ? 'SMALL' : badge.level === 'SILVER' || badge.level === 'GOLD' ? 'MEDIUM' : 'LARGE'
             );
             
             newBadges.push(badge);
-            totalXPAwarded += badge.xpReward;
+            totalXPAwarded += xpAmount;
           } catch (error) {
             console.error(`Error awarding badge ${badge.id}:`, error);
             // Continue with other badges even if one fails
@@ -191,6 +215,132 @@ export class BadgeService {
     } catch (error) {
       console.error('Error in checkAndAwardBadges:', error);
       return { newBadges: [], totalXPAwarded: 0 };
+    }
+  }
+
+  // Update badge progress when completing a task
+  async updateBadgeProgress(userId: string, taskCategoryType?: string): Promise<{
+    levelsGained: {badgeId: string, newLevel: number}[];
+    totalXPAwarded: number;
+  }> {
+    try {
+      const userDoc = await getDoc(doc(db, this.usersCollection, userId));
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+
+      const userData = userDoc.data();
+      const userBadges = userData.badges || [];
+      
+      const updatedBadges = [...userBadges];
+      const levelsGained: {badgeId: string, newLevel: number}[] = [];
+      let totalXPAwarded = 0;
+      const xpService = XPService.getInstance();
+
+      // Update each badge's progress
+      for (let i = 0; i < updatedBadges.length; i++) {
+        const badge = updatedBadges[i] as UserBadge;
+        
+        // Skip if badge doesn't have level or counts (for backward compatibility)
+        if (badge.level === undefined || badge.currentCount === undefined || badge.maxCount === undefined) {
+          // Initialize these properties if they don't exist
+          badge.level = 1;
+          badge.currentCount = 0;
+          badge.maxCount = 10;
+        }
+        
+        let shouldIncrementCount = false;
+        
+        // Check if this task counts for this badge
+        switch (badge.requirement.type) {
+          case 'TASK_COUNT':
+            // Any task counts
+            shouldIncrementCount = true;
+            break;
+          case 'CATEGORY_COUNT':
+            if (!badge.requirement.category) break;
+            
+            // Direct category match
+            if (taskCategoryType === badge.requirement.category) {
+              shouldIncrementCount = true;
+              break;
+            }
+            
+            // Handle special category mapping for emergency tasks
+            // Some emergency tasks might be categorized differently in the UI than in the badge system
+            if (taskCategoryType) {
+              // Map 'OTHER' to appropriate badge categories for backwards compatibility
+              if (taskCategoryType === 'OTHER') {
+                const badgeCategory = badge.requirement.category;
+                // Map OTHER to all categories to ensure badges progress
+                // This ensures emergency tasks that default to OTHER or HEALTH 
+                // will still increment all category badges
+                shouldIncrementCount = ['FEEDING', 'CLEANING', 'HEALTH', 'SHELTER'].includes(badgeCategory);
+              }
+              
+              // Map HEALTH emergency tasks to appropriate badge categories as needed
+              if (taskCategoryType === 'HEALTH') {
+                const badgeCategory = badge.requirement.category;
+                // For emergency tasks that are health-related but need to count for other badge categories
+                if (['FEEDING', 'SHELTER'].includes(badgeCategory)) {
+                  shouldIncrementCount = true;
+                }
+              }
+            }
+            break;
+          // Other badge types don't increment on task completion directly
+        }
+        
+        if (shouldIncrementCount) {
+          // Increment current count
+          badge.currentCount = (badge.currentCount || 0) + 1;
+          
+          console.log(`Incrementing badge ${badge.id} (${badge.name}) from ${badge.currentCount-1} to ${badge.currentCount}/${badge.maxCount}`);
+          
+          // Check if badge should level up
+          if (badge.currentCount >= badge.maxCount) {
+            // Level up the badge
+            badge.level = (badge.level || 1) + 1;
+            badge.currentCount = 0; // Reset count for next level
+            
+            console.log(`Badge ${badge.id} (${badge.name}) leveled up to level ${badge.level} with 0/${badge.maxCount} progress`);
+            
+            // Add XP reward for leveling up (increase reward by level)
+            const xpReward = badge.xpReward * badge.level;
+            totalXPAwarded += xpReward;
+            
+            // Record level gain
+            levelsGained.push({
+              badgeId: badge.id,
+              newLevel: badge.level
+            });
+            
+            // Award XP for leveling up
+            await xpService.addAchievementXP(
+              userId,
+              `${badge.name} - Seviye ${badge.level}`,
+              `${badge.description} rozetiniz seviye ${badge.level} oldu!`,
+              badge.level <= 2 ? 'SMALL' : badge.level <= 4 ? 'MEDIUM' : 'LARGE'
+            );
+          }
+          
+          // Update progress percentage for visual display
+          badge.progress = Math.floor((badge.currentCount / badge.maxCount) * 100);
+          
+          // Update badge in array
+          updatedBadges[i] = badge;
+        }
+      }
+      
+      // Update badges in Firestore
+      await updateDoc(doc(db, this.usersCollection, userId), {
+        badges: updatedBadges
+      });
+      
+      return { levelsGained, totalXPAwarded };
+    } catch (error) {
+      console.error('Error updating badge progress:', error);
+      return { levelsGained: [], totalXPAwarded: 0 };
     }
   }
   
@@ -210,11 +360,11 @@ export class BadgeService {
   }
 
   async awardTestBadge(userId: string): Promise<Badge> {
-      const testBadge: Badge = {
-        id: 'first_task',
-        name: 'İlk Görev',
-        description: 'İlk görevini tamamladın!',
-        level: 'BRONZE',
+    const testBadge: Badge = {
+      id: 'first_task',
+      name: 'İlk Görev',
+      description: 'İlk görevini tamamladın!',
+      level: 'BRONZE',
       category: 'GENERAL',
       iconName: 'heart',
       requirement: {
@@ -227,13 +377,103 @@ export class BadgeService {
     const userBadge = {
       ...testBadge,
       earnedAt: new Date().toISOString(),
-      progress: 100
+      progress: 0,
+      level: 1,
+      currentCount: 0,
+      maxCount: 10
     };
     
-      await updateDoc(doc(db, this.usersCollection, userId), {
+    await updateDoc(doc(db, this.usersCollection, userId), {
       badges: arrayUnion(userBadge)
-      });
+    });
 
-      return testBadge;
+    return testBadge;
+  }
+  
+  // Test method to manually advance a badge's progress
+  async testAdvanceBadge(userId: string, badgeId: string, tasksToAdd: number = 1): Promise<{
+    badgeUpdated: boolean;
+    leveledUp: boolean;
+    newLevel?: number;
+    currentCount?: number;
+    maxCount?: number;
+  }> {
+    try {
+      // Get user document
+      const userDoc = await getDoc(doc(db, this.usersCollection, userId));
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      // Get user badges
+      const userData = userDoc.data();
+      const userBadges = userData.badges || [];
+      
+      // Find the specific badge to update
+      const badgeIndex = userBadges.findIndex((badge: UserBadge) => badge.id === badgeId);
+      if (badgeIndex === -1) {
+        console.log(`Badge ${badgeId} not found for user ${userId}`);
+        return { 
+          badgeUpdated: false, 
+          leveledUp: false 
+        };
+      }
+      
+      // Create a copy of the badges array to modify
+      const updatedBadges = [...userBadges];
+      const badge = updatedBadges[badgeIndex] as UserBadge;
+      
+      // Ensure badge has the required properties
+      if (badge.level === undefined || badge.currentCount === undefined || badge.maxCount === undefined) {
+        badge.level = 1;
+        badge.currentCount = 0;
+        badge.maxCount = 10;
+      }
+      
+      // Store initial values
+      const initialLevel = badge.level;
+      
+      // Add tasks to the badge's progress
+      badge.currentCount += tasksToAdd;
+      console.log(`Advanced badge ${badge.id} (${badge.name}) to ${badge.currentCount}/${badge.maxCount}`);
+      
+      let leveledUp = false;
+      
+      // Check if badge should level up
+      if (badge.currentCount >= badge.maxCount) {
+        // Calculate how many times to level up (in case tasksToAdd > maxCount)
+        const levelsToAdd = Math.floor(badge.currentCount / badge.maxCount);
+        badge.level += levelsToAdd;
+        badge.currentCount = badge.currentCount % badge.maxCount;
+        leveledUp = true;
+        
+        console.log(`Badge ${badge.id} (${badge.name}) leveled up ${levelsToAdd} times to level ${badge.level}`);
+      }
+      
+      // Update progress percentage
+      badge.progress = Math.floor((badge.currentCount / badge.maxCount) * 100);
+      
+      // Update badge in array
+      updatedBadges[badgeIndex] = badge;
+      
+      // Update badges in Firestore
+      await updateDoc(doc(db, this.usersCollection, userId), {
+        badges: updatedBadges
+      });
+      
+      return { 
+        badgeUpdated: true, 
+        leveledUp, 
+        newLevel: badge.level,
+        currentCount: badge.currentCount,
+        maxCount: badge.maxCount
+      };
+    } catch (error) {
+      console.error('Error in testAdvanceBadge:', error);
+      return { 
+        badgeUpdated: false, 
+        leveledUp: false 
+      };
+    }
   }
 } 
