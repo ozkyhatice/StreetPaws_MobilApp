@@ -60,8 +60,21 @@ const safeFormatDate = (dateString: string | Date | undefined | null): string =>
   if (!dateString) return 'Belirtilmemiş';
   
   try {
-    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-    if (isNaN(date.getTime())) return 'Geçersiz Tarih';
+    // Converting dateString to date object safely
+    let date: Date;
+    if (typeof dateString === 'string') {
+      date = new Date(dateString);
+    } else if (dateString instanceof Date) {
+      date = dateString;
+    } else {
+      return 'Belirtilmemiş';
+    }
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'Geçersiz Tarih';
+    }
+    
     return date.toLocaleDateString('tr-TR');
   } catch (error) {
     console.error('Date formatting error:', error);
@@ -436,23 +449,29 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
     try {
       setSubmitting(true);
       
-      // Call service to approve task
+      // Call service to approve task - make sure note is never undefined
       await taskService.approveTask(
         actualTaskId, 
         user.uid,
         user.displayName || 'Admin',
-        note
+        note || '' // Convert undefined to empty string
       );
       
       // If this is an emergency task, give extra XP
-      if (task.isEmergency && task.completedBy && task.completedBy.id) {
+      if (task.completedBy && task.completedBy.id) {
+        const completedUserId = task.completedBy.id;
+        
+        // Add task to user's XP
         await xpService.addTaskCompletionXP(
-          task.completedBy.id,
+          completedUserId,
           task.id,
           task.title,
-          true,
-          task.emergencyLevel || 'NORMAL'
+          task.isEmergency || false,
+          task.emergencyLevel || 'NORMAL' // Make sure emergencyLevel is never undefined
         );
+        
+        // Update user's badges
+        await badgeService.checkAndAwardBadges(completedUserId);
       }
       
       setShowApprovalForm(false);
@@ -473,7 +492,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       );
     } catch (error) {
       console.error('Error approving task:', error);
-      Alert.alert('Hata', 'Görev onaylanırken bir hata oluştu: ' + error.message);
+      Alert.alert('Hata', 'Görev onaylanırken bir hata oluştu: ' + (error instanceof Error ? error.message : 'Bilinmeyen hata'));
     } finally {
       setSubmitting(false);
     }

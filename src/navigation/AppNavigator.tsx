@@ -32,6 +32,7 @@ import VerificationsScreen from '../screens/VerificationsScreen';
 import EmergencyHelpScreen from '../screens/EmergencyHelpScreen';
 import { AchievementsScreen } from '../screens/AchievementsScreen';
 import DevToolsScreen from '../screens/DevToolsScreen';
+import CompletedTasksScreen from '../screens/CompletedTasksScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -366,6 +367,12 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
       <Stack.Screen
         name="DevTools"
         component={DevToolsScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen
+        name="CompletedTasks"
+        component={CompletedTasksScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

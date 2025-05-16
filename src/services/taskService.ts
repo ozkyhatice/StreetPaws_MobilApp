@@ -1,6 +1,6 @@
-import { Task, TaskStatus, TaskCategory } from '../types/task';
+import { Task, TaskStatus, TaskCategory, ApprovalStatus } from '../types/task';
 import { TaskVerification, TaskVerificationStatus } from '../types/taskVerification';
-import { collection, query, where, orderBy, getDocs, addDoc, doc, getDoc, updateDoc, Timestamp, increment } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, addDoc, doc, getDoc, updateDoc, Timestamp, increment, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { EmergencyRequest } from '../services/emergencyService';
 import { XPService } from './xpService';
@@ -164,7 +164,7 @@ export class TaskService {
     }
   }
 
-  async approveTask(taskId: string, approverId: string, approverName: string, note?: string): Promise<void> {
+  async approveTask(taskId: string, approverId: string, approverName: string, note: string = ''): Promise<void> {
     try {
       // Check if user is admin
       const userDoc = await getDoc(doc(db, 'users', approverId));
@@ -188,47 +188,47 @@ export class TaskService {
         throw new Error('Task completion information is missing');
       }
 
-      const updateData = {
-        ...this.getTaskStatusUpdate('COMPLETED', approverId, approverName),
+      const completedByUserId = taskData.completedBy.id;
+
+      // Update task status - make sure no fields have undefined values
+      await updateDoc(doc(db, this.tasksCollection, taskId), {
+        status: 'COMPLETED',
         approvedBy: {
           id: approverId,
           name: approverName,
-          approvedAt: Timestamp.now().toDate().toISOString(),
-          note: note || undefined
+          approvedAt: new Date().toISOString(),
+          note: note || '' // Ensure note is never undefined
         }
-      };
-
-      // Update task status in Firestore
-      await updateDoc(doc(db, this.tasksCollection, taskId), updateData);
-      
-      // Update user stats
-      const userStatsRef = doc(db, 'users', taskData.completedBy.id);
-      await updateDoc(userStatsRef, {
-        'stats.tasksCompleted': increment(1),
-        'stats.xpPoints': increment(taskData.xpReward || 0)
       });
 
-      // Update achievements and give XP
-      const task: Task = {
-        id: taskId,
-        title: taskData.title,
-        description: taskData.description,
-        category: taskData.category,
-        location: taskData.location,
-        xpReward: taskData.xpReward,
-        status: updateData.status,
-        approvalStatus: 'APPROVED',
-        approvedBy: updateData.approvedBy,
-        completedBy: taskData.completedBy,
-        createdAt: taskData.createdAt?.toDate?.() ? 
-          this.safeGetISOString(taskData.createdAt) : 
-          taskData.createdAt,
-        deadline: taskData.deadline?.toDate?.() ? 
-          this.safeGetISOString(taskData.deadline) : 
-          taskData.deadline
-      };
+      // Update user's completed task count
+      const completedByUserRef = doc(db, 'users', completedByUserId);
+      const completedByUserDoc = await getDoc(completedByUserRef);
       
-      await this.updateUserAchievements(task);
+      if (completedByUserDoc.exists()) {
+        const completedByUserData = completedByUserDoc.data();
+        await updateDoc(completedByUserRef, {
+          completedTaskCount: (completedByUserData.completedTaskCount || 0) + 1,
+          stats: {
+            ...completedByUserData.stats,
+            totalTasksCompleted: (completedByUserData.stats?.totalTasksCompleted || 0) + 1
+          }
+        });
+      }
+
+      // Update global stats
+      const globalStatsRef = doc(db, 'stats', 'global');
+      const globalStatsDoc = await getDoc(globalStatsRef);
+      
+      if (globalStatsDoc.exists()) {
+        await updateDoc(globalStatsRef, {
+          totalTasksCompleted: increment(1)
+        });
+      } else {
+        await setDoc(globalStatsRef, {
+          totalTasksCompleted: 1
+        });
+      }
 
     } catch (error) {
       console.error('Error approving task:', error);

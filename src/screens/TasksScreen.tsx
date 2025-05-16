@@ -13,6 +13,7 @@ import {
   ScrollView,
   Image,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { TaskCard } from '../components/TaskCard';
 import { Button } from '../components/Button';
@@ -34,7 +35,6 @@ import { EmergencyTaskList } from '../components/EmergencyTaskList';
 import { TaskProgressCard } from '../components/TaskProgressCard';
 import { Award } from 'lucide-react-native';
 import { TaskSearch } from '../components/TaskSearch';
-import { TaskSummaryCards } from '../components/TaskSummaryCards';
 
 // Debug imports
 console.log('TaskList imported as:', TaskList);
@@ -67,7 +67,9 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<ListItem[]>([]);
-  const [filter, setFilter] = useState<TaskFilter>({});
+  const [filter, setFilter] = useState<TaskFilter>({
+    filterType: 'all'
+  });
   const [searchText, setSearchText] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
@@ -76,6 +78,8 @@ export default function TasksScreen() {
   const [showAwaitingApprovalTasks, setShowAwaitingApprovalTasks] = useState(false);
   const listRef = useRef<FlatList>(null);
   const lastTabPress = useRef<{ [key: string]: number }>({});
+  const [completedCount, setCompletedCount] = useState(0);
+  const [awaitingApprovalCount, setAwaitingApprovalCount] = useState(0);
   
   // TabView configuration
   const [tabRoutes] = useState([
@@ -85,38 +89,35 @@ export default function TasksScreen() {
 
   const taskService = TaskService.getInstance();
   const emergencyService = EmergencyService.getInstance();
+  const layout = useWindowDimensions();
 
   const fetchData = async () => {
     try {
       setLoading(true);
       console.log("TasksScreen - Starting data fetch from Firestore");
       
-      // Only fetch tasks from Firestore
+      const taskService = TaskService.getInstance();
       const tasks = await taskService.getTasks();
-      console.log(`TasksScreen - Fetched ${tasks.length} tasks from Firestore`);
       
-      // Fetch emergency requests
-      const emergencies = await emergencyService.getEmergencyRequests();
-      console.log(`TasksScreen - Fetched ${emergencies.length} emergency requests`);
-
-      // Create ListItems from tasks
+      // Görevleri ListItem formatına dönüştür
       const taskItems: ListItem[] = tasks.map(task => ({
         type: 'task',
         data: task
       }));
 
-      // Create ListItems from emergencies
+      // Acil durumları al
+      const emergencies = await emergencyService.getEmergencyRequests();
       const emergencyItems: ListItem[] = emergencies.map(emergency => ({
         type: 'emergency',
         data: emergency
       }));
 
-      // Sort both arrays by creation date
+      // Tüm öğeleri birleştir ve tarihe göre sırala
       const allItems = [...taskItems, ...emergencyItems].sort((a, b) => {
         try {
-        const dateA = new Date(a.data.createdAt);
-        const dateB = new Date(b.data.createdAt);
-        return dateB.getTime() - dateA.getTime(); // Sort by newest first
+          const dateA = new Date(a.data.createdAt);
+          const dateB = new Date(b.data.createdAt);
+          return dateB.getTime() - dateA.getTime();
         } catch (error) {
           console.warn("Error sorting items by date:", error);
           return 0;
@@ -124,11 +125,10 @@ export default function TasksScreen() {
       });
 
       setItems(allItems);
-      console.log(`TasksScreen - Total ${allItems.length} items set to state`);
     } catch (error) {
-      console.error('Error fetching data from Firestore:', error);
-      Alert.alert('Veri Hatası', 'Firestore verilerini yüklerken bir hata oluştu. Lütfen tekrar deneyin.');
-      setItems([]); // Set empty array on error
+      console.error('Error fetching data:', error);
+      Alert.alert('Veri Hatası', 'Veriler yüklenirken bir hata oluştu.');
+      setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -138,6 +138,7 @@ export default function TasksScreen() {
   // Initial data loading
   useEffect(() => {
     fetchData();
+    loadTaskCounts();
   }, []);
 
   // Add a focus listener to refresh data when the screen comes into focus
@@ -176,35 +177,78 @@ export default function TasksScreen() {
   };
 
   const getFilteredItems = () => {
-    if (showCompletedTasks) {
-      return items.filter(item => 
-        item.type === 'task' && 
-        (item.data as Task).status === 'COMPLETED' &&
-        (item.data as Task).completedBy?.id === user?.uid
-      );
-    }
+    if (!user) return [];
 
-    if (showAwaitingApprovalTasks) {
-      return items.filter(item => 
-        item.type === 'task' && 
-        (item.data as Task).status === 'AWAITING_APPROVAL' &&
-        (item.data as Task).completedBy?.id === user?.uid
-      );
-    }
+    return items.filter(item => {
+      if (item.type !== 'task') return true; // Acil durumları göster
+      const task = item.data as Task;
 
-    return items;
+      // Tamamlanan görevler sayfası
+      if (showCompletedTasks) {
+        return task.completedBy?.id === user.uid && task.status === 'COMPLETED';
+      }
+
+      // Onay bekleyen görevler sayfası
+      if (showAwaitingApprovalTasks) {
+        return task.completedBy?.id === user.uid && task.status === 'AWAITING_APPROVAL';
+      }
+
+      // Filtre uygulanmışsa
+      if (filter.filterType !== 'all') {
+        // Kategori filtresi
+        if (filter.category && task.category !== filter.category) {
+          return false;
+        }
+
+        // Durum filtresi
+        if (filter.status && task.status !== filter.status) {
+          return false;
+        }
+
+        // Öncelik filtresi
+        if (filter.priority && task.priority !== filter.priority) {
+          return false;
+        }
+
+        // Kullanıcıya atanmış görevler
+        if (filter.filterType === 'assigned') {
+          return task.assignedTo === user.uid;
+        }
+
+        // Kullanıcının tamamladığı görevler
+        if (filter.filterType === 'completed') {
+          return task.completedBy?.id === user.uid && task.status === 'COMPLETED';
+        }
+
+        // Kullanıcının onay bekleyen görevleri
+        if (filter.filterType === 'awaiting_approval') {
+          return task.completedBy?.id === user.uid && task.status === 'AWAITING_APPROVAL';
+        }
+      }
+
+      // Arama filtresi
+      if (searchText) {
+        const searchLower = searchText.toLowerCase();
+        return (
+          task.title.toLowerCase().includes(searchLower) ||
+          task.description.toLowerCase().includes(searchLower)
+        );
+      }
+
+      return true;
+    });
   };
 
   const handleCompletedPress = () => {
     setShowCompletedTasks(true);
     setShowAwaitingApprovalTasks(false);
-    setTabIndex(1);
+    setTabIndex(1); // Görevler tabına geç
   };
 
   const handleAwaitingApprovalPress = () => {
     setShowAwaitingApprovalTasks(true);
     setShowCompletedTasks(false);
-    setTabIndex(1);
+    setTabIndex(1); // Görevler tabına geç
   };
 
   const renderItem = ({ item }: { item: ListItem }) => {
@@ -346,7 +390,9 @@ export default function TasksScreen() {
   };
 
   const clearFilters = () => {
-    setFilter({ filterType: 'all' });
+    setFilter({
+      filterType: 'all'
+    });
     setSearchText('');
   };
 
@@ -466,21 +512,51 @@ export default function TasksScreen() {
     </View>
   );
 
-  const RegularTasksRoute = () => (
-    <View style={{flex: 1}}>
-      <TaskList 
-        filter={filter} 
-        onFilterChange={setFilter} 
-        navigation={navigation}
-      />
-      {user && user.uid && (
-        <TaskProgressCard 
-          userId={user.uid} 
-          onBadgePress={toggleAchievements} 
+  const getTaskListFilter = (): TaskFilter => {
+    if (showCompletedTasks) {
+      return {
+        filterType: 'completed',
+        completedBy: user ? { id: user.uid } : undefined
+      };
+    }
+    if (showAwaitingApprovalTasks) {
+      return {
+        filterType: 'awaiting_approval',
+        completedBy: user ? { id: user.uid } : undefined,
+        status: 'AWAITING_APPROVAL'
+      };
+    }
+    return { filterType: 'all' };
+  };
+
+  const RegularTasksRoute = () => {
+    const filteredItems = getFilteredItems();
+    
+    return (
+      <View style={{flex: 1}}>
+        <TaskList 
+          filter={{
+            filterType: showCompletedTasks ? 'completed' : 
+                       showAwaitingApprovalTasks ? 'awaiting_approval' : 'all',
+            completedBy: user ? { id: user.uid } : undefined,
+            status: showAwaitingApprovalTasks ? 'AWAITING_APPROVAL' : undefined
+          }}
+          onFilterChange={(newFilter) => {
+            setFilter(newFilter);
+            setShowCompletedTasks(newFilter.filterType === 'completed');
+            setShowAwaitingApprovalTasks(newFilter.filterType === 'awaiting_approval');
+          }}
+          navigation={navigation}
         />
-      )}
-    </View>
-  );
+        {user && user.uid && (
+          <TaskProgressCard 
+            userId={user.uid} 
+            onBadgePress={toggleAchievements} 
+          />
+        )}
+      </View>
+    );
+  };
 
   const renderScene = SceneMap({
     emergency: EmergencyTasksRoute,
@@ -504,6 +580,69 @@ export default function TasksScreen() {
     setShowAwaitingApprovalTasks(false);
   };
 
+  const loadTaskCounts = async () => {
+    try {
+      if (!user) {
+        setCompletedCount(0);
+        setAwaitingApprovalCount(0);
+        return;
+      }
+
+      const taskService = TaskService.getInstance();
+      const allTasks = await taskService.getTasks();
+      
+      // Sadece giriş yapmış olan kullanıcının görevlerini filtrele
+      const userTasks = allTasks.filter(task => 
+        task.completedBy?.id === user.uid
+      );
+
+      // Bu kullanıcının tamamladığı görevleri say
+      const userCompletedCount = userTasks.filter(task => 
+        task.status === 'COMPLETED'
+      ).length;
+      setCompletedCount(userCompletedCount);
+
+      // Bu kullanıcının onay bekleyen görevlerini say
+      const userAwaitingCount = userTasks.filter(task => 
+        task.status === 'AWAITING_APPROVAL'
+      ).length;
+      setAwaitingApprovalCount(userAwaitingCount);
+
+    } catch (error) {
+      console.error('Error loading task counts:', error);
+      setCompletedCount(0);
+      setAwaitingApprovalCount(0);
+    }
+  };
+
+  // useEffect ile kullanıcı değiştiğinde sayaçları güncelle
+  useEffect(() => {
+    loadTaskCounts();
+  }, [user]);
+
+  // Görevler değiştiğinde sayaçları güncelle
+  useEffect(() => {
+    if (user) {
+      loadTaskCounts();
+    }
+  }, [items]);
+
+  const renderTabBar = (props: any) => (
+    <TabBar
+      {...props}
+      indicatorStyle={{ backgroundColor: colors.primary }}
+      style={{ backgroundColor: colors.background }}
+      tabStyle={{ paddingVertical: 8 }}
+      activeColor={colors.primary}
+      inactiveColor={colors.textSecondary}
+      onTabPress={({ route }) => handleTabPress(route.key)}
+    />
+  );
+
+  const handleCompletedTasksPress = () => {
+    navigation.navigate('CompletedTasks');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
@@ -511,12 +650,21 @@ export default function TasksScreen() {
         style={[styles.header, (showCompletedTasks || showAwaitingApprovalTasks) && styles.specialHeader]}
       >
         {!showCompletedTasks && !showAwaitingApprovalTasks ? (
-          <TaskSearch
-            searchText={searchText}
-            onSearchChange={setSearchText}
-            filter={filter}
-            onFilterChange={setFilter}
-          />
+          <>
+            <TaskSearch
+              searchText={searchText}
+              onSearchChange={setSearchText}
+              filter={filter}
+              onFilterChange={setFilter}
+            />
+            <TouchableOpacity 
+              style={styles.completedTasksButton}
+              onPress={handleCompletedTasksPress}
+            >
+              <CheckCircle size={20} color="#fff" />
+              <Text style={styles.completedTasksButtonText}>Tamamlanan Görevlerim</Text>
+            </TouchableOpacity>
+          </>
         ) : (
           <View style={styles.specialHeaderContent}>
             <TouchableOpacity onPress={handleBack} style={styles.backButton}>
@@ -538,27 +686,13 @@ export default function TasksScreen() {
 
       {!showCompletedTasks && !showAwaitingApprovalTasks ? (
         <>
-          <TaskSummaryCards 
-            items={items} 
-            onCompletedPress={handleCompletedPress}
-            onAwaitingApprovalPress={handleAwaitingApprovalPress}
-          />
           <TabView
             navigationState={{ index: tabIndex, routes: tabRoutes }}
             renderScene={renderScene}
             onIndexChange={setTabIndex}
-            initialLayout={{ width }}
-            renderTabBar={(props) => (
-              <TabBar
-                {...props}
-                indicatorStyle={{ backgroundColor: colors.primary }}
-                style={{ backgroundColor: colors.background }}
-                labelStyle={{ color: colors.text, fontSize: 14, fontWeight: '600' }}
-                activeColor={colors.primary}
-                inactiveColor={colors.textSecondary}
-                onTabPress={({ route }) => handleTabPress(route.key)}
-              />
-            )}
+            initialLayout={{ width: layout.width }}
+            renderTabBar={renderTabBar}
+            style={styles.tabView}
           />
         </>
       ) : (
@@ -700,7 +834,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.warning + '20',
+    backgroundColor: colors.success + '20',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
@@ -976,4 +1110,28 @@ const styles = StyleSheet.create({
   specialList: {
     padding: spacing.md,
   },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  tabView: {
+    flex: 1,
+  },
+  completedTasksButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: spacing.sm,
+    borderRadius: borderRadius.medium,
+    marginTop: spacing.sm,
+  },
+  completedTasksButtonText: {
+    color: '#fff',
+    marginLeft: spacing.sm,
+    fontSize: 14,
+    fontWeight: '500',
+  },
 });
+

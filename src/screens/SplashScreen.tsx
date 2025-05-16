@@ -40,7 +40,7 @@ const SplashScreen = () => {
         source={require('../assets/pawprint.png')} 
         style={styles.logo}
       />
-      <Text style={styles.title}>Sokak Dostları</Text>
+      <Text style={styles.title}>Street Paws</Text>
       <ActivityIndicator size="large" color="#FF6B6B" style={styles.loader} />
     </View>
   );

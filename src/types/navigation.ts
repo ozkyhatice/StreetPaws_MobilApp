@@ -14,7 +14,7 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   MainApp: { screen?: keyof MainTabParamList };
   Tasks: undefined;
-  TaskDetail: { taskId: string };
+  TaskDetail: { taskId: string; action?: string };
   Settings: undefined;
   AddEmergency: undefined;
   Map: undefined;
@@ -31,4 +31,5 @@ export type RootStackParamList = {
   EmergencyHelp: undefined;
   Achievements: undefined;
   DevTools: undefined;
+  CompletedTasks: undefined;
 }; 

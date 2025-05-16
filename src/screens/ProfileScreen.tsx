@@ -22,6 +22,7 @@ import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs, 
 import { db } from '../config/firebase';
 import { BadgeService } from '../services/badgeService';
 import { UserService } from '../services/userService';
+import { TaskService } from '../services/taskService';
 
 const { width } = Dimensions.get('window');
 
@@ -37,6 +38,8 @@ const ProfileScreen = () => {
   const [loading, setLoading] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [badges, setBadges] = useState([]);
+  const [actualCompletedTaskCount, setActualCompletedTaskCount] = useState(0);
+  const [actualXP, setActualXP] = useState(0);
   const navigation = useNavigation<ProfileScreenNavigationProp>();
 
   const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
@@ -66,6 +69,29 @@ const ProfileScreen = () => {
     }
   };
 
+  const loadTaskStats = async () => {
+    if (!user?.uid) return;
+    
+    try {
+      const taskService = TaskService.getInstance();
+      const allTasks = await taskService.getTasks();
+      
+      // Count only tasks that are COMPLETED and completed by this user
+      const completedTasks = allTasks.filter(task => 
+        task.status === 'COMPLETED' && 
+        task.completedBy?.id === user.uid
+      );
+      
+      setActualCompletedTaskCount(completedTasks.length);
+      
+      // Calculate total XP from completed tasks
+      const totalXP = completedTasks.reduce((sum, task) => sum + (task.xpReward || 0), 0);
+      setActualXP(totalXP);
+    } catch (error) {
+      console.error('Error loading task stats:', error);
+    }
+  };
+
   useEffect(() => {
     if (!user?.uid) return;
 
@@ -76,6 +102,7 @@ const ProfileScreen = () => {
         console.log('Kullanıcı verileri alındı:', data);
         setUserData(data);
         setBadges(data?.badges || []);
+        loadTaskStats();
       } else {
         // Kullanıcı dokümanı yoksa oluştur
         try {
@@ -122,6 +149,7 @@ const ProfileScreen = () => {
           await userService.createUser(newUserData);
           setUserData(newUserData);
           console.log('Yeni kullanıcı profili oluşturuldu');
+          loadTaskStats();
         } catch (error) {
           console.error('Error creating user document:', error);
           Alert.alert('Hata', 'Kullanıcı profili oluşturulurken hata oluştu');
@@ -163,11 +191,13 @@ const ProfileScreen = () => {
   };
 
   const handleSaveField = async () => {
-    if (!user?.uid || !editingField) return;
+    if (!user?.uid || !editingField) {
+      Alert.alert('Hata', 'Kullanıcı bilgisi bulunamadı');
+      return;
+    }
     
     setLoading(true);
     try {
-      const userRef = doc(db, 'users', user.uid);
       const userService = UserService.getInstance();
 
       if (editingField === 'username') {
@@ -191,6 +221,24 @@ const ProfileScreen = () => {
         }
       }
       
+      // Ad Soyad için özel kontrol
+      if (editingField === 'name' && !editValue.includes(' ')) {
+        Alert.alert('Hata', 'Lütfen hem adınızı hem soyadınızı girin');
+        return;
+      }
+      
+      // Telefon numarası için özel kontrol
+      if (editingField === 'phone' && !/^\+?[0-9]{10,}$/.test(editValue)) {
+        Alert.alert('Hata', 'Geçerli bir telefon numarası girin');
+        return;
+      }
+      
+      // Doğum tarihi için özel kontrol
+      if (editingField === 'dateOfBirth' && !/^\d{2}\/\d{2}\/\d{4}$/.test(editValue)) {
+        Alert.alert('Hata', 'Doğum tarihini GG/AA/YYYY formatında girin');
+        return;
+      }
+      
       const updateData = editingField === 'name' 
         ? { firstName: editValue.split(' ')[0], lastName: editValue.split(' ')[1] }
         : editingField === 'phone' 
@@ -203,27 +251,31 @@ const ProfileScreen = () => {
         ? { username: editValue }
         : { bio: editValue };
       
+      console.log('Güncellenecek veriler:', updateData);
+      
       await userService.updateUser(user.uid, updateData);
       
-      // Yerel state'i de güncelle
-      if (editingField === 'name') {
-        setUserData({
-          ...userData,
-          firstName: editValue.split(' ')[0],
-          lastName: editValue.split(' ')[1]
-        });
-      } else {
-        setUserData({
-          ...userData,
-          [editingField === 'phone' ? 'phoneNumber' : editingField]: editValue
-        });
-      }
+      // Yerel state'i güncelle
+      setUserData(prevData => {
+        if (editingField === 'name') {
+          return {
+            ...prevData,
+            firstName: editValue.split(' ')[0],
+            lastName: editValue.split(' ')[1]
+          };
+        } else {
+          return {
+            ...prevData,
+            [editingField === 'phone' ? 'phoneNumber' : editingField]: editValue
+          };
+        }
+      });
       
       setIsEditModalVisible(false);
       Alert.alert('Başarılı', 'Bilgileriniz güncellendi');
     } catch (error) {
       console.error('Error updating user info:', error);
-      Alert.alert('Hata', 'Bilgileriniz güncellenirken bir hata oluştu');
+      Alert.alert('Hata', 'Bilgileriniz güncellenirken bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setLoading(false);
     }
@@ -258,11 +310,12 @@ const ProfileScreen = () => {
   };
 
   const renderProfileInfo = () => {
-    const currentXP = userData?.xp || 0;
+    const currentXP = actualXP || userData?.xp || 0;
     const currentLevel = calculateLevel(currentXP);
     const progress = calculateProgress(currentXP, currentLevel);
     const nextLevelXP = calculateXPForNextLevel(currentLevel);
     const currentLevelXP = calculateXPForNextLevel(currentLevel - 1);
+    const completedTasksCount = actualCompletedTaskCount || 0;
 
     return (
       <View>
@@ -308,7 +361,7 @@ const ProfileScreen = () => {
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text variant="titleLarge" style={styles.statValue}>
-              {userData?.completedTasks?.length || 0}
+              {completedTasksCount}
             </Text>
             <Text variant="bodyMedium" style={styles.statLabel}>
               Görev

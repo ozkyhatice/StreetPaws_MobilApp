@@ -169,6 +169,36 @@ const LoginScreen = () => {
     }
   };
 
+  const handleTestLogin = async () => {
+    try {
+      setIsLoading(true);
+      await signIn('ozkyyhatice@gmail.com', '123456');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainApp' }],
+      });
+    } catch (error: any) {
+      // If user doesn't exist, create it
+      if (error.message.includes('auth/invalid-credential') || 
+          error.message.includes('auth/user-not-found')) {
+        try {
+          // Try login again
+          await signIn('ozkyyhatice@gmail.com', '123456');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'MainApp' }],
+          });
+        } catch (signUpError: any) {
+          Alert.alert('Hata', signUpError.message);
+        }
+      } else {
+        Alert.alert('Giriş Hatası', error.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Oturum kontrolü - Login sayfası için oturum gerekMEZ, oturum varsa MainApp'e yönlendir
   useAuthNavigation(false, 'MainApp');
 
@@ -196,7 +226,7 @@ const LoginScreen = () => {
                 source={require("../assets/pawprint.png")} 
                 style={styles.logo}
               />
-              <Text style={styles.title}>Sokak Dostları</Text>
+              <Text style={styles.title}>StreetPaws</Text>
               <Text style={styles.subtitle}>Yardım Ağına Hoş Geldiniz</Text>
             </View>
             
@@ -257,6 +287,20 @@ const LoginScreen = () => {
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, styles.testLoginButton]}
+              onPress={handleTestLogin}
+            >
+              <LinearGradient
+                colors={['#4CAF50', '#45a049']}
+                style={styles.buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.buttonText}>User Girişi (Test)</Text>
+              </LinearGradient>
+            </TouchableOpacity>
             
             <View style={styles.registerContainer}>
               <Text style={styles.registerText}>Hesabınız yok mu?</Text>
@@ -265,12 +309,6 @@ const LoginScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={styles.testButton}
-              onPress={() => navigation.navigate('AuthTest')}
-            >
-              <Text style={styles.testButtonText}>Firebase Test</Text>
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.adminButton}
@@ -413,14 +451,8 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.7,
   },
-  testButton: {
-    marginTop: 10,
-    padding: 5,
-    alignSelf: 'center',
-  },
-  testButtonText: {
-    color: '#999',
-    fontSize: 12,
+  testLoginButton: {
+    marginTop: spacing.md,
   },
   adminButton: {
     width: "100%",

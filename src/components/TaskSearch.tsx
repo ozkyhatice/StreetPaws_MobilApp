@@ -69,28 +69,7 @@ export function TaskSearch({ searchText, onSearchChange, filter, onFilterChange 
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrapper}>
-          <Search size={20} color={colors.textSecondary} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Görev ara..."
-            value={searchText}
-            onChangeText={onSearchChange}
-            placeholderTextColor={colors.textSecondary}
-          />
-        </View>
-      </View>
       
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterChipsContainer}
-      >
-        {renderFilterChip('Tümü', 'filterType', 'all')}
-        {renderFilterChip('Tamamlanan', 'filterType', 'completed')}
-        {renderFilterChip('Onay Bekleyen', 'filterType', 'awaiting_approval')}
-      </ScrollView>
     </View>
   );
 }

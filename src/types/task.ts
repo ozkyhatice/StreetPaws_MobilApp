@@ -22,6 +22,7 @@ export interface Task {
     id: string;
     name: string;
     approvedAt: string;
+    note?: string;
   };
   isEmergency?: boolean;
   emergencyLevel?: EmergencyLevel;
@@ -63,11 +64,12 @@ export interface TaskReward {
 
 export type RewardType = 'XP' | 'BADGE' | 'BONUS_XP';
 
-export interface TaskFilter {
-  status?: TaskStatus;
+export type TaskFilter = {
+  filterType: 'all' | 'tasks' | 'emergencies' | 'completed' | 'awaiting_approval' | 'assigned';
   category?: TaskCategory;
-  searchText?: string;
-  isEmergency?: boolean;
-  filterType?: 'all' | 'tasks' | 'emergencies' | 'completed' | 'awaiting_approval';
-  [key: string]: any;
-} 
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  completedBy?: {
+    id: string;
+  };
+}; 

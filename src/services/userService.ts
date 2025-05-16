@@ -77,29 +77,44 @@ export class UserService {
   }
 
   async updateUser(userId: string, updates: Partial<User>): Promise<void> {
-    // Önce mevcut kullanıcı bilgilerini alalım
-    const userRef = doc(db, this.usersCollection, userId);
-    const userDoc = await getDoc(userRef);
-    
-    if (!userDoc.exists()) {
-      throw new Error('User not found');
+    try {
+      // Önce mevcut kullanıcı bilgilerini alalım
+      const userRef = doc(db, this.usersCollection, userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('User not found');
+      }
+      
+      const currentData = userDoc.data() as User;
+      
+      // Güncellemeler için undefined olmayan değerleri birleştir
+      const cleanUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([_, value]) => value !== undefined)
+      );
+      
+      // Güncellenmiş veriyi hazırla
+      const updatedData = {
+        ...cleanUpdates,
+        updatedAt: new Date().toISOString()
+      };
+      
+      console.log('Kullanıcı güncelleniyor:', userId);
+      console.log('Güncellenecek veriler:', updatedData);
+      
+      // Firestore'da güncelleme yap
+      await updateDoc(userRef, updatedData);
+      
+      // Güncelleme sonrası kontrol
+      const updatedDoc = await getDoc(userRef);
+      const updatedUserData = updatedDoc.data();
+      console.log('Güncellenmiş kullanıcı verileri:', updatedUserData);
+      
+      return;
+    } catch (error) {
+      console.error('Error updating user:', error);
+      throw error;
     }
-    
-    const currentData = userDoc.data() as User;
-    
-    // Güncellemeler için undefined olmayan değerleri birleştir
-    const cleanUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([_, value]) => value !== undefined)
-    );
-    
-    // Güncellenmiş veriyi hazırla
-    const updatedData = {
-      ...cleanUpdates,
-      updatedAt: new Date().toISOString()
-    };
-    
-    console.log('Kullanıcı güncelleniyor:', userId, updatedData);
-    await updateDoc(userRef, updatedData);
   }
 
   async getUserById(userId: string): Promise<User | null> {
