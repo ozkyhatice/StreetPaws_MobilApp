@@ -29,7 +29,7 @@ import { colors, spacing, borderRadius } from '../config/theme';
 import { RootStackParamList } from '../types/navigation';
 import { RouteProp } from '@react-navigation/native';
 import { XPService } from '../services/xpService';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
 // Yardımcı fonksiyonlar
@@ -485,6 +485,22 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
           task.isEmergency,
           task.emergencyLevel
         );
+        
+        // Kullanıcının tamamlanan görev sayısını güncelle
+        const userRef = doc(db, 'users', completedUserId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const currentTaskCount = userData.stats?.tasksCompleted || 0;
+          
+          // Görev sayısını bir artır
+          await updateDoc(userRef, {
+            'stats.tasksCompleted': currentTaskCount + 1
+          });
+          
+          console.log(`Updated user ${completedUserId} task count from ${currentTaskCount} to ${currentTaskCount + 1}`);
+        }
         
         // Update badge progress
         const badgeService = BadgeService.getInstance();
