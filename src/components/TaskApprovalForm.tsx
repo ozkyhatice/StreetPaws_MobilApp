@@ -30,6 +30,7 @@ interface TaskApprovalFormProps {
   onApprove: (task: Task, note?: string) => void;
   onReject: (task: Task, reason: string) => void;
   loading?: boolean;
+  isAdmin: boolean;
 }
 
 export function TaskApprovalForm({
@@ -37,10 +38,27 @@ export function TaskApprovalForm({
   onApprove,
   onReject,
   loading = false,
+  isAdmin
 }: TaskApprovalFormProps) {
   const [note, setNote] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isRejecting, setIsRejecting] = useState(false);
+  
+  if (!isAdmin) {
+    return (
+      <View style={styles.container}>
+        <Card style={styles.completionCard}>
+          <Card.Content>
+            <View style={styles.completionHeader}>
+              <Clock size={20} color={colors.warning} />
+              <Text style={styles.awaitingApprovalText}>Onay Bekliyor</Text>
+            </View>
+            <Text style={styles.adminOnlyText}>Bu görev bir admin tarafından onaylanmayı bekliyor.</Text>
+          </Card.Content>
+        </Card>
+      </View>
+    );
+  }
   
   const handleApprove = () => {
     onApprove(task, note);
@@ -297,5 +315,10 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.error,
     marginTop: spacing.xxs,
+  },
+  adminOnlyText: {
+    ...typography.body2,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
 }); 
