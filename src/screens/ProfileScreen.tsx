@@ -25,6 +25,7 @@ import { BadgeService } from '../services/badgeService';
 import { UserService } from '../services/userService';
 import { TaskService } from '../services/taskService';
 import { BadgeCollection } from '../components/BadgeCollection';
+import { XPService } from '../services/xpService';
 
 const { width } = Dimensions.get('window');
 
@@ -45,6 +46,9 @@ const ProfileScreen = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [levelUpBadge, setLevelUpBadge] = useState<any>(null);
+  const [xpData, setXpData] = useState(null);
+  const [taskStats, setTaskStats] = useState(null);
+  const [profileImage, setProfileImage] = useState(null);
 
   const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
 
@@ -97,94 +101,50 @@ const ProfileScreen = () => {
   };
 
   useEffect(() => {
-    if (!user?.uid) return;
-
-    // Kullanıcı verilerini gerçek zamanlı dinle
-    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), async (userDoc) => {
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        console.log('Kullanıcı verileri alındı:', data);
+    const loadUserData = async () => {
+      try {
+        setLoading(true);
         
-        // Check if there's been any badge level ups since last time
-        if (userData && userData.badges) {
-          const prevBadges = userData.badges || [];
-          const newBadges = data.badges || [];
+        if (user) {
+          // XP verilerini al
+          const xpService = XPService.getInstance();
+          const userXpData = await xpService.getUserXP(user.uid);
+          setXpData(userXpData);
           
-          // Look for any badge that has leveled up
-          for (const newBadge of newBadges) {
-            const prevBadge = prevBadges.find(b => b.id === newBadge.id);
+          // Görev istatistiklerini al
+          const taskProgress = await xpService.getTaskProgress(user.uid);
+          setTaskStats(taskProgress);
+          
+          // Rozetleri kontrol et ve gerekirse yeni rozetler ver
+          const badgeService = BadgeService.getInstance();
+          await badgeService.checkAllCategoryBadges(user.uid);
+          
+          // Kullanıcı belgesini al
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
             
-            if (prevBadge && newBadge.level && prevBadge.level && newBadge.level > prevBadge.level) {
-              // Found a badge that leveled up!
-              setLevelUpBadge(newBadge);
-              setShowLevelUpModal(true);
-              break;
+            // Rozet verilerini ayarla
+            if (userData.badges && Array.isArray(userData.badges)) {
+              setBadges(userData.badges);
+            }
+            
+            // Profil resmini ayarla
+            if (userData.photoURL) {
+              setProfileImage(userData.photoURL);
             }
           }
         }
-        
-        setUserData(data);
-        setBadges(data?.badges || []);
-        loadTaskStats();
-      } else {
-        // Kullanıcı dokümanı yoksa oluştur
-        try {
-          console.log('Kullanıcı dokümanı bulunamadı, oluşturuluyor...');
-          const userService = UserService.getInstance();
-          
-          const newUserData = {
-            uid: user.uid,
-            email: user.email || '',
-            displayName: user.displayName || '',
-            firstName: user.displayName?.split(' ')[0] || '',
-            lastName: user.displayName?.split(' ')[1] || '',
-            username: user.email?.split('@')[0] || 'kullanici',
-            photoURL: user.photoURL || '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            emailVerified: user.emailVerified || false,
-            role: 'user' as 'user' | 'admin' | 'volunteer',
-            xp: 0,
-            completedTasks: [],
-            badges: [],
-            volunteerHours: 0,
-            savedPets: [],
-            favoriteLocations: [],
-            stats: {
-              tasksCompleted: 0,
-              volunteeredHours: 0,
-              donationsCount: 0,
-              totalDonationAmount: 0,
-              xpPoints: 0,
-              level: 1,
-            },
-            preferences: {
-              notifications: true,
-              emailUpdates: true,
-              darkMode: false,
-            },
-            bio: '',
-            city: '',
-            dateOfBirth: '',
-            phoneNumber: ''
-          };
-          
-          await userService.createUser(newUserData);
-          setUserData(newUserData);
-          console.log('Yeni kullanıcı profili oluşturuldu');
-          loadTaskStats();
-        } catch (error) {
-          console.error('Error creating user document:', error);
-          Alert.alert('Hata', 'Kullanıcı profili oluşturulurken hata oluştu');
-        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      } finally {
+        setLoading(false);
       }
-    }, (error) => {
-      console.error("Error fetching user data:", error);
-      Alert.alert('Hata', 'Kullanıcı bilgileri alınamadı');
-    });
-
-    return () => unsubscribe();
-  }, [user?.uid]);
+    };
+    
+    loadUserData();
+  }, [user]);
 
   const checkUsernameAvailability = async (username: string): Promise<boolean> => {
     if (username === userData?.username) return true; // If username hasn't changed
@@ -376,7 +336,7 @@ const ProfileScreen = () => {
         <Surface style={styles.profileCard} elevation={0}>
           <Avatar.Image
             size={80}
-            source={{ uri: user?.photoURL || 'https://via.placeholder.com/80' }}
+            source={{ uri: profileImage || 'https://via.placeholder.com/80' }}
             style={styles.avatar}
           />
           <Text variant="titleLarge" style={styles.name}>
