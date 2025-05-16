@@ -540,7 +540,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   const isAssignedToMe = user && task.assignedTo === user.uid;
   const isEmergencyTask = task.isEmergency === true;
   const canTakeTask = user && task.status === 'OPEN' && !task.assignedTo;
-  const canApprove = user && task.status === 'AWAITING_APPROVAL';
+  const canApprove = user && task.status === 'AWAITING_APPROVAL' && user.role === 'admin';
   const isAwaitingApproval = task.status === 'AWAITING_APPROVAL';
   const isCompleted = task.status === 'COMPLETED';
   const { width } = Dimensions.get('window');
@@ -584,6 +584,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
           onApprove={handleApproveTask}
           onReject={handleRejectTask}
           loading={submitting}
+          isAdmin={user?.role === 'admin'}
         />
       </SafeAreaView>
     );
