@@ -530,36 +530,69 @@ export default function TasksScreen() {
   };
 
   const RegularTasksRoute = () => {
-    const filteredItems = getFilteredItems();
+    const progressCardRef = useRef<any>(null);
+    const [refreshingProgress, setRefreshingProgress] = useState(false);
     
+    // Function to refresh the task progress card
+    const handleRefreshProgress = () => {
+      setRefreshingProgress(true);
+      // Give some visual feedback
+      setTimeout(() => {
+        // The actual refresh will be handled by the TaskProgressCard component
+        if (progressCardRef.current && progressCardRef.current.refresh) {
+          progressCardRef.current.refresh();
+        }
+        setRefreshingProgress(false);
+      }, 500);
+    };
+    
+    // Refresh when this tab is focused
+    useEffect(() => {
+      if (tabIndex === 1) { // Index 1 corresponds to the "Görev İlerlemem" tab
+        handleRefreshProgress();
+      }
+    }, [tabIndex]);
+    
+    if (!user) {
+      return (
+        <View style={styles.notLoggedInContainer}>
+          <Text style={styles.notLoggedInText}>
+            Görev istatistiklerini görmek için lütfen giriş yapın.
+          </Text>
+        </View>
+      );
+    }
+
     return (
-      <View style={{flex: 1}}>
-        <TaskList 
-          filter={{
-            filterType: showCompletedTasks ? 'completed' : 
-                       showAwaitingApprovalTasks ? 'awaiting_approval' : 'all',
-            completedBy: user ? { id: user.uid } : undefined,
-            status: showAwaitingApprovalTasks ? 'AWAITING_APPROVAL' : undefined
-          }}
-          onFilterChange={(newFilter) => {
-            setFilter(newFilter);
-            setShowCompletedTasks(newFilter.filterType === 'completed');
-            setShowAwaitingApprovalTasks(newFilter.filterType === 'awaiting_approval');
-          }}
-          navigation={navigation}
+      <ScrollView
+        contentContainerStyle={styles.progressContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshingProgress}
+            onRefresh={handleRefreshProgress}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <TaskProgressCard 
+          ref={progressCardRef}
+          userId={user.uid} 
+          onBadgePress={toggleAchievements}
         />
-        {user && user.uid && (
-          <TouchableOpacity 
-            activeOpacity={0.9}
-            onPress={() => navigation.navigate('TaskProgress')}
-          >
-            <TaskProgressCard 
-              userId={user.uid} 
-              onBadgePress={toggleAchievements} 
-            />
-          </TouchableOpacity>
-        )}
-      </View>
+        
+        <View style={styles.infoCard}>
+          <Text style={styles.infoTitle}>Nasıl Rozet Kazanılır?</Text>
+          <Text style={styles.infoText}>
+            • Görevleri tamamlayarak çeşitli rozetler kazanabilirsiniz{'\n'}
+            • Aynı kategoride görevleri tamamlayarak uzmanlaşabilirsiniz{'\n'}
+            • Her gün en az bir görev tamamlayarak seri oluşturup özel rozetler kazanabilirsiniz{'\n'}
+            • Farklı öncelikteki görevleri tamamlayarak rozetler kazanabilirsiniz{'\n'}
+            • Tüm rozetlerinizi ve ilerlemenizi görmek için rozet ikonuna tıklayın
+          </Text>
+        </View>
+      </ScrollView>
     );
   };
 
@@ -1137,6 +1170,36 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
     fontSize: 14,
     fontWeight: '500',
+  },
+  notLoggedInContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notLoggedInText: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  progressContent: {
+    padding: spacing.md,
+  },
+  infoCard: {
+    backgroundColor: '#fff',
+    borderRadius: borderRadius.medium,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.medium,
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  infoText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });
 

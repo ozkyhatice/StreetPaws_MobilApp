@@ -183,6 +183,7 @@ export default function CompletedTasksScreen() {
       
       // Toplam XP hesapla
       const totalTaskXP = completedTasks.reduce((sum, task) => sum + (task.xpReward || 0), 0);
+      console.log("CompletedTasksScreen - Calculated XP from completed tasks:", totalTaskXP);
       
       // XP servisinden görev ilerleme bilgisini al
       const taskProgress = await xpService.getTaskProgress(user.uid);

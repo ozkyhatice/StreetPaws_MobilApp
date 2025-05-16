@@ -306,57 +306,84 @@ export class BadgeService {
     badgesAwarded: string[];
   }> {
     try {
+      console.log(`BadgeService: Checking all category badges for user ${userId}`);
       const xpService = XPService.getInstance();
       const progressData = await xpService.getTaskProgress(userId);
       const badgesAwarded: string[] = [];
       
       // Tüm kategorileri kontrol et
-      const categories = ['FEEDING', 'HEALTH', 'SHELTER', 'CLEANING'];
+      const categories = ['FEEDING', 'HEALTH', 'SHELTER', 'CLEANING', 'OTHER'];
       
       for (const category of categories) {
         const taskCount = progressData.currentTasksCount[category] || 0;
+        console.log(`BadgeService: Category ${category} has ${taskCount} tasks completed`);
         
         // 10 veya daha fazla görev tamamlanmışsa rozet ver
         if (taskCount >= 10) {
-          const badgeId = `${category.toLowerCase()}_specialist_bronze`;
+          // Determine the appropriate badge ID based on category
+          let badgeId;
           if (category === 'HEALTH') {
-            const awarded = await this.checkAndAwardHealthBadge(userId);
-            if (awarded) {
-              badgesAwarded.push('health_hero_bronze');
-            }
+            badgeId = 'health_hero_bronze';
+          } else if (category === 'FEEDING') {
+            badgeId = 'feeding_specialist_bronze';
+          } else if (category === 'SHELTER') {
+            badgeId = 'shelter_builder_bronze';
+          } else if (category === 'CLEANING') {
+            badgeId = 'cleaning_expert_bronze';
           } else {
-            // Diğer kategoriler için benzer işlem
-            const badgeTemplate = BADGES.find(badge => badge.id === badgeId);
-            if (badgeTemplate) {
-              const userDoc = await getDoc(doc(db, this.usersCollection, userId));
-              if (userDoc.exists()) {
-                const userData = userDoc.data();
-                const userBadges = userData.badges || [];
+            badgeId = `${category.toLowerCase()}_specialist_bronze`;
+          }
+          
+          console.log(`BadgeService: Checking badge ${badgeId} for user ${userId}`);
+          
+          // Find the badge template
+          const badgeTemplate = BADGES.find(badge => badge.id === badgeId);
+          if (badgeTemplate) {
+            const userDoc = await getDoc(doc(db, this.usersCollection, userId));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              const userBadges = userData.badges || [];
+              
+              // Check if user already has this badge
+              const hasBadge = userBadges.some((badge: UserBadge) => badge.id === badgeId);
+              
+              if (!hasBadge) {
+                console.log(`BadgeService: Awarding badge ${badgeId} to user ${userId}`);
                 
-                // Kullanıcının bu rozeti var mı kontrol et
-                const hasBadge = userBadges.some((badge: UserBadge) => badge.id === badgeId);
+                // Calculate level and remaining count
+                const level = Math.floor(taskCount / 10);
+                const remainingCount = taskCount % 10;
                 
-                if (!hasBadge) {
-                  const level = Math.floor(taskCount / 10) + 1;
-                  const remainingCount = taskCount % 10;
-                  
-                  const userBadge: UserBadge = {
-                    ...badgeTemplate,
-                    earnedAt: new Date().toISOString(),
-                    progress: Math.floor((remainingCount / 10) * 100),
-                    level: level,
-                    currentCount: remainingCount,
-                    maxCount: 10
-                  };
-                  
-                  await updateDoc(doc(db, this.usersCollection, userId), {
-                    badges: arrayUnion(userBadge)
-                  });
-                  
-                  badgesAwarded.push(badgeId);
-                }
+                const userBadge: UserBadge = {
+                  ...badgeTemplate,
+                  earnedAt: new Date().toISOString(),
+                  progress: Math.floor((remainingCount / 10) * 100),
+                  level: level,
+                  currentCount: remainingCount,
+                  maxCount: 10
+                };
+                
+                // Add badge to user's collection
+                await updateDoc(doc(db, this.usersCollection, userId), {
+                  badges: arrayUnion(userBadge)
+                });
+                
+                // Award XP for earning the badge
+                await xpService.addXP(userId, {
+                  title: 'Rozet Kazanıldı',
+                  description: `"${badgeTemplate.name}" rozeti kazanıldı!`,
+                  xpAmount: badgeTemplate.xpReward * level,
+                  type: 'BADGE_EARNED'
+                });
+                
+                badgesAwarded.push(badgeId);
+                console.log(`BadgeService: Successfully awarded badge ${badgeId} to user ${userId}`);
+              } else {
+                console.log(`BadgeService: User ${userId} already has badge ${badgeId}`);
               }
             }
+          } else {
+            console.log(`BadgeService: Badge template not found for ${badgeId}`);
           }
         }
       }

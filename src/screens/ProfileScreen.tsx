@@ -18,7 +18,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
 import { Text, Avatar, Surface, useTheme, Button, ProgressBar } from 'react-native-paper';
 import { colors } from '../config/theme';
-import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText, Award } from 'lucide-react-native';
+import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText, Award, Star } from 'lucide-react-native';
 import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { BadgeService } from '../services/badgeService';
@@ -102,8 +102,11 @@ const ProfileScreen = () => {
       
       setActualCompletedTaskCount(completedTasks.length);
       
-      // Calculate total XP from completed tasks
+      // Calculate total XP from completed tasks - this should match CompletedTasksScreen
       const totalXP = completedTasks.reduce((sum, task) => sum + (task.xpReward || 0), 0);
+      console.log("ProfileScreen - Calculated XP from completed tasks:", totalXP);
+      
+      // Update the XP value to match the one calculated from completed tasks
       setActualXP(totalXP);
     } catch (error) {
       console.error('Error loading task stats:', error);
@@ -134,10 +137,9 @@ const ProfileScreen = () => {
           const userXpData = await xpService.getUserXP(user.uid);
           setXpData(userXpData);
           
-          // XP değerini ayarla
-          if (userData.xp) {
-            setActualXP(userData.xp);
-          }
+          // XP değerini ayarla - loadTaskStats fonksiyonu doğru XP değerini ayarlayacak
+          // Burada userData.xp değerini kullanmıyoruz çünkü bu değer tamamlanan görevlerden 
+          // hesaplanan değerle eşleşmiyor olabilir
           
           // Profil resmini ayarla
           if (userData.photoURL) {
@@ -149,21 +151,12 @@ const ProfileScreen = () => {
             setBadges(userData.badges);
           }
           
-          // Görev istatistiklerini al
+          // Görev istatistiklerini al - artık XPService'te kategori toplamını kullanıyoruz
           const taskProgress = await xpService.getTaskProgress(user.uid);
           
-          // Kategori toplamını hesapla (daha doğru görev sayısı)
-          const categoryTotal = Object.values(taskProgress.currentTasksCount).reduce((sum, count) => sum + count, 0);
-          
-          // Eğer kategori toplamı varsa, onu kullan
-          if (categoryTotal > 0) {
-            taskProgress.completedTasks = categoryTotal;
-            setActualCompletedTaskCount(categoryTotal);
-            console.log(`ProfileScreen - Using category total for task count: ${categoryTotal}`);
-          } else {
-            setActualCompletedTaskCount(taskProgress.completedTasks);
-            console.log(`ProfileScreen - Using completedTasks from taskProgress: ${taskProgress.completedTasks}`);
-          }
+          // XPService'ten gelen değeri doğrudan kullan, tekrar hesaplama yapma
+          console.log(`ProfileScreen - Setting task count to: ${taskProgress.completedTasks}`);
+          setActualCompletedTaskCount(taskProgress.completedTasks);
           
           // TaskStats'ı ayarla
           setTaskStats(taskProgress);
@@ -171,6 +164,9 @@ const ProfileScreen = () => {
           // Rozetleri kontrol et ve gerekirse yeni rozetler ver
           const badgeService = BadgeService.getInstance();
           await badgeService.checkAllCategoryBadges(user.uid);
+          
+          // Doğru XP değerini hesapla ve ayarla
+          await loadTaskStats();
         }
       } catch (error) {
         console.error('Error loading user data:', error);
@@ -360,27 +356,17 @@ const ProfileScreen = () => {
   };
 
   const renderProfileInfo = () => {
-    // Tamamlanan görev sayısını doğru şekilde hesapla
-    let completedTasksCount = 0;
+    // Görev sayısını doğrudan actualCompletedTaskCount'tan al
+    // Tekrar hesaplama yapma, bu sayı zaten XPService'ten doğru şekilde alındı
+    const completedTasksCount = actualCompletedTaskCount;
     
-    if (taskStats && taskStats.currentTasksCount) {
-      // Kategori toplamlarını kullanarak gerçek görev sayısını hesapla
-      const categoryTotal = Object.values(taskStats.currentTasksCount).reduce((sum, count) => sum + count, 0);
-      
-      // Eğer kategori toplamı varsa, onu kullan (daha doğru)
-      // Yoksa taskStats.completedTasks veya actualCompletedTaskCount'u kullan
-      completedTasksCount = categoryTotal > 0 ? 
-        categoryTotal : 
-        (taskStats.completedTasks || actualCompletedTaskCount || 0);
-    } else {
-      // TaskStats yoksa, actualCompletedTaskCount'u kullan
-      completedTasksCount = actualCompletedTaskCount || 0;
-    }
+    // Debug için görev sayısını yazdır
+    console.log(`ProfileScreen - Rendering with task count: ${completedTasksCount}`);
     
-    // Görev sayısını konsola yazdır (debug için)
-    console.log(`ProfileScreen - Showing task count: ${completedTasksCount}`);
+    // actualXP değerini kullan - bu değer loadTaskStats() tarafından tamamlanan görevlerden hesaplanmış olmalı
+    const currentXP = actualXP;
+    console.log(`ProfileScreen - Rendering with XP: ${currentXP}`);
     
-    const currentXP = actualXP || userData?.xp || 0;
     const currentLevel = calculateLevel(currentXP);
     const progress = calculateProgress(currentXP, currentLevel);
     const nextLevelXP = calculateXPForNextLevel(currentLevel);
@@ -443,6 +429,12 @@ const ProfileScreen = () => {
             <Text variant="bodyMedium" style={styles.statLabel}>
               XP
             </Text>
+            <TouchableOpacity 
+              onPress={() => loadTaskStats()}
+              style={styles.refreshButton}
+            >
+              <Text style={styles.refreshButtonText}>Yenile</Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.statItem}>
             <Text variant="titleLarge" style={styles.statValue}>
@@ -814,50 +806,47 @@ const ProfileScreen = () => {
         {activeTab === 'Rozetlerim' && (
           <View style={styles.badgesContainer}>
             <Surface style={styles.badgesCard} elevation={0}>
-              <Text variant="titleMedium" style={styles.badgesTitle}>
-                Kazanılan Rozetler
-              </Text>
+              <View style={styles.badgesHeader}>
+                <Award size={24} color={colors.primary} style={styles.badgesHeaderIcon} />
+                <Text variant="titleLarge" style={styles.badgesTitle}>
+                  Kazanılan Rozetler
+                </Text>
+              </View>
+              
               <Text style={styles.badgesSubtitle}>
                 Görevleri tamamlayarak rozetleri kazanabilir ve seviyelerini yükseltebilirsin.
                 Her rozet 10 seviyeye kadar yükseltilebilir.
               </Text>
               
-              {badges.length === 0 ? (
-                <View style={styles.emptyBadgesContainer}>
-                  <Text style={styles.emptyBadgesText}>
-                    Henüz rozet kazanmadınız. Görevleri tamamlayarak rozetler kazanabilirsiniz.
-                  </Text>
-                  <Button 
-                    mode="contained" 
-                    onPress={() => navigation.navigate('Tasks')}
-                    style={{marginTop: 16}}
-                  >
-                    Görevlere Git
-                  </Button>
+              <BadgeCollection 
+                badges={badges} 
+                loading={loading}
+                onBadgePress={(badge) => {
+                  console.log('Badge pressed:', badge.name);
+                }}
+              />
+              
+              <View style={styles.badgeTipContainer}>
+                <View style={styles.badgeTipIconContainer}>
+                  <Star size={20} color={colors.warning} />
                 </View>
-              ) : (
-                <>
-                  <BadgeCollection 
-                    badges={badges} 
-                    loading={loading}
-                  />
-                  
-                  <Text style={styles.badgeTip}>
-                    Her rozet 10 görevde bir seviye atlar. Seviye atladıkça kazandığın XP miktarı da artar!
-                  </Text>
-                </>
-              )}
+                <Text style={styles.badgeTip}>
+                  Her rozet 10 görevde bir seviye atlar. Seviye atladıkça kazandığın XP miktarı da artar!
+                </Text>
+              </View>
               
               {/* Test Button for Development */}
-              <View style={styles.testButtonContainer}>
-                <Button 
-                  mode="outlined" 
-                  onPress={handleTestBadgeLevelUp}
-                  style={styles.testButton}
-                >
-                  Test Rozeti Seviye Atlat
-                </Button>
-              </View>
+              {__DEV__ && (
+                <View style={styles.testButtonContainer}>
+                  <Button 
+                    mode="outlined" 
+                    onPress={handleTestBadgeLevelUp}
+                    style={styles.testButton}
+                  >
+                    Test Rozeti Seviye Atlat
+                  </Button>
+                </View>
+              )}
             </Surface>
           </View>
         )}
@@ -1120,23 +1109,29 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
   },
+  badgesHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  badgesHeaderIcon: {
+    marginRight: 8,
+  },
   badgesTitle: {
     fontWeight: 'bold',
-    marginBottom: 8,
   },
   badgesSubtitle: {
     color: '#666',
     marginBottom: 16,
     fontSize: 14,
   },
-  emptyBadgesContainer: {
+  badgeTipContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
+    marginTop: 16,
   },
-  emptyBadgesText: {
-    textAlign: 'center',
-    color: '#999',
+  badgeTipIconContainer: {
+    marginRight: 8,
   },
   badgeTip: {
     backgroundColor: '#F0F7FF',
@@ -1144,8 +1139,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontSize: 14,
     color: '#0066CC',
-    marginTop: 16,
-    textAlign: 'center',
   },
   activityContainer: {
     paddingBottom: 16,
@@ -1240,6 +1233,18 @@ const styles = StyleSheet.create({
   },
   testButton: {
     borderColor: colors.primary,
+  },
+  refreshButton: {
+    marginTop: 4,
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  refreshButtonText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });
 

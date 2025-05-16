@@ -2,6 +2,7 @@ import { XPActivity, XP_REWARDS } from '../types/xp';
 import { db } from '../config/firebase';
 import { collection, doc, getDoc, updateDoc, increment, arrayUnion, query, where, orderBy, limit, getDocs, setDoc } from 'firebase/firestore';
 import { EmergencyLevel } from '../types/task';
+import { BadgeService } from './badgeService';
 
 interface UserXPData {
   userId: string;
@@ -426,26 +427,32 @@ export class XPService {
         }
       });
       
-      // Kategori sayılarının toplamını hesapla - bu daha doğru bir görev sayısı olacaktır
+      // Kategori sayılarının toplamını hesapla - bu bizim görev sayımız olacak
+      // Bu, görev sayısının doğru hesaplanmasını sağlar
       const categoryTotal = Object.values(categoryCount).reduce((sum, count) => sum + count, 0);
       
-      // Eğer kategori toplamı varsa onu kullan, yoksa Firestore sorgu sonucunu kullan
-      // Bu, görev sayısının yanlış hesaplanmasını önler
-      const completedTasksCount = categoryTotal > 0 ? categoryTotal : completedSnapshot.size;
-      
-      // Eğer kullanıcı dokümanında stats.tasksCompleted değeri varsa ve kategori toplamından büyük değilse,
-      // kategori toplamını kullan (bu, görev sayısının 3 katına çıkması sorununu önler)
-      const storedTaskCount = userData?.stats?.tasksCompleted || 0;
-      const finalTaskCount = (storedTaskCount > 0 && storedTaskCount <= categoryTotal) ? categoryTotal : completedTasksCount;
-      
+      // Firestore'dan gelen sayıyı tamamen görmezden gel, sadece kategori toplamını kullan
+      // Bu, görev sayısının 3 katına çıkması sorununu önler
       const result = {
-        completedTasks: finalTaskCount,
+        completedTasks: categoryTotal,
         awaitingApprovalTasks: awaitingApprovalSnapshot.size,
         totalStreakDays,
         currentTasksCount: categoryCount
       };
       
       console.log(`XPService: Task progress result for user ${userId}:`, result);
+      
+      // Eğer kategori toplamı ile kullanıcı belgesindeki görev sayısı farklıysa,
+      // kullanıcı belgesini güncelle (bu, ileriki sorgularda tutarlılık sağlar)
+      const storedTaskCount = userData?.stats?.tasksCompleted || 0;
+      if (storedTaskCount !== categoryTotal) {
+        console.log(`XPService: Updating stored task count from ${storedTaskCount} to ${categoryTotal}`);
+        const userRef = doc(db, this.usersCollection, userId);
+        await updateDoc(userRef, {
+          'stats.tasksCompleted': categoryTotal
+        });
+      }
+      
       return result;
     } catch (error) {
       console.error('XPService: Error getting task progress:', error);
@@ -505,6 +512,198 @@ export class XPService {
       }
     } catch (error) {
       console.error(`XPService: Error checking for multiple task bonus: ${error.message}`);
+    }
+  }
+
+  // Check and update user's daily streak
+  async checkAndUpdateDailyStreak(userId: string): Promise<{
+    streakUpdated: boolean;
+    currentStreak: number;
+    xpAwarded: number;
+  }> {
+    try {
+      if (!userId) {
+        throw new Error('UserId is required');
+      }
+      
+      console.log(`XPService: Checking daily streak for user ${userId}`);
+      
+      // Get user data
+      const userRef = doc(db, this.usersCollection, userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.log(`XPService: User document not found for userId: ${userId}`);
+        return {
+          streakUpdated: false,
+          currentStreak: 0,
+          xpAwarded: 0
+        };
+      }
+      
+      const userData = userDoc.data();
+      const currentStreak = userData.streak || 0;
+      const lastLoginDate = userData.lastLoginDate ? new Date(userData.lastLoginDate) : null;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to start of day
+      
+      // If no previous login or last login was more than 2 days ago, reset streak
+      if (!lastLoginDate) {
+        // First login ever, set streak to 1
+        await updateDoc(userRef, {
+          streak: 1,
+          lastLoginDate: new Date().toISOString()
+        });
+        
+        // Award XP for first login
+        await this.addXP(userId, {
+          title: 'İlk Giriş',
+          description: 'Uygulamaya ilk giriş',
+          xpAmount: XP_REWARDS.DAILY_LOGIN,
+          type: 'DAILY_LOGIN'
+        });
+        
+        return {
+          streakUpdated: true,
+          currentStreak: 1,
+          xpAwarded: XP_REWARDS.DAILY_LOGIN
+        };
+      }
+      
+      // Calculate days difference
+      const lastLoginDay = new Date(lastLoginDate);
+      lastLoginDay.setHours(0, 0, 0, 0); // Reset time to start of day
+      
+      const diffTime = today.getTime() - lastLoginDay.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      console.log(`XPService: Days since last login: ${diffDays}`);
+      
+      // If last login was today, no streak update needed
+      if (diffDays === 0) {
+        return {
+          streakUpdated: false,
+          currentStreak,
+          xpAwarded: 0
+        };
+      }
+      
+      // If last login was yesterday, increment streak
+      if (diffDays === 1) {
+        const newStreak = currentStreak + 1;
+        
+        // Update streak in database
+        await updateDoc(userRef, {
+          streak: newStreak,
+          lastLoginDate: new Date().toISOString()
+        });
+        
+        // Calculate XP reward based on streak milestones
+        let xpReward = XP_REWARDS.DAILY_LOGIN;
+        let streakBonus = 0;
+        
+        // Add streak bonuses
+        if (newStreak === 3) streakBonus = XP_REWARDS.STREAK_BONUS_3;
+        else if (newStreak === 5) streakBonus = XP_REWARDS.STREAK_BONUS_5;
+        else if (newStreak === 7) streakBonus = XP_REWARDS.STREAK_BONUS_7;
+        else if (newStreak === 14) streakBonus = XP_REWARDS.STREAK_BONUS_14;
+        else if (newStreak === 30) streakBonus = XP_REWARDS.STREAK_BONUS_30;
+        
+        const totalXP = xpReward + streakBonus;
+        
+        // Award XP for login streak
+        await this.addXP(userId, {
+          title: 'Günlük Giriş',
+          description: streakBonus > 0 
+            ? `${newStreak} günlük seri! Bonus: ${streakBonus} XP` 
+            : `${newStreak} günlük seri`,
+          xpAmount: totalXP,
+          type: 'DAILY_LOGIN'
+        });
+        
+        // Check for streak badges
+        const badgeService = BadgeService.getInstance();
+        await badgeService.checkAllCategoryBadges(userId);
+        
+        return {
+          streakUpdated: true,
+          currentStreak: newStreak,
+          xpAwarded: totalXP
+        };
+      }
+      
+      // If more than 1 day passed, reset streak to 1
+      await updateDoc(userRef, {
+        streak: 1,
+        lastLoginDate: new Date().toISOString()
+      });
+      
+      // Award XP for new streak start
+      await this.addXP(userId, {
+        title: 'Yeni Seri Başlangıcı',
+        description: 'Yeni günlük giriş serisi başlattınız',
+        xpAmount: XP_REWARDS.DAILY_LOGIN,
+        type: 'DAILY_LOGIN'
+      });
+      
+      return {
+        streakUpdated: true,
+        currentStreak: 1,
+        xpAwarded: XP_REWARDS.DAILY_LOGIN
+      };
+    } catch (error) {
+      console.error('XPService: Error checking daily streak:', error);
+      return {
+        streakUpdated: false,
+        currentStreak: 0,
+        xpAwarded: 0
+      };
+    }
+  }
+  
+  // Get task counts by priority
+  async getTaskCountsByPriority(userId: string): Promise<{ HIGH: number; MEDIUM: number; LOW: number; }> {
+    try {
+      if (!userId) {
+        throw new Error('UserId is required');
+      }
+      
+      console.log(`XPService: Getting task counts by priority for user ${userId}`);
+      
+      // Default priority counts
+      const priorityCounts = {
+        HIGH: 0,
+        MEDIUM: 0,
+        LOW: 0
+      };
+      
+      // Query completed tasks
+      const completedTasksQuery = query(
+        collection(db, this.tasksCollection),
+        where('completedBy.id', '==', userId),
+        where('status', '==', 'COMPLETED')
+      );
+      
+      const completedSnapshot = await getDocs(completedTasksQuery);
+      
+      // Count tasks by priority
+      completedSnapshot.forEach(doc => {
+        const task = doc.data();
+        if (task.priority && priorityCounts.hasOwnProperty(task.priority)) {
+          priorityCounts[task.priority] = (priorityCounts[task.priority] || 0) + 1;
+        }
+      });
+      
+      console.log(`XPService: Task counts by priority for user ${userId}:`, priorityCounts);
+      
+      return priorityCounts;
+    } catch (error) {
+      console.error('XPService: Error getting task counts by priority:', error);
+      return {
+        HIGH: 0,
+        MEDIUM: 0,
+        LOW: 0
+      };
     }
   }
 } 

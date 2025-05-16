@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import { View, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions } from 'react-native';
-import { Text, Card, ProgressBar, Surface, Badge, Divider, Avatar } from 'react-native-paper';
+import { Text, Card, ProgressBar, Surface, Badge, Divider } from 'react-native-paper';
 import { colors, typography, spacing, borderRadius, shadows } from '../config/theme';
 import { CheckCircle, Award, Flame, Calendar, Star, Shield, AlertTriangle, Target, Medal } from 'lucide-react-native';
 import { BADGES, BADGE_LEVELS } from '../types/badge';
 import { XPService } from '../services/xpService';
 import { TaskService } from '../services/taskService';
+import { BadgeService } from '../services/badgeService';
 import { Task, TaskPriority } from '../types/task';
 import LottieView from 'lottie-react-native';
 
+// Props interface
 interface TaskProgressCardProps {
   userId: string;
   onBadgePress?: () => void;
@@ -19,6 +21,7 @@ export interface TaskProgressCardRefHandle {
   refresh: () => void;
 }
 
+// Progress state interface
 interface ProgressState {
   completedTasks: number;
   totalStreakDays: number;
@@ -38,8 +41,10 @@ interface ProgressState {
   };
 }
 
+// Define the component with forwardRef
 export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgressCardProps>(
-  ({ userId, onBadgePress }, ref) => {
+  function TaskProgressCard(props, ref) {
+    const { userId, onBadgePress } = props;
     const [loading, setLoading] = useState(true);
     const [progress, setProgress] = useState<ProgressState>({
       completedTasks: 0,
@@ -67,11 +72,24 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
 
     // Expose refresh method to parent component
     useImperativeHandle(ref, () => ({
-      refresh: () => {
+      refresh: async () => {
         console.log('TaskProgressCard - Refreshing data for user:', userId);
         if (userId) {
-          loadProgress();
-          loadRecentTasks();
+          await loadProgress();
+          await loadRecentTasks();
+          
+          // Check for badges when refreshing
+          try {
+            const badgeService = BadgeService.getInstance();
+            const result = await badgeService.checkAllCategoryBadges(userId);
+            if (result.badgesAwarded.length > 0) {
+              console.log('TaskProgressCard - New badges awarded:', result.badgesAwarded);
+              // Trigger confetti animation for new badges
+              confettiRef.current?.play();
+            }
+          } catch (error) {
+            console.error('Error checking badges:', error);
+          }
           
           // Trigger confetti animation on refresh if there are achievements
           if (progress.totalStreakDays > 0 || progress.completedTasks > 4) {
@@ -81,16 +99,17 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
       }
     }));
 
+    // Load data on mount
     useEffect(() => {
       if (userId) {
         loadProgress();
         loadRecentTasks();
-
+        
         // Start animations
         Animated.parallel([
           Animated.timing(fadeAnim, {
             toValue: 1,
-            duration: 600,
+            duration: 500,
             useNativeDriver: true,
           }),
           Animated.timing(slideAnim, {
@@ -100,16 +119,11 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
           }),
           Animated.spring(badgeScaleAnim, {
             toValue: 1,
-            friction: 6,
+            friction: 5,
             tension: 40,
             useNativeDriver: true,
-          })
-        ]).start(() => {
-          // Play confetti animation if user has achievements
-          if (progress.totalStreakDays > 0 || progress.completedTasks > 4) {
-            confettiRef.current?.play();
-          }
-        });
+          }),
+        ]).start();
       }
     }, [userId]);
 
@@ -118,6 +132,8 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
         setLoading(true);
         const xpService = XPService.getInstance();
         const progressData = await xpService.getTaskProgress(userId);
+        
+        console.log('Loaded progress data from server:', progressData);
         
         // Create proper default data structure with existing keys
         const defaultTaskCounts = {
@@ -155,6 +171,9 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
     const loadRecentTasks = async () => {
       try {
         const taskService = TaskService.getInstance();
+        const xpService = XPService.getInstance();
+        
+        // Get completed tasks
         const allTasks = await taskService.getTasks();
         
         // Filter tasks that are completed by this user
@@ -169,12 +188,8 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
           return dateB - dateA;
         });
 
-        // Count priorities
-        const priorityCounts: ProgressState['priorityCount'] = {
-          HIGH: 0,
-          MEDIUM: 0,
-          LOW: 0
-        };
+        // Get task counts by priority from XPService
+        const priorityCounts = await xpService.getTaskCountsByPriority(userId);
         
         // Count by categories to double check the data
         const categoryCounts: ProgressState['currentTasksCount'] = {
@@ -186,32 +201,30 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
         };
         
         userCompletedTasks.forEach(task => {
-          // Count by priority
-          if (task.priority) {
-            priorityCounts[task.priority] = (priorityCounts[task.priority] || 0) + 1;
-          }
-          
           // Count by category
           if (task.category) {
             categoryCounts[task.category] = (categoryCounts[task.category] || 0) + 1;
+          } else {
+            categoryCounts.OTHER = (categoryCounts.OTHER || 0) + 1;
           }
         });
 
         console.log('Found completed tasks by user:', userCompletedTasks.length);
-        console.log('Priority counts:', priorityCounts);
+        console.log('Priority counts from XPService:', priorityCounts);
         console.log('Category counts:', categoryCounts);
 
         // Get only the 5 most recent tasks
         setRecentTasks(userCompletedTasks.slice(0, 5));
         
-        // Update the progress state with the counted data
+        // Update the progress state with the counted data from Firestore
         setProgress(prev => ({
           ...prev,
-          priorityCount: priorityCounts,
-          // Update completed tasks count in case the API data is not accurate
+          // ALWAYS use the actual completed tasks count from the actual tasks
           completedTasks: userCompletedTasks.length,
-          // Only update category counts if they're significantly different from API data
-          ...(userCompletedTasks.length > prev.completedTasks ? { currentTasksCount: categoryCounts } : {})
+          // Update priority counts from the XPService
+          priorityCount: priorityCounts,
+          // Update category counts from the actual tasks
+          currentTasksCount: categoryCounts
         }));
       } catch (error) {
         console.error('Error loading recent tasks:', error);
@@ -280,7 +293,12 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
       icon: React.ReactNode,
       delay: number = 0
     ) => {
+      // Calculate current level and progress within that level
+      const currentLevel = Math.floor(count / maxCount);
+      const progressInCurrentLevel = count % maxCount || (count >= maxCount ? 0 : count);
+      const nextLevelProgress = count >= maxCount ? progressInCurrentLevel : count;
       const isComplete = count >= maxCount;
+      
       const scaleAnim = useRef(new Animated.Value(0.8)).current;
       const opacityAnim = useRef(new Animated.Value(0)).current;
       
@@ -312,20 +330,25 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
             }
           ]}
         >
-          <Surface style={[styles.badgeCircle, isComplete && { backgroundColor: color }]}>
-            {icon}
-            {isComplete && (
-              <View style={styles.badgeStar}>
-                <Star size={10} color="#FFFFFF" fill="#FFFFFF" />
-              </View>
-            )}
-          </Surface>
-          <Text style={styles.badgeTitle}>{title}</Text>
+          <View style={styles.badgeCircleWrapper}>
+            <Surface style={[styles.badgeCircle, isComplete && { backgroundColor: color }]}>
+              {icon}
+              {isComplete && (
+                <View style={styles.badgeStar}>
+                  <Star size={10} color="#FFFFFF" fill="#FFFFFF" />
+                </View>
+              )}
+            </Surface>
+          </View>
+          <Text style={styles.badgeTitle}>
+            {title}
+            {currentLevel > 0 && ` (${currentLevel})`}
+          </Text>
           <Text style={[styles.badgeCount, isComplete && { color }]}>
-            {count}/{maxCount}
+            {nextLevelProgress}/{maxCount}
           </Text>
           <ProgressBar 
-            progress={Math.min(count / maxCount, 1)} 
+            progress={nextLevelProgress / maxCount} 
             color={color} 
             style={styles.badgeProgress} 
           />
@@ -365,523 +388,217 @@ export const TaskProgressCard = forwardRef<TaskProgressCardRefHandle, TaskProgre
     };
 
     const renderStreakBadges = () => {
-export function TaskProgressCard({ userId, onBadgePress }: TaskProgressCardProps) {
-  const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState<ProgressState>({
-    completedTasks: 0,
-    totalStreakDays: 0,
-    currentTasksCount: { 
-      FEEDING: 0, 
-      CLEANING: 0, 
-      HEALTH: 0, 
-      SHELTER: 0, 
-      OTHER: 0 
-    },
-    priorityCount: {
-      HIGH: 0,
-      MEDIUM: 0,
-      LOW: 0
-    }
-  });
-  const [recentTasks, setRecentTasks] = useState<Task[]>([]);
+      const streakMilestones = [
+        { days: 3, color: BADGE_LEVELS.BRONZE.color },
+        { days: 7, color: BADGE_LEVELS.SILVER.color },
+        { days: 14, color: BADGE_LEVELS.GOLD.color },
+        { days: 30, color: BADGE_LEVELS.DIAMOND.color }
+      ];
 
-  // Animation values
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
-  const badgeScaleAnim = useRef(new Animated.Value(0.8)).current;
-  const confettiRef = useRef<LottieView>(null);
-
-  useEffect(() => {
-    if (userId) {
-      loadProgress();
-      loadRecentTasks();
-
-      // Start animations
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        Animated.spring(badgeScaleAnim, {
-          toValue: 1,
-          friction: 6,
-          tension: 40,
-          useNativeDriver: true,
-        })
-      ]).start(() => {
-        // Play confetti animation if user has achievements
-        if (progress.totalStreakDays > 0 || progress.completedTasks > 4) {
-          confettiRef.current?.play();
-        }
-      });
-    }
-  }, [userId]);
-
-  const loadProgress = async () => {
-    try {
-      setLoading(true);
-      const xpService = XPService.getInstance();
-      const progressData = await xpService.getTaskProgress(userId);
-      
-      // Create proper default data structure with existing keys
-      const defaultTaskCounts = {
-        FEEDING: 0, 
-        CLEANING: 0, 
-        HEALTH: 0, 
-        SHELTER: 0, 
-        OTHER: 0
-      };
-      
-      // Ensure all required fields exist with proper types
-      const validatedData: ProgressState = {
-        completedTasks: progressData?.completedTasks || 0,
-        totalStreakDays: progressData?.totalStreakDays || 0,
-        currentTasksCount: { 
-          ...defaultTaskCounts,
-          ...(progressData?.currentTasksCount || {})
-        },
-        priorityCount: {
-          HIGH: 0,
-          MEDIUM: 0,
-          LOW: 0
-        }
-      };
-      
-      setProgress(validatedData);
-    } catch (error) {
-      console.error('Error loading progress:', error);
-      // Keep default values in case of error
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadRecentTasks = async () => {
-    try {
-      const taskService = TaskService.getInstance();
-      const allTasks = await taskService.getTasks();
-      
-      // Filter tasks that are completed by this user
-      const userCompletedTasks = allTasks.filter(
-        task => task.status === 'COMPLETED' && task.completedBy?.id === userId
+      return (
+        <View style={styles.badgesRow}>
+          {streakMilestones.map((milestone, index) => (
+            <React.Fragment key={`streak-${milestone.days}`}>
+              {renderBadge(
+                `${milestone.days} Gün`,
+                progress.totalStreakDays,
+                milestone.days,
+                milestone.color,
+                <Flame size={20} color={progress.totalStreakDays >= milestone.days ? "#FFFFFF" : milestone.color} />,
+                200 + (index * 100)
+              )}
+            </React.Fragment>
+          ))}
+        </View>
       );
-      
-      // Sort by completion date (most recent first)
-      userCompletedTasks.sort((a, b) => {
-        const dateA = new Date(a.completedBy?.completedAt || 0).getTime();
-        const dateB = new Date(b.completedBy?.completedAt || 0).getTime();
-        return dateB - dateA;
-      });
-
-      // Count priorities
-      const priorityCounts: ProgressState['priorityCount'] = {
-        HIGH: 0,
-        MEDIUM: 0,
-        LOW: 0
-      };
-      
-      // Count by categories to double check the data
-      const categoryCounts: ProgressState['currentTasksCount'] = {
-        FEEDING: 0,
-        CLEANING: 0,
-        HEALTH: 0,
-        SHELTER: 0,
-        OTHER: 0
-      };
-      
-      userCompletedTasks.forEach(task => {
-        // Count by priority
-        if (task.priority) {
-          priorityCounts[task.priority] = (priorityCounts[task.priority] || 0) + 1;
-        }
-        
-        // Count by category
-        if (task.category) {
-          categoryCounts[task.category] = (categoryCounts[task.category] || 0) + 1;
-        }
-      });
-
-      console.log('Found completed tasks by user:', userCompletedTasks.length);
-      console.log('Priority counts:', priorityCounts);
-      console.log('Category counts:', categoryCounts);
-
-      // Get only the 5 most recent tasks
-      setRecentTasks(userCompletedTasks.slice(0, 5));
-      
-      // Update the progress state with the counted data
-      setProgress(prev => ({
-        ...prev,
-        priorityCount: priorityCounts,
-        // Update completed tasks count in case the API data is not accurate
-        completedTasks: userCompletedTasks.length,
-        // Only update category counts if they're significantly different from API data
-        ...(userCompletedTasks.length > prev.completedTasks ? { currentTasksCount: categoryCounts } : {})
-      }));
-    } catch (error) {
-      console.error('Error loading recent tasks:', error);
-    }
-  };
-
-  const calculateBadgeProgress = (badgeId: string) => {
-    switch (badgeId) {
-      case 'helper_bronze':
-        return Math.min(progress.completedTasks / 5, 1);
-      case 'feeding_specialist':
-        return Math.min(progress.currentTasksCount.FEEDING / 10, 1);
-      case 'health_hero':
-        return Math.min(progress.currentTasksCount.HEALTH / 10, 1);
-      case 'shelter_builder':
-        return Math.min(progress.currentTasksCount.SHELTER / 10, 1);
-      default:
-        return 0;
-    }
-  };
-
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case 'FEEDING': return 'Besleme';
-      case 'CLEANING': return 'Temizlik';
-      case 'HEALTH': return 'Sağlık';
-      case 'SHELTER': return 'Barınak';
-      default: return 'Diğer';
-    }
-  };
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'FEEDING': return '#4CAF50'; // Green
-      case 'CLEANING': return '#2196F3'; // Blue
-      case 'HEALTH': return '#F44336';   // Red
-      case 'SHELTER': return '#FF9800';  // Orange
-      case 'OTHER': return '#9C27B0';    // Purple
-      default: return colors.primary;
-    }
-  };
-
-  const getPriorityLabel = (priority: TaskPriority) => {
-    switch (priority) {
-      case 'HIGH': return 'ACİL';
-      case 'MEDIUM': return 'ÖNEMLİ';
-      case 'LOW': return 'DÜŞÜK ÖNCELİK';
-      default: return 'NORMAL';
-    }
-  };
-
-  const getPriorityColor = (priority: TaskPriority) => {
-    switch (priority) {
-      case 'HIGH': return colors.error;
-      case 'MEDIUM': return colors.warning;
-      case 'LOW': return colors.info;
-      default: return colors.primary;
-    }
-  };
-
-  const renderBadge = (
-    title: string, 
-    count: number, 
-    maxCount: number,
-    color: string,
-    icon: React.ReactNode,
-    delay: number = 0
-  ) => {
-    const isComplete = count >= maxCount;
-    const scaleAnim = useRef(new Animated.Value(0.8)).current;
-    const opacityAnim = useRef(new Animated.Value(0)).current;
-    
-    useEffect(() => {
-      Animated.parallel([
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 500,
-          delay,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          friction: 6,
-          tension: 40,
-          delay,
-          useNativeDriver: true,
-        })
-      ]).start();
-    }, []);
+    };
 
     return (
-      <Animated.View 
-        style={[
-          styles.badgeContainer,
-          {
-            opacity: opacityAnim,
-            transform: [{ scale: scaleAnim }]
-          }
-        ]}
-      >
-        <Surface style={[styles.badgeCircle, isComplete && { backgroundColor: color }]}>
-          {icon}
-          {isComplete && (
-            <View style={styles.badgeStar}>
-              <Star size={10} color="#FFFFFF" fill="#FFFFFF" />
-            </View>
-          )}
-        </Surface>
-        <Text style={styles.badgeTitle}>{title}</Text>
-        <Text style={[styles.badgeCount, isComplete && { color }]}>
-          {count}/{maxCount}
-        </Text>
-        <ProgressBar 
-          progress={Math.min(count / maxCount, 1)} 
-          color={color} 
-          style={styles.badgeProgress} 
-        />
-      </Animated.View>
-    );
-  };
+      <View style={styles.cardWrapper}>
+        <Card style={styles.container}>
+          <LottieView 
+            ref={confettiRef}
+            source={require('../assets/animations/confetti.json')} 
+            style={styles.confettiAnimation}
+            autoPlay={false}
+            loop={false}
+          />
 
-  const renderPriorityBadges = () => {
-    return (
-      <View style={styles.badgesRow}>
-        {renderBadge(
-          'ACİL',
-          progress.priorityCount.HIGH,
-          5,
-          colors.error,
-          <Shield size={20} color={progress.priorityCount.HIGH >= 5 ? "#FFFFFF" : colors.error} />,
-          200
-        )}
-        {renderBadge(
-          'ÖNEMLİ',
-          progress.priorityCount.MEDIUM,
-          10,
-          colors.warning,
-          <AlertTriangle size={20} color={progress.priorityCount.MEDIUM >= 10 ? "#FFFFFF" : colors.warning} />,
-          300
-        )}
-        {renderBadge(
-          'DÜŞÜK',
-          progress.priorityCount.LOW,
-          15,
-          colors.info,
-          <Target size={20} color={progress.priorityCount.LOW >= 15 ? "#FFFFFF" : colors.info} />,
-          400
-        )}
-      </View>
-    );
-  };
-
-  const renderStreakBadges = () => {
-    const streakMilestones = [
-      { days: 3, color: BADGE_LEVELS.BRONZE.color },
-      { days: 7, color: BADGE_LEVELS.SILVER.color },
-      { days: 14, color: BADGE_LEVELS.GOLD.color },
-      { days: 30, color: BADGE_LEVELS.DIAMOND.color }
-    ];
-
-    return (
-      <View style={styles.badgesRow}>
-        {streakMilestones.map((milestone, index) => (
-          renderBadge(
-            `${milestone.days} Gün`,
-            progress.totalStreakDays,
-            milestone.days,
-            milestone.color,
-            <Flame size={20} color={progress.totalStreakDays >= milestone.days ? "#FFFFFF" : milestone.color} />,
-            200 + (index * 100)
-          )
-        ))}
-      </View>
-    );
-  };
-
-  return (
-    <Card style={styles.container}>
-      <LottieView 
-        ref={confettiRef}
-        source={require('../assets/animations/confetti.json')} 
-        style={styles.confettiAnimation}
-        autoPlay={false}
-        loop={false}
-      />
-
-      <Animated.View 
-        style={{
-          opacity: fadeAnim,
-          transform: [{ translateY: slideAnim }]
-        }}
-      >
-        <Card.Content>
-          <View style={styles.headerRow}>
-            <Text style={styles.title}>Görev İlerlemen</Text>
-            <TouchableOpacity onPress={onBadgePress}>
-              <Award size={22} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-
-          <Divider style={styles.divider} />
-
-          <ScrollView 
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
+          <Animated.View 
+            style={{
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }}
           >
-            {/* Toplam Görevler */}
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <CheckCircle size={18} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Tamamlanan Görevler</Text>
-              </View>
-              
-              <View style={styles.progressValue}>
-                <Text style={styles.progressValueText}>{progress.completedTasks}</Text>
-                <Text style={styles.progressLabel}>görev</Text>
-              </View>
-              
-              <View style={styles.badgeProgressContainer}>
-                <Text style={styles.badgeLabel}>
-                  Yardımsever Rozeti: {progress.completedTasks}/5 görev
-                </Text>
-                <ProgressBar 
-                  progress={calculateBadgeProgress('helper_bronze')} 
-                  color={colors.primary} 
-                  style={styles.progressBar} 
-                />
-              </View>
-            </View>
+            <Card.Content>
+             
 
-            {/* Görev Öncelik Rozetleri */}
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <Shield size={18} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Öncelik Rozetleri</Text>
-              </View>
-              
-              {renderPriorityBadges()}
-              
-              <Text style={styles.streakInfo}>
-                Farklı öncelikteki görevleri tamamlayarak rozetler kazanın!
-              </Text>
-            </View>
+              <Divider style={styles.divider} />
 
-            {/* Görev Serisi */}
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <Flame size={18} color="#FF9800" />
-                <Text style={styles.sectionTitle}>Görev Serisi</Text>
-              </View>
-              
-              <View style={styles.progressValue}>
-                <Text style={styles.progressValueText}>{progress.totalStreakDays}</Text>
-                <Text style={styles.progressLabel}>gün</Text>
-              </View>
-              
-              {renderStreakBadges()}
-              
-              <Text style={styles.streakInfo}>
-                Art arda görev tamamladığınızda seri oluşturarak fazladan XP ve rozetler kazanırsınız!
-              </Text>
-            </View>
-
-            {/* Kategori Bazında İlerleme */}
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <Star size={18} color="#4CAF50" />
-                <Text style={styles.sectionTitle}>Kategori Rozetleri</Text>
-              </View>
-              
-              {Object.entries(progress.currentTasksCount).map(([category, count]) => (
-                <View key={category} style={styles.categoryProgress}>
-                  <View style={[styles.categoryDot, { backgroundColor: getCategoryColor(category) }]} />
-                  <Text style={styles.categoryLabel}>{getCategoryLabel(category)}</Text>
-                  <Text style={styles.categoryCount}>{count}/10</Text>
-                  <ProgressBar 
-                    progress={Math.min(count / 10, 1)} 
-                    color={getCategoryColor(category)} 
-                    style={styles.progressBar} 
-                  />
-                  {count >= 10 && (
-                    <Medal size={16} color={getCategoryColor(category)} style={styles.categoryMedal} />
-                  )}
+              <ScrollView 
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+              >
+                {/* Toplam Görevler */}
+                <View style={styles.progressSection}>
+                  <View style={styles.progressHeader}>
+                    <CheckCircle size={18} color={colors.primary} />
+                    <Text style={styles.sectionTitle}>Tamamlanan Görevler</Text>
+                  </View>
+                  
+                  <View style={styles.progressValue}>
+                    <Text style={styles.progressValueText}>{progress.completedTasks}</Text>
+                    <Text style={styles.progressLabel}>görev</Text>
+                  </View>
+                  
+                  
                 </View>
-              ))}
-              
-              <Text style={styles.categoryInfo}>
-                Her kategoride 10 görev tamamladığınızda özel rozetler kazanırsınız!
-              </Text>
-            </View>
 
-            {/* Son Tamamlanan Görevler */}
-            {recentTasks.length > 0 && (
-              <View style={styles.progressSection}>
-                <View style={styles.progressHeader}>
-                  <CheckCircle size={18} color={colors.success} />
-                  <Text style={styles.sectionTitle}>Son Tamamlanan</Text>
+                {/* Görev Öncelik Rozetleri */}
+                <View style={styles.progressSection}>
+                  <View style={styles.progressHeader}>
+                    <Shield size={18} color={colors.primary} />
+                    <Text style={styles.sectionTitle}>Öncelik Rozetleri</Text>
+                  </View>
+                  
+                  {renderPriorityBadges()}
+                  
+                  <Text style={styles.streakInfo}>
+                    Farklı öncelikteki görevleri tamamlayarak rozetler kazanın!
+                  </Text>
                 </View>
-                
-                {recentTasks.map((task, index) => (
-                  <Animated.View 
-                    key={task.id} 
-                    style={[
-                      styles.recentTaskItem,
-                      {
-                        opacity: fadeAnim,
-                        transform: [{ 
-                          translateY: Animated.multiply(
-                            slideAnim, 
-                            new Animated.Value((index + 1) * 0.5)
-                          ) 
-                        }]
-                      }
-                    ]}
-                  >
-                    <View style={styles.recentTaskHeader}>
-                      <Text numberOfLines={1} style={styles.recentTaskTitle}>
-                        {task.title}
-                      </Text>
-                      {task.priority && (
-                        <Badge 
-                          style={[
-                            styles.priorityBadge, 
-                            { backgroundColor: getPriorityColor(task.priority) }
-                          ]}
-                        >
-                          {getPriorityLabel(task.priority)}
-                        </Badge>
-                      )}
-                    </View>
-                    <View style={styles.recentTaskFooter}>
-                      <View style={[styles.categoryTag, { backgroundColor: getCategoryColor(task.category) }]}>
-                        <Text style={styles.categoryTagText}>
-                          {getCategoryLabel(task.category)}
+
+                {/* Görev Serisi */}
+                <View style={styles.progressSection}>
+                  <View style={styles.progressHeader}>
+                    <Flame size={18} color="#FF9800" />
+                    <Text style={styles.sectionTitle}>Görev Serisi</Text>
+                  </View>
+                  
+                  <View style={styles.progressValue}>
+                    <Text style={styles.progressValueText}>{progress.totalStreakDays}</Text>
+                    <Text style={styles.progressLabel}>gün</Text>
+                  </View>
+                  
+                  {renderStreakBadges()}
+                  
+                  <Text style={styles.streakInfo}>
+                    Art arda görev tamamladığınızda seri oluşturarak fazladan XP ve rozetler kazanırsınız!
+                  </Text>
+                </View>
+
+                {/* Kategori Bazında İlerleme */}
+                <View style={styles.progressSection}>
+                  <View style={styles.progressHeader}>
+                    <Star size={18} color="#4CAF50" />
+                    <Text style={styles.sectionTitle}>Kategori Rozetleri</Text>
+                  </View>
+                  
+                  {Object.entries(progress.currentTasksCount).map(([category, count]) => {
+                    // Calculate the current level and progress within that level
+                    const maxPerLevel = 10;
+                    const currentLevel = Math.floor(count / maxPerLevel);
+                    const progressInCurrentLevel = count % maxPerLevel || (count >= maxPerLevel ? 0 : count);
+                    const nextLevelProgress = count >= maxPerLevel ? progressInCurrentLevel : count;
+                    
+                    return (
+                      <View key={category} style={styles.categoryProgress}>
+                        <View style={[styles.categoryDot, { backgroundColor: getCategoryColor(category) }]} />
+                        <Text style={styles.categoryLabel}>{getCategoryLabel(category)}</Text>
+                        <Text style={styles.categoryCount}>
+                          {nextLevelProgress}/{maxPerLevel}
+                          {currentLevel > 0 && ` (${currentLevel})`}
                         </Text>
+                        <ProgressBar 
+                          progress={nextLevelProgress / maxPerLevel} 
+                          color={getCategoryColor(category)} 
+                          style={styles.progressBar} 
+                        />
+                        {currentLevel > 0 && (
+                          <Medal size={16} color={getCategoryColor(category)} style={styles.categoryMedal} />
+                        )}
                       </View>
-                      <Text style={styles.recentTaskDate}>
-                        {new Date(task.completedBy?.completedAt || '').toLocaleDateString('tr-TR')}
-                      </Text>
+                    );
+                  })}
+                  
+                  <Text style={styles.categoryInfo}>
+                    Her kategoride 10 görev tamamladığınızda özel rozetler kazanırsınız!
+                  </Text>
+                </View>
+
+                {/* Son Tamamlanan Görevler */}
+                {recentTasks.length > 0 && (
+                  <View style={styles.progressSection}>
+                    <View style={styles.progressHeader}>
+                      <CheckCircle size={18} color={colors.success} />
+                      <Text style={styles.sectionTitle}>Son Tamamlanan</Text>
                     </View>
-                  </Animated.View>
-                ))}
-              </View>
-            )}
-          </ScrollView>
-        </Card.Content>
-      </Animated.View>
-    </Card>
-  );
-}
+                    
+                    {recentTasks.map((task, index) => (
+                      <Animated.View 
+                        key={task.id} 
+                        style={[
+                          styles.recentTaskItem,
+                          {
+                            opacity: fadeAnim,
+                            transform: [{ 
+                              translateY: Animated.multiply(
+                                slideAnim, 
+                                new Animated.Value((index + 1) * 0.5)
+                              ) 
+                            }]
+                          }
+                        ]}
+                      >
+                        <View style={styles.recentTaskHeader}>
+                          <Text numberOfLines={1} style={styles.recentTaskTitle}>
+                            {task.title}
+                          </Text>
+                          {task.priority && (
+                            <Badge 
+                              style={[
+                                styles.priorityBadge, 
+                                { backgroundColor: getPriorityColor(task.priority) }
+                              ]}
+                            >
+                              {getPriorityLabel(task.priority)}
+                            </Badge>
+                          )}
+                        </View>
+                        <View style={styles.recentTaskFooter}>
+                          <View style={[styles.categoryTag, { backgroundColor: getCategoryColor(task.category) }]}>
+                            <Text style={styles.categoryTagText}>
+                              {getCategoryLabel(task.category)}
+                            </Text>
+                          </View>
+                          <Text style={styles.recentTaskDate}>
+                            {new Date(task.completedBy?.completedAt || '').toLocaleDateString('tr-TR')}
+                          </Text>
+                        </View>
+                      </Animated.View>
+                    ))}
+                  </View>
+                )}
+              </ScrollView>
+            </Card.Content>
+          </Animated.View>
+        </Card>
+      </View>
+    );
+  }
+);
 
 const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
-  container: {
+  cardWrapper: {
     marginHorizontal: spacing.md,
     marginVertical: spacing.md,
+    maxHeight: 500, // Make sure it's scrollable by limiting height
+  },
+  container: {
     borderRadius: borderRadius.medium,
     ...shadows.medium,
-    maxHeight: 500, // Make sure it's scrollable by limiting height
     overflow: 'hidden'
   },
   scrollContent: {
@@ -1012,6 +729,11 @@ const styles = StyleSheet.create({
     width: (width - spacing.md * 4) / 3,
     marginBottom: spacing.md,
   },
+  badgeCircleWrapper: {
+    width: 46,
+    height: 46,
+    marginBottom: spacing.xs,
+  },
   badgeCircle: {
     width: 46,
     height: 46,
@@ -1019,7 +741,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.xs,
     ...shadows.small,
   },
   badgeTitle: {

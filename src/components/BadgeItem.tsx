@@ -1,57 +1,57 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Badge } from '../types/badge';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { Badge, BadgeLevel } from '../types/badge';
 import { colors, typography, spacing, borderRadius, shadows } from '../config/theme';
-import { Badge as PaperBadge, Surface, Card } from 'react-native-paper';
-import { Star, Trophy, Shield, Award } from 'lucide-react-native';
+import { Badge as PaperBadge, Surface, Card, ProgressBar } from 'react-native-paper';
+import { Star, Trophy, Shield, Award, Heart, AlertCircle, Calendar, Home, Droplet, Trash2, Activity } from 'lucide-react-native';
+import * as Animatable from 'react-native-animatable';
 
 interface BadgeItemProps {
-  badge: Badge;
+  badge: Badge & {
+    earnedAt?: string;
+    level?: BadgeLevel;
+    currentCount?: number;
+    maxCount?: number;
+    progress?: number;
+  };
   onPress?: (badge: Badge) => void;
 }
 
 export const BadgeItem = ({ badge, onPress }: BadgeItemProps) => {
   const getBadgeIcon = () => {
-    switch (badge.level) {
-      case 'BRONZE':
-        return <Shield size={32} color="#CD7F32" />;
-      case 'SILVER':
-        return <Shield size={32} color="#C0C0C0" />;
-      case 'GOLD':
-        return <Trophy size={32} color="#FFD700" />;
-      case 'PLATINUM':
-        return <Award size={32} color="#E5E4E2" />;
-      case 'DIAMOND':
-        return <Star size={32} color="#B9F2FF" />;
+    // Return specific icon based on badge category and iconName
+    switch (badge.iconName) {
+      case 'heart': return <Heart size={32} color={getLevelColor(badge.level)} />;
+      case 'food': return <Droplet size={32} color={getLevelColor(badge.level)} />;
+      case 'clean': return <Trash2 size={32} color={getLevelColor(badge.level)} />;
+      case 'medical': return <Activity size={32} color={getLevelColor(badge.level)} />;
+      case 'home': return <Home size={32} color={getLevelColor(badge.level)} />;
+      case 'flame': return <Trophy size={32} color={getLevelColor(badge.level)} />;
+      case 'alert': return <AlertCircle size={32} color={getLevelColor(badge.level)} />;
       default:
-        return <Star size={32} color={colors.primary} />;
+        // Default icons based on level
+        switch (badge.level) {
+          case 'BRONZE': return <Shield size={32} color="#CD7F32" />;
+          case 'SILVER': return <Shield size={32} color="#C0C0C0" />;
+          case 'GOLD': return <Trophy size={32} color="#FFD700" />;
+          case 'PLATINUM': return <Award size={32} color="#E5E4E2" />;
+          case 'DIAMOND': return <Star size={32} color="#B9F2FF" />;
+          default: return <Award size={32} color={colors.primary} />;
+        }
     }
   };
 
-  const getLevelBackgroundColor = () => {
-    switch (badge.level) {
-      case 'BRONZE':
-        return '#CD7F32';
-      case 'SILVER':
-        return '#C0C0C0';
-      case 'GOLD':
-        return '#FFD700';
-      case 'PLATINUM':
-        return '#E5E4E2';
-      case 'DIAMOND':
-        return '#B9F2FF';
-      default:
-        return colors.primary;
+  const getLevelColor = (level?: BadgeLevel) => {
+    if (!level) return colors.primary;
+    
+    switch (level) {
+      case 'BRONZE': return '#CD7F32';
+      case 'SILVER': return '#C0C0C0';
+      case 'GOLD': return '#FFD700';
+      case 'PLATINUM': return '#E5E4E2';
+      case 'DIAMOND': return '#B9F2FF';
+      default: return colors.primary;
     }
-  };
-
-  const getBadgeEmoji = () => {
-    if (badge.icon) {
-      return (
-        <Text style={styles.badgeIcon}>{badge.icon}</Text>
-      );
-    }
-    return null;
   };
 
   const handlePress = () => {
@@ -60,58 +60,97 @@ export const BadgeItem = ({ badge, onPress }: BadgeItemProps) => {
     }
   };
 
-  const isUnlocked = !!badge.unlockedAt;
+  const isUnlocked = !!badge.earnedAt;
+  const badgeLevel = badge.level || 'BRONZE';
+  const progress = badge.progress ? badge.progress / 100 : 0;
 
   return (
-    <TouchableOpacity onPress={handlePress} activeOpacity={0.7}>
-      <Card style={[styles.container, !isUnlocked && styles.lockedContainer]}>
-        <Surface style={styles.badgeContent}>
-          <View style={[styles.iconContainer, { backgroundColor: getLevelBackgroundColor() + '30' }]}>
-            {isUnlocked ? getBadgeIcon() : <Shield size={32} color={colors.textDisabled} />}
-            {isUnlocked && getBadgeEmoji()}
-          </View>
-          
-          <View style={styles.badgeDetails}>
-            <Text style={isUnlocked ? styles.badgeName : styles.lockedBadgeName}>
-              {badge.name}
-            </Text>
-            <Text style={isUnlocked ? styles.badgeDescription : styles.lockedBadgeDescription} numberOfLines={2}>
-              {badge.description}
-            </Text>
-            
-            <View style={styles.levelContainer}>
-              <PaperBadge
-                style={[
-                  styles.levelBadge, 
-                  isUnlocked && { backgroundColor: getLevelBackgroundColor() }
-                ]}
-              >
-                {badge.level}
-              </PaperBadge>
+    <Animatable.View 
+      animation="fadeIn" 
+      duration={500}
+      useNativeDriver
+    >
+      <TouchableOpacity onPress={handlePress} activeOpacity={0.7}>
+        <Card style={[styles.container, !isUnlocked && styles.lockedContainer]}>
+          <Surface style={styles.badgeContent}>
+            <Animatable.View 
+              animation={isUnlocked ? "pulse" : undefined}
+              iterationCount="infinite"
+              duration={2000}
+              useNativeDriver
+              style={[
+                styles.iconContainer, 
+                { backgroundColor: getLevelColor(badgeLevel) + '30' }
+              ]}
+            >
+              {isUnlocked ? getBadgeIcon() : <Shield size={32} color={colors.textDisabled} />}
               
-              {isUnlocked && badge.unlockedAt && (
-                <Text style={styles.dateText}>
-                  {new Date(badge.unlockedAt).toLocaleDateString('tr-TR')}
-                </Text>
+              {/* Badge Level */}
+              {isUnlocked && (
+                <View style={styles.badgeLevelIndicator}>
+                  <Text style={styles.badgeLevelText}>{badge.level?.charAt(0)}</Text>
+                </View>
+              )}
+            </Animatable.View>
+            
+            <View style={styles.badgeDetails}>
+              <Text style={isUnlocked ? styles.badgeName : styles.lockedBadgeName}>
+                {badge.name}
+              </Text>
+              <Text style={isUnlocked ? styles.badgeDescription : styles.lockedBadgeDescription} numberOfLines={2}>
+                {badge.description}
+              </Text>
+              
+              <View style={styles.levelContainer}>
+                <PaperBadge
+                  style={[
+                    styles.levelBadge, 
+                    isUnlocked && { backgroundColor: getLevelColor(badgeLevel) }
+                  ]}
+                >
+                  {badgeLevel}
+                </PaperBadge>
+                
+                {isUnlocked && badge.earnedAt && (
+                  <Text style={styles.dateText}>
+                    {new Date(badge.earnedAt).toLocaleDateString('tr-TR')}
+                  </Text>
+                )}
+              </View>
+              
+              {/* Badge Progress Bar */}
+              {isUnlocked && (
+                <View style={styles.progressContainer}>
+                  <ProgressBar 
+                    progress={progress} 
+                    color={getLevelColor(badgeLevel)} 
+                    style={styles.progressBar}
+                  />
+                  {badge.currentCount !== undefined && badge.maxCount !== undefined && (
+                    <Text style={styles.progressText}>
+                      {badge.currentCount}/{badge.maxCount}
+                    </Text>
+                  )}
+                </View>
               )}
             </View>
-          </View>
-        </Surface>
-        
-        {!isUnlocked && (
-          <View style={styles.lockedOverlay}>
-            <Text style={styles.lockedText}>🔒</Text>
-          </View>
-        )}
-      </Card>
-    </TouchableOpacity>
+          </Surface>
+          
+          {!isUnlocked && (
+            <View style={styles.lockedOverlay}>
+              <Text style={styles.lockedText}>🔒</Text>
+            </View>
+          )}
+        </Card>
+      </TouchableOpacity>
+    </Animatable.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     marginVertical: spacing.sm,
-    marginHorizontal: spacing.screenPadding,
+    marginHorizontal: spacing.sm,
     borderRadius: borderRadius.medium,
     overflow: 'hidden',
     ...shadows.small,
@@ -132,6 +171,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
+    position: 'relative',
   },
   badgeIcon: {
     position: 'absolute',
@@ -139,29 +179,47 @@ const styles = StyleSheet.create({
     right: -10,
     fontSize: 20,
   },
+  badgeLevelIndicator: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: colors.primary,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  badgeLevelText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: 'white',
+  },
   badgeDetails: {
     flex: 1,
     justifyContent: 'center',
   },
   badgeName: {
-    ...typography.subtitle1,
+    fontSize: 16,
+    fontWeight: 'bold',
     color: colors.text,
-    fontWeight: '600',
     marginBottom: spacing.xxs,
   },
   lockedBadgeName: {
-    ...typography.subtitle1,
+    fontSize: 16,
+    fontWeight: 'bold',
     color: colors.textDisabled,
-    fontWeight: '600',
     marginBottom: spacing.xxs,
   },
   badgeDescription: {
-    ...typography.body2,
+    fontSize: 14,
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
   lockedBadgeDescription: {
-    ...typography.body2,
+    fontSize: 14,
     color: colors.textDisabled,
     marginBottom: spacing.sm,
   },
@@ -173,7 +231,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.textDisabled,
   },
   dateText: {
-    ...typography.caption,
+    fontSize: 12,
     color: colors.textTertiary,
     marginLeft: spacing.sm,
   },
@@ -186,4 +244,19 @@ const styles = StyleSheet.create({
   lockedText: {
     fontSize: 14,
   },
+  progressContainer: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progressBar: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+  },
+  progressText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginLeft: spacing.sm,
+  }
 }); 

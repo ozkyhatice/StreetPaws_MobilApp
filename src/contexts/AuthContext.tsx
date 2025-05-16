@@ -16,6 +16,7 @@ import { auth } from '../config/firebase';
 import { initializeDatabase } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { UserService } from '../services/userService';
+import { XPService } from '../services/xpService';
 
 export const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -134,6 +135,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           emailVerified: userCredential.user.emailVerified
         });
         await AsyncStorage.setItem('user', JSON.stringify(userData));
+        
+        // Check and update daily streak
+        try {
+          const xpService = XPService.getInstance();
+          const streakResult = await xpService.checkAndUpdateDailyStreak(userCredential.user.uid);
+          
+          if (streakResult.streakUpdated) {
+            console.log(`Daily streak updated: ${streakResult.currentStreak} days, XP awarded: ${streakResult.xpAwarded}`);
+            
+            // Update the user object with the new streak value
+            if (userData.streak !== streakResult.currentStreak) {
+              await userService.updateUser(userCredential.user.uid, {
+                streak: streakResult.currentStreak
+              });
+            }
+          }
+        } catch (streakError) {
+          console.error('Error updating daily streak:', streakError);
+          // Don't block the login process if streak update fails
+        }
       }
 
       // E-posta doğrulanmamışsa yeni doğrulama e-postası gönder
