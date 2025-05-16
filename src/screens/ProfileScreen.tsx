@@ -113,7 +113,21 @@ const ProfileScreen = () => {
           
           // Görev istatistiklerini al
           const taskProgress = await xpService.getTaskProgress(user.uid);
+          
+          // Toplam tamamlanan görev sayısını hesapla (kategorilerin toplamı)
+          const categoryTotal = Object.values(taskProgress.currentTasksCount).reduce((sum, count) => sum + count, 0);
+          
+          // Eğer kategorilerin toplamı, completedTasks değerinden farklıysa, doğru olanı kullan
+          // Bu, görev sayısının 3 katına çıkması sorununu çözer
+          if (categoryTotal > 0 && categoryTotal !== taskProgress.completedTasks) {
+            console.log(`Fixing task count: Using category total ${categoryTotal} instead of ${taskProgress.completedTasks}`);
+            taskProgress.completedTasks = categoryTotal;
+          }
+          
           setTaskStats(taskProgress);
+          
+          // Doğru görev sayısını actualCompletedTaskCount'a ayarla
+          setActualCompletedTaskCount(taskProgress.completedTasks);
           
           // Rozetleri kontrol et ve gerekirse yeni rozetler ver
           const badgeService = BadgeService.getInstance();
@@ -124,6 +138,7 @@ const ProfileScreen = () => {
           
           if (userDoc.exists()) {
             const userData = userDoc.data();
+            setUserData(userData);
             
             // Rozet verilerini ayarla
             if (userData.badges && Array.isArray(userData.badges)) {
@@ -133,6 +148,11 @@ const ProfileScreen = () => {
             // Profil resmini ayarla
             if (userData.photoURL) {
               setProfileImage(userData.photoURL);
+            }
+            
+            // XP değerini ayarla
+            if (userData.xp) {
+              setActualXP(userData.xp);
             }
           }
         }
