@@ -33,4 +33,17 @@ export type RootStackParamList = {
   DevTools: undefined;
   CompletedTasks: undefined;
   TaskProgress: undefined;
+  
+  // New community screens
+  Communities: undefined;
+  CommunityDetail: { communityId: string };
+  CreateCommunity: undefined;
+  CommunityMembers: { communityId: string };
+  CommunityChat: { communityId: string };
+  JoinByInvite: { inviteCode?: string };
+
+  // New messaging screens
+  Messages: undefined;
+  Chat: { conversationId: string; recipientId: string; recipientName: string; isCommunityChat?: boolean };
+  UserProfile: { userId: string };
 }; 

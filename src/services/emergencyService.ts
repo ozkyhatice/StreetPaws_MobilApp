@@ -7,7 +7,7 @@ export interface EmergencyRequest {
   title: string;
   description: string;
   location: string;
-  animalType?: string;
+  animalType?: 'FEEDING' | 'CLEANING' | 'HEALTH' | 'SHELTER' | 'OTHER';
   urgency: 'critical' | 'low' | 'medium' | 'high';
   contactPhone?: string;
   imageUrl?: string | null;
@@ -22,6 +22,7 @@ export interface EmergencyRequest {
     resolvedAt: string;
   };
   relatedTaskId?: string; // Acil durumla ilişkili görev ID'si
+  category?: 'FEEDING' | 'CLEANING' | 'HEALTH' | 'SHELTER' | 'OTHER';
 }
 
 export class EmergencyService {
@@ -71,8 +72,12 @@ export class EmergencyService {
   private async createTaskFromEmergency(emergency: EmergencyRequest): Promise<string> {
     try {
       const taskService = TaskService.getInstance();
+      
+      // The categories in emergency request are now already aligned with TaskCategory values
+      // So we can pass the emergency object directly to createEmergencyTask
       const task = await taskService.createEmergencyTask(emergency);
-      console.log(`Task created from emergency: ${task.id}`);
+      
+      console.log(`Task created from emergency: ${task.id} with category: ${task.category}`);
       return task.id;
     } catch (error) {
       console.error('Error creating task from emergency:', error);

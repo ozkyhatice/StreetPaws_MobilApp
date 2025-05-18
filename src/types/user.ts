@@ -41,4 +41,5 @@ export interface User {
   bio?: string;
   city?: string;
   dateOfBirth?: string;
+  skills?: string[];
 } 

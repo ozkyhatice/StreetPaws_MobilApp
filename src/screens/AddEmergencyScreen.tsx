@@ -33,10 +33,11 @@ const URGENCY_OPTIONS = [
 
 // Kategori seçenekleri
 const CATEGORY_OPTIONS = [
-  { label: 'Yaralı Hayvan', value: 'Kedi', icon: 'medical-bag' },
-  { label: 'Aç/Susuz', value: 'Köpek', icon: 'food' },
-  { label: 'Kayıp', value: 'Kuş', icon: 'compass' },
-  { label: 'Diğer', value: 'Diğer', icon: 'help-circle' },
+  { label: 'Sağlık/Yaralı', value: 'HEALTH' as const, icon: 'medical-bag' },
+  { label: 'Beslenme/Aç', value: 'FEEDING' as const, icon: 'food' },
+  { label: 'Barınak/Korunak', value: 'SHELTER' as const, icon: 'home' },
+  { label: 'Temizlik/Bakım', value: 'CLEANING' as const, icon: 'cleanup' },
+  { label: 'Diğer', value: 'OTHER' as const, icon: 'help-circle' },
 ];
 
 export default function AddEmergencyScreen() {
@@ -48,7 +49,7 @@ export default function AddEmergencyScreen() {
   const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [urgency, setUrgency] = useState<'critical' | 'high' | 'medium' | 'low'>('medium');
-  const [category, setCategory] = useState('Kedi');
+  const [category, setCategory] = useState<'FEEDING' | 'CLEANING' | 'HEALTH' | 'SHELTER' | 'OTHER'>('HEALTH');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMap, setShowMap] = useState(false);
 

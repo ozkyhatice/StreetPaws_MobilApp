@@ -296,6 +296,16 @@ export class TaskService {
   }
 
   private getCategoryFromEmergency(emergency: EmergencyRequest): TaskCategory {
+    // First, check if animalType is already a valid TaskCategory
+    const validCategories: TaskCategory[] = ['FEEDING', 'CLEANING', 'HEALTH', 'SHELTER', 'OTHER'];
+    
+    // If animalType is already a valid category, use it directly
+    if (emergency.animalType && validCategories.includes(emergency.animalType as TaskCategory)) {
+      console.log(`Using emergency.animalType directly as category: ${emergency.animalType}`);
+      return emergency.animalType as TaskCategory;
+    }
+    
+    // Fallback to text analysis if animalType is not a valid category
     // Convert description and animal type to lowercase for easier matching
     const description = (emergency.description || '').toLowerCase();
     const animalType = (emergency.animalType || '').toLowerCase();
@@ -328,10 +338,8 @@ export class TaskService {
       return 'CLEANING';
     }
     
-    // Default to HEALTH for medical emergencies for cats and dogs
-    if (animalType.includes('kedi') || 
-        animalType.includes('köpek') ||
-        description.includes('hasta') ||
+    // Check for health-related keywords
+    if (description.includes('hasta') ||
         description.includes('yaralı') ||
         description.includes('kaza') ||
         description.includes('tedavi') ||

@@ -7,6 +7,7 @@ import { colors, borderRadius, shadows, spacing } from '../config/theme';
 import { Platform } from 'react-native';
 import { AuthGuard } from '../components/AuthGuard';
 import { RouteProp, useNavigation } from '@react-navigation/native';
+import { Text } from 'react-native';
 
 // Import screens
 import HomeScreen from '../screens/HomeScreen';
@@ -34,6 +35,11 @@ import { AchievementsScreen } from '../screens/AchievementsScreen';
 import DevToolsScreen from '../screens/DevToolsScreen';
 import TaskProgressScreen from '../screens/TaskProgressScreen';
 import CompletedTasksScreen from '../screens/CompletedTasksScreen';
+import CreateCommunityScreen from '../screens/CreateCommunityScreen';
+import ChatScreen from '../screens/ChatScreen';
+import CommunityDetailScreen from '../screens/CommunityDetailScreen';
+import CommunityMembersScreen from '../screens/CommunityMembersScreen';
+import JoinByInviteScreen from '../screens/JoinByInviteScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -117,7 +123,7 @@ function TabNavigator() {
         options={{
           tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
           title: 'Gönüllüler',
-          tabBarLabel: 'Gönüllüler',
+          tabBarLabel: 'Topluluk',
         }}
       />
       <Tab.Screen
@@ -389,6 +395,58 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
         {() => (
           <AuthGuard>
             <CompletedTasksScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen 
+        name="CreateCommunity"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <AuthGuard>
+            <CreateCommunityScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen 
+        name="Chat"
+        component={ChatScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen 
+        name="CommunityDetail"
+        component={CommunityDetailScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen 
+        name="CommunityMembers"
+        component={CommunityMembersScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen 
+        name="CommunityChat"
+        component={ChatScreen}
+        options={{ headerShown: false }}
+      />
+      
+      <Stack.Screen 
+        name="JoinByInvite"
+        component={JoinByInviteScreen}
+        options={{ headerShown: false }}
+      />
+
+      <Stack.Screen 
+        name="UserProfile"
+        options={{ headerShown: true, title: 'Kullanıcı Profili' }}
+      >
+        {({ route }) => (
+          <AuthGuard>
+            <Text>User profile placeholder for user ID: {route.params.userId}</Text>
           </AuthGuard>
         )}
       </Stack.Screen>

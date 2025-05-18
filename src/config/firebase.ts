@@ -59,7 +59,10 @@ export const initializeDatabase = async () => {
       'tasks',
       'taskVerifications',
       'badges',
-      'xpActivities'
+      'xpActivities',
+      'communities',
+      'messages',
+      'conversations'
     ];
     
     // Her koleksiyon için
@@ -163,6 +166,44 @@ export const initializeDatabase = async () => {
             xpAmount: 100,
             type: 'TASK_COMPLETION',
             timestamp: Date.now()
+          };
+        } else if (collectionName === 'communities') {
+          templateDoc = {
+            id: 'template',
+            name: 'Örnek Topluluk',
+            description: 'Örnek topluluk açıklaması',
+            category: 'ANIMAL_RESCUE',
+            createdAt: new Date(),
+            createdBy: 'template',
+            members: ['template'],
+            membersCount: 1,
+            admins: ['template'],
+            isPublic: true,
+            tags: ['örnek', 'topluluk']
+          };
+        } else if (collectionName === 'messages') {
+          templateDoc = {
+            id: 'template',
+            senderId: 'template',
+            recipientId: 'template',
+            content: 'Örnek mesaj içeriği',
+            createdAt: new Date(),
+            isRead: false,
+            type: 'DIRECT'
+          };
+        } else if (collectionName === 'conversations') {
+          templateDoc = {
+            id: 'template',
+            participants: ['template1', 'template2'],
+            lastMessage: {
+              content: 'Örnek son mesaj',
+              senderId: 'template1',
+              createdAt: new Date()
+            },
+            unreadCount: {
+              template1: 0,
+              template2: 1
+            }
           };
         }
         

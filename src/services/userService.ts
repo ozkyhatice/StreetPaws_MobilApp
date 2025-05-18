@@ -1,5 +1,5 @@
 import { db, auth } from '../config/firebase';
-import { collection, doc, setDoc, getDoc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, updateDoc, serverTimestamp, arrayUnion, getDocs } from 'firebase/firestore';
 import { User } from '../types/user';
 
 export class UserService {
@@ -123,6 +123,23 @@ export class UserService {
     
     if (!userDoc.exists()) return null;
     return userDoc.data() as User;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    try {
+      const usersCollectionRef = collection(db, this.usersCollection);
+      const usersSnapshot = await getDocs(usersCollectionRef);
+      
+      return usersSnapshot.docs
+        .map(doc => ({ 
+          ...doc.data(),
+          uid: doc.id
+        } as User))
+        .filter(user => user.uid !== 'template'); // Filter out template user
+    } catch (error) {
+      console.error('Error getting all users:', error);
+      return [];
+    }
   }
 
   async getCurrentUser(): Promise<User | null> {
