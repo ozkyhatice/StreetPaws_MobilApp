@@ -217,7 +217,7 @@ export default function VolunteersScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabName>(TabName.VOLUNTEERS);
   const [communities, setCommunities] = useState<Community[]>([]);
-  const [conversations, setConversations] = useState<ConversationItem[]>(mockConversations);
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
   
   // Services
@@ -225,12 +225,67 @@ export default function VolunteersScreen() {
   const messagingService = MessagingService.getInstance();
   const userService = UserService.getInstance();
   
-  // Add volunteers state
-  const [volunteers, setVolunteers] = useState(mockVolunteers);
+  // Replace mock data with real user data
+  const [volunteers, setVolunteers] = useState<any[]>([]);
+  const [allSkills, setAllSkills] = useState<string[]>([]);
   
   // Davet ile katılma sayfasına yönlendirme
   const navigateToJoinByInvite = () => {
     navigation.navigate('JoinByInvite', {});
+  };
+  
+  // Fetch real user data
+  useEffect(() => {
+    const fetchVolunteers = async () => {
+      setIsLoading(true);
+      try {
+        const allUsers = await userService.getAllUsers();
+        
+        // Transform user data to match volunteer format
+        const transformedUsers = allUsers
+          .filter(userData => userData && userData.uid)
+          .map(userData => ({
+            id: userData.uid,
+            name: userData.displayName || userData.username || `Kullanıcı-${userData.uid.substr(0, 5)}`,
+            avatar: userData.photoURL || `https://picsum.photos/id/${Math.floor(Math.random() * 100)}/200`,
+            bio: userData.bio || 'StreetPaws gönüllüsü',
+            level: userData.stats?.level || 1,
+            xp: userData.stats?.xpPoints || userData.xp || 0,
+            completedTasks: userData.stats?.tasksCompleted || (userData.completedTasks ? userData.completedTasks.length : 0),
+            skills: userData.skills || ['Besleme'],
+            location: userData.city || 'İstanbul',
+            badge: getBadgeForLevel(userData.stats?.level || 1)
+          }));
+        
+        // Get all unique skills
+        const skillsSet = new Set<string>();
+        transformedUsers.forEach(user => {
+          if (user.skills && Array.isArray(user.skills)) {
+            user.skills.forEach(skill => skillsSet.add(skill));
+          } else if (typeof user.skills === 'string') {
+            skillsSet.add(user.skills);
+          }
+        });
+        
+        setVolunteers(transformedUsers);
+        setAllSkills(Array.from(skillsSet));
+      } catch (error) {
+        console.error('Error fetching volunteers:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchVolunteers();
+  }, []);
+  
+  // Helper function to determine badge based on level
+  const getBadgeForLevel = (level: number) => {
+    if (level >= 10) return 'Kurtarıcı Kahraman';
+    if (level >= 7) return 'Veteriner Uzmanı';
+    if (level >= 5) return 'Barınak Kahramanı';
+    if (level >= 3) return 'Hayvan Dostu';
+    return 'Yeni Gönüllü';
   };
   
   // Real-time data fetching
@@ -504,8 +559,6 @@ export default function VolunteersScreen() {
     
     return matchesSearch && matchesSkill;
   });
-  
-  const allSkills = [...new Set(volunteers.flatMap(v => v.skills))];
   
   const handleSearch = (query: string) => {
     setSearchQuery(query);

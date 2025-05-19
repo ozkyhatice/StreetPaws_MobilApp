@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Home, MapPin, User, Map, Heart, Users } from 'lucide-react-native';
+import { Home, MapPin, User, Map, Heart, Users, Trophy } from 'lucide-react-native';
 import { MainTabParamList, RootStackParamList } from '../types/navigation';
 import { colors, borderRadius, shadows, spacing } from '../config/theme';
 import { Platform } from 'react-native';
@@ -40,6 +40,8 @@ import ChatScreen from '../screens/ChatScreen';
 import CommunityDetailScreen from '../screens/CommunityDetailScreen';
 import CommunityMembersScreen from '../screens/CommunityMembersScreen';
 import JoinByInviteScreen from '../screens/JoinByInviteScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import RankingsScreen from '../screens/RankingsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -124,6 +126,15 @@ function TabNavigator() {
           tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
           title: 'Gönüllüler',
           tabBarLabel: 'Topluluk',
+        }}
+      />
+      <Tab.Screen
+        name="Rankings"
+        component={RankingsScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => <Trophy color={color} size={size} />,
+          title: 'Sıralama',
+          tabBarLabel: 'Sıralama',
         }}
       />
       <Tab.Screen
@@ -395,6 +406,17 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
         {() => (
           <AuthGuard>
             <CompletedTasksScreen />
+          </AuthGuard>
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen 
+        name="Notifications"
+        options={{ headerShown: false }}
+      >
+        {() => (
+          <AuthGuard>
+            <NotificationsScreen />
           </AuthGuard>
         )}
       </Stack.Screen>

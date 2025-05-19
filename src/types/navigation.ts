@@ -4,6 +4,7 @@ export type MainTabParamList = {
   Profile: undefined;
   Map: undefined;
   Volunteers: undefined;
+  Rankings: undefined;
   Donations: undefined;
 };
 
@@ -19,6 +20,7 @@ export type RootStackParamList = {
   AddEmergency: undefined;
   Map: undefined;
   Volunteers: undefined;
+  Rankings: undefined;
   Donations: undefined;
   Donate: { campaignId: string };
   ChangePassword: undefined;
@@ -33,6 +35,7 @@ export type RootStackParamList = {
   DevTools: undefined;
   CompletedTasks: undefined;
   TaskProgress: undefined;
+  Notifications: undefined;
   
   // New community screens
   Communities: undefined;
