@@ -244,19 +244,25 @@ export default function VolunteersScreen() {
         // Transform user data to match volunteer format
         const transformedUsers = allUsers
           .filter(userData => userData && userData.uid)
-          .map(userData => ({
-            id: userData.uid,
-            name: userData.displayName || userData.username || `Kullanıcı-${userData.uid.substr(0, 5)}`,
-            avatar: userData.photoURL,
-            bio: userData.bio || 'StreetPaws gönüllüsü',
-            level: userData.stats?.level || 1,
-            xp: userData.stats?.xpPoints || userData.xp || 0,
-            completedTasks: userData.stats?.tasksCompleted || (userData.completedTasks ? userData.completedTasks.length : 0),
-            skills: userData.skills || ['Besleme'],
-            location: userData.city || 'İstanbul',
-            createdAt: userData.createdAt,
-            badge: getBadgeForLevel(userData.stats?.level || 1, userData.createdAt)
-          }));
+          .map(userData => {
+            // Calculate the correct level based on XP
+            const xp = userData.stats?.xpPoints || userData.xp || 0;
+            const calculatedLevel = calculateLevelFromXP(xp);
+            
+            return {
+              id: userData.uid,
+              name: userData.displayName || userData.username || `Kullanıcı-${userData.uid.substr(0, 5)}`,
+              avatar: userData.photoURL,
+              bio: userData.bio || 'StreetPaws gönüllüsü',
+              level: calculatedLevel, // Use calculated level instead of stored level
+              xp: xp,
+              completedTasks: userData.stats?.tasksCompleted || (userData.completedTasks ? userData.completedTasks.length : 0),
+              skills: userData.skills || ['Besleme'],
+              location: userData.city || 'İstanbul',
+              createdAt: userData.createdAt,
+              badge: getBadgeForLevel(calculatedLevel, userData.createdAt)
+            };
+          });
         
         // Get all unique skills
         const skillsSet = new Set<string>();
@@ -695,7 +701,7 @@ export default function VolunteersScreen() {
               styles.levelProgressBar, 
               {
                 width: `${calculateLevelProgress(item.level, item.xp)}%`,
-                backgroundColor: getBadgeColor(item.level)
+                backgroundColor: item.xp >= 2000 ? colors.warning : getBadgeColor(item.level)
               }
             ]} 
           />
@@ -1149,13 +1155,18 @@ export default function VolunteersScreen() {
   
   // Calculate XP needed for a specific level
   const calculateXpForLevel = (level: number) => {
-    // Base formula: 100 * level^1.5
-    return Math.floor(100 * Math.pow(level - 1, 1.5));
+    if (level <= 1) return 0;
+    return 100 * (level - 1);
   };
   
   // Calculate XP needed for next level
   const calculateXpForNextLevel = (level: number) => {
-    return Math.floor(100 * Math.pow(level, 1.5));
+    return 100 * level;
+  };
+  
+  // Calculate level from XP
+  const calculateLevelFromXP = (xp: number) => {
+    return Math.floor(xp / 100) + 1;
   };
 
   return (
