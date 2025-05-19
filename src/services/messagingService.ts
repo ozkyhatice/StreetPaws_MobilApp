@@ -176,6 +176,8 @@ export class MessagingService {
       const messageData: any = {
         senderId,
         communityId,
+        recipientId: communityId, // Add recipientId for compatibility
+        conversationId: `community_${communityId}`, // Add proper conversationId format
         content,
         type: 'GROUP',
         messageType,
@@ -288,7 +290,7 @@ export class MessagingService {
       const q = query(
         collection(db, this.messagesCollection),
         where('type', '==', 'GROUP'),
-        where('recipientId', '==', communityId),
+        where('communityId', '==', communityId),
         orderBy('createdAt', 'desc'),
         limit(limit)
       );

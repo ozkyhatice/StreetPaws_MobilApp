@@ -1035,7 +1035,6 @@ export default function VolunteersScreen() {
         <View style={styles.titleRow}>
           <Text style={styles.title}>
             {activeTab === TabName.VOLUNTEERS && 'Gönüllüler'}
-            {activeTab === TabName.COMMUNITIES && 'Topluluklar'}
             {activeTab === TabName.MESSAGES && 'Mesajlar'}
           </Text>
           
@@ -1047,6 +1046,14 @@ export default function VolunteersScreen() {
               >
                 <Code size={20} color={colors.primary} />
                 <Text style={styles.joinByCodeText}>Kod ile Katıl</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.createCommunityButton]}
+                onPress={() => navigation.navigate('CreateCommunity')}
+              >
+                <Plus size={20} color={colors.primary} />
+                <Text style={styles.joinByCodeText}>Kanal Oluştur</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -1157,11 +1164,7 @@ export default function VolunteersScreen() {
             )}
           />
           
-          <FAB
-            style={styles.fab}
-            icon={() => <Plus size={24} color="white" />}
-            onPress={() => navigation.navigate('CreateCommunity')}
-          />
+
         </>
       )}
       
@@ -1223,6 +1226,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   joinByCodeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceVariant,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.medium,
+    marginRight: spacing.sm,
+  },
+  createCommunityButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surfaceVariant,
