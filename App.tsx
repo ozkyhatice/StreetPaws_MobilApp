@@ -9,6 +9,9 @@ import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { StatusBar, View, ActivityIndicator } from 'react-native';
 import { AuthContextType } from './src/types/auth';
+import { Provider as ReduxProvider } from 'react-redux';
+import { PersistGate } from 'redux-persist/integration/react';
+import { store, persistor } from './src/store';
 
 const Stack = createNativeStackNavigator();
 
@@ -49,11 +52,15 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <AuthProvider>
-            <NavigationWrapper />
-          </AuthProvider>
-        </ThemeProvider>
+        <ReduxProvider store={store}>
+          <PersistGate loading={null} persistor={persistor}>
+            <ThemeProvider>
+              <AuthProvider>
+                <NavigationWrapper />
+              </AuthProvider>
+            </ThemeProvider>
+          </PersistGate>
+        </ReduxProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

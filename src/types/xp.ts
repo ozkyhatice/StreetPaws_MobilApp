@@ -51,9 +51,9 @@ export const XP_REWARDS = {
 } as const;
 
 export const calculateLevel = (xp: number): number => {
-  return Math.floor(Math.sqrt(xp / 100)) + 1;
+  return Math.floor(xp / 100) + 1;
 };
 
 export const getXPToNextLevel = (currentLevel: number): number => {
-  return (currentLevel + 1) * (currentLevel + 1) * 100 - currentLevel * currentLevel * 100;
+  return 100; // Always need 100 XP to level up
 }; 

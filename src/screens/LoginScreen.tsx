@@ -14,7 +14,8 @@ import {
   Platform,
   ScrollView,
   Pressable,
-  Alert
+  Alert,
+  ActivityIndicator
 } from "react-native"
 import Animated, {
   useSharedValue,
@@ -28,7 +29,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { colors, spacing, borderRadius, shadows } from '../config/theme';
+import { colors } from '../theme/colors';
 import { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
@@ -214,7 +215,7 @@ const LoginScreen = () => {
           showsVerticalScrollIndicator={false}
         >
           <LinearGradient
-            colors={['#FF6B6A', '#FF8787', '#FFA5A5']}
+            colors={[colors.primary.light, colors.primary.main, colors.primary.dark]}
             style={styles.gradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -222,21 +223,26 @@ const LoginScreen = () => {
           
           <Animated.View style={[styles.content, containerStyle]}>
             <View style={styles.logoContainer}>
-              <Image 
-                source={require("../assets/pawprint.png")} 
-                style={styles.logo}
-              />
-              <Text style={styles.title}>StreetPaws</Text>
+              <LinearGradient
+                colors={[colors.accent.light, colors.accent.main]}
+                style={styles.logoBackground}
+              >
+                <Image 
+                  source={require("../assets/pawprint.png")} 
+                  style={styles.logo}
+                />
+              </LinearGradient>
+              <Text style={styles.title}>Sokak Dostları</Text>
               <Text style={styles.subtitle}>Yardım Ağına Hoş Geldiniz</Text>
             </View>
             
-            <View style={styles.inputContainer}>
+            <View style={styles.formContainer}>
               <View style={styles.inputWrapper}>
-                <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                <Ionicons name="mail-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
                 <TextInput 
                   style={styles.input} 
                   placeholder="E-posta adresiniz" 
-                  placeholderTextColor={colors.textTertiary}
+                  placeholderTextColor={colors.text.tertiary}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   value={email}
@@ -245,84 +251,82 @@ const LoginScreen = () => {
               </View>
 
               <View style={styles.inputWrapper}>
-                <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
+                <Ionicons name="lock-closed-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
                 <TextInput 
                   style={styles.input} 
                   placeholder="Şifreniz" 
-                  placeholderTextColor={colors.textTertiary} 
+                  placeholderTextColor={colors.text.tertiary}
                   secureTextEntry={!showPassword}
                   value={password}
                   onChangeText={setPassword}
                 />
-                <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                <TouchableOpacity 
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
                   <Ionicons 
                     name={showPassword ? "eye-outline" : "eye-off-outline"} 
                     size={20} 
-                    color={colors.textSecondary} 
+                    color={colors.primary.main}
                   />
-                </Pressable>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity 
+                style={styles.forgotPassword}
+                onPress={handleForgotPassword}
+              >
+                <Text style={styles.forgotPasswordText}>Şifremi Unuttum</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.button, isLoading && styles.buttonDisabled]}
+                onPress={handleLogin}
+                disabled={isLoading}
+              >
+                <LinearGradient
+                  colors={[colors.primary.main, colors.primary.dark]}
+                  style={styles.buttonGradient}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color={colors.text.inverse} />
+                  ) : (
+                    <Text style={styles.buttonText}>Giriş Yap</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <View style={styles.dividerContainer}>
+                <View style={styles.divider} />
+                <Text style={styles.dividerText}>veya</Text>
+                <View style={styles.divider} />
+              </View>
+
+              <TouchableOpacity
+                style={styles.registerButton}
+                onPress={handleRegister}
+              >
+                <Text style={styles.registerText}>
+                  Hesabınız yok mu? <Text style={styles.registerTextBold}>Kayıt Olun</Text>
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.testButtonsContainer}>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={handleTestLogin}
+                >
+                  <Text style={styles.testButtonText}>Test Kullanıcı</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={handleAdminLogin}
+                >
+                  <Text style={styles.testButtonText}>Test Admin</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            
-            <TouchableOpacity
-              style={styles.forgotPasswordButton}
-              onPress={handleForgotPassword}
-            >
-              <Text style={styles.forgotPasswordText}>Şifremi unuttum</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              <LinearGradient
-                colors={['#FF6B6B', '#FF8787']}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={styles.buttonText}>
-                  {isLoading ? 'Giriş Yapılıyor...' : 'Giriş Yap'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, styles.testLoginButton]}
-              onPress={handleTestLogin}
-            >
-              <LinearGradient
-                colors={['#4CAF50', '#45a049']}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={styles.buttonText}>User Girişi (Test)</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            
-            <View style={styles.registerContainer}>
-              <Text style={styles.registerText}>Hesabınız yok mu?</Text>
-              <TouchableOpacity onPress={handleRegister}>
-                <Text style={styles.registerLink}>Kayıt Ol</Text>
-              </TouchableOpacity>
-            </View>
-
-
-            <TouchableOpacity
-              style={styles.adminButton}
-              onPress={handleAdminLogin}
-            >
-              <LinearGradient
-                colors={['#4a6fa5', '#3f5885']}
-                style={styles.adminButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-              >
-                <Text style={styles.adminButtonText}>Admin Girişi (Test)</Text>
-              </LinearGradient>
-            </TouchableOpacity>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -333,146 +337,171 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff'
+    backgroundColor: colors.background.primary,
   },
   container: {
     flex: 1,
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
   },
   gradient: {
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
-    height: height,
+    height: height * 0.4,
   },
   content: {
-    width: "88%",
-    maxWidth: 400,
-    padding: spacing.xl,
-    borderRadius: borderRadius.xl,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    alignItems: "center",
-    ...shadows.large,
-    marginVertical: spacing.xl,
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: height * 0.15,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: 40,
+  },
+  logoBackground: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   logo: {
-    width: 80,
-    height: 80,
-    marginBottom: spacing.sm,
+    width: 70,
+    height: 70,
+    tintColor: colors.text.inverse,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-    color: colors.primary,
-    marginBottom: spacing.xs,
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: colors.text.inverse,
+    marginBottom: 10,
+    textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
+    fontSize: 18,
+    color: colors.text.inverse,
+    textAlign: 'center',
+    opacity: 0.9,
   },
-  inputContainer: {
-    width: "100%",
-    gap: spacing.md,
+  formContainer: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: colors.utility.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.large,
-    borderWidth: 1,
-    borderColor: colors.border,
-    height: 56,
-    paddingHorizontal: spacing.md,
+    backgroundColor: colors.background.tertiary,
+    borderRadius: 12,
+    marginBottom: 15,
+    paddingHorizontal: 15,
+    height: 50,
+    shadowColor: colors.utility.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   inputIcon: {
-    marginRight: spacing.sm,
+    marginRight: 10,
   },
   input: {
     flex: 1,
+    color: colors.text.primary,
     fontSize: 16,
-    color: colors.text,
-    height: '100%',
   },
   eyeIcon: {
-    padding: spacing.xs,
+    padding: 8,
   },
-  forgotPasswordButton: {
-    alignSelf: "flex-end",
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
   },
   forgotPasswordText: {
-    color: colors.primary,
+    color: colors.primary.main,
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   button: {
-    width: "100%",
-    height: 56,
-    borderRadius: borderRadius.large,
+    borderRadius: 12,
     overflow: 'hidden',
-    ...shadows.small,
+    marginBottom: 20,
   },
   buttonGradient: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  registerContainer: {
-    flexDirection: 'row',
+    paddingVertical: 15,
     alignItems: 'center',
-    marginTop: spacing.xl,
-    gap: spacing.xs,
-  },
-  registerText: {
-    color: colors.textSecondary,
-    fontSize: 15,
-  },
-  registerLink: {
-    color: colors.primary,
-    fontSize: 15,
-    fontWeight: '600',
   },
   buttonDisabled: {
     opacity: 0.7,
   },
-  testLoginButton: {
-    marginTop: spacing.md,
+  buttonText: {
+    color: colors.text.inverse,
+    fontSize: 18,
+    fontWeight: 'bold',
   },
-  adminButton: {
-    width: "100%",
-    height: 40,
-    borderRadius: borderRadius.large,
-    overflow: 'hidden',
-    marginTop: spacing.md,
-    ...shadows.small,
+  dividerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
   },
-  adminButtonGradient: {
+  divider: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    height: 1,
+    backgroundColor: colors.utility.divider,
   },
-  adminButtonText: {
-    color: "white",
+  dividerText: {
+    color: colors.text.secondary,
+    paddingHorizontal: 15,
     fontSize: 14,
-    fontWeight: "600",
   },
-})
+  registerButton: {
+    alignItems: 'center',
+  },
+  registerText: {
+    color: colors.text.secondary,
+    fontSize: 16,
+  },
+  registerTextBold: {
+    color: colors.primary.main,
+    fontWeight: 'bold',
+  },
+  testButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.utility.divider,
+  },
+  testButton: {
+    backgroundColor: colors.background.tertiary,
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary.light,
+  },
+  testButtonText: {
+    color: colors.primary.main,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+});
 
 export default LoginScreen
 

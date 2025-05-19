@@ -4,6 +4,7 @@ import { collection, query, where, orderBy, getDocs, addDoc, doc, getDoc, update
 import { db } from '../config/firebase';
 import { EmergencyRequest } from '../services/emergencyService';
 import { XPService } from './xpService';
+import { StatsService } from './statsService';
 
 // Yardımcı fonksiyonlar
 function removeUndefinedFields<T extends object>(obj: T): Partial<T> {
@@ -216,19 +217,10 @@ export class TaskService {
         });
       }
 
-      // Update global stats
-      const globalStatsRef = doc(db, 'stats', 'global');
-      const globalStatsDoc = await getDoc(globalStatsRef);
-      
-      if (globalStatsDoc.exists()) {
-        await updateDoc(globalStatsRef, {
-          totalTasksCompleted: increment(1)
-        });
-      } else {
-        await setDoc(globalStatsRef, {
-          totalTasksCompleted: 1
-        });
-      }
+      // Use StatsService to update global stats instead of updating directly
+      const statsService = StatsService.getInstance();
+      await statsService.incrementCompletedTasksCount();
+      await statsService.decrementActiveTasksCount();
 
     } catch (error) {
       console.error('Error approving task:', error);
@@ -446,6 +438,10 @@ export class TaskService {
         deadline: Timestamp.fromDate(twoHoursLater)
       });
       const taskWithId = { ...task, id: docRef.id };
+      
+      // Update active tasks count in global stats
+      const statsService = StatsService.getInstance();
+      await statsService.incrementActiveTasksCount();
       
       console.log(`TaskService: Created emergency task with ID: ${taskWithId.id}, isEmergency: ${taskWithId.isEmergency}`);
       return taskWithId;

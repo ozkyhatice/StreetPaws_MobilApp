@@ -9,7 +9,12 @@ import {
   StyleSheet, 
   TextInput, 
   Alert,
-  ActivityIndicator 
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  SafeAreaView,
+  Dimensions
 } from "react-native"
 import { LinearGradient } from "expo-linear-gradient"
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +22,10 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
+
+const { width, height } = Dimensions.get('window');
 
 type ForgotPasswordScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -58,102 +67,216 @@ const ForgotPasswordScreen = () => {
   };
 
   return (
-    <LinearGradient colors={["#FFD1DC", "#F7CAC9", "#F0E68C"]} style={styles.container}>
-      <View style={styles.logoContainer}>
-        <Image source={require("../assets/forgot-password.png")} style={styles.logo} />
-      </View>
-      <View style={styles.formContainer}>
-        <Text style={styles.title}>Şifrenizi mi unuttunuz?</Text>
-        <Text style={styles.subtitle}>E-posta adresinizi girin, size şifre sıfırlama talimatlarını göndereceğiz.</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="E-posta"
-          placeholderTextColor="#B5838D"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          value={email}
-          onChangeText={setEmail}
-        />
-        <TouchableOpacity
-          style={[styles.button, isLoading && styles.buttonDisabled]}
-          onPress={handleResetPassword}
-          disabled={isLoading}
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.container}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContainer}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {isLoading ? (
-            <ActivityIndicator color="#6D435A" />
-          ) : (
-            <Text style={styles.buttonText}>Şifre Sıfırlama Gönder</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-          <Text style={styles.linkText}>Giriş sayfasına dön</Text>
-        </TouchableOpacity>
-      </View>
-    </LinearGradient>
+          <LinearGradient
+            colors={[colors.primary.light, colors.primary.main, colors.primary.dark]}
+            style={styles.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+          
+          <View style={styles.content}>
+            <View style={styles.logoContainer}>
+              <LinearGradient
+                colors={[colors.accent.light, colors.accent.main]}
+                style={styles.logoBackground}
+              >
+                <Ionicons 
+                  name="lock-open-outline" 
+                  size={50} 
+                  color={colors.text.inverse} 
+                />
+              </LinearGradient>
+              <Text style={styles.title}>Şifrenizi mi Unuttunuz?</Text>
+              <Text style={styles.subtitle}>
+                Endişelenmeyin! E-posta adresinizi girin, size şifre sıfırlama talimatlarını göndereceğiz.
+              </Text>
+            </View>
+
+            <View style={styles.formContainer}>
+              <View style={styles.inputWrapper}>
+                <Ionicons 
+                  name="mail-outline" 
+                  size={20} 
+                  color={colors.primary.main} 
+                  style={styles.inputIcon} 
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="E-posta adresiniz"
+                  placeholderTextColor={colors.text.tertiary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.button, isLoading && styles.buttonDisabled]}
+                onPress={handleResetPassword}
+                disabled={isLoading}
+              >
+                <LinearGradient
+                  colors={[colors.primary.main, colors.primary.dark]}
+                  style={styles.buttonGradient}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color={colors.text.inverse} />
+                  ) : (
+                    <Text style={styles.buttonText}>Şifre Sıfırlama Gönder</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={() => navigation.navigate("Login")}
+              >
+                <Ionicons 
+                  name="arrow-back-outline" 
+                  size={20} 
+                  color={colors.primary.main} 
+                  style={styles.backIcon}
+                />
+                <Text style={styles.backText}>Giriş sayfasına dön</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background.primary,
+  },
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+  },
+  scrollContainer: {
+    flexGrow: 1,
+  },
+  gradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: height * 0.4,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: height * 0.15,
   },
   logoContainer: {
-    marginBottom: 30,
+    alignItems: 'center',
+    marginBottom: 40,
   },
-  logo: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: "#FFB6C1",
-  },
-  formContainer: {
-    width: "80%",
+  logoBackground: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#6D435A",
-    textAlign: "center",
-    marginBottom: 10,
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.text.inverse,
+    marginBottom: 15,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: "#6D435A",
-    textAlign: "center",
+    color: colors.text.inverse,
+    textAlign: 'center',
+    opacity: 0.9,
+    paddingHorizontal: 20,
+    lineHeight: 22,
+  },
+  formContainer: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: colors.utility.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background.tertiary,
+    borderRadius: 12,
     marginBottom: 20,
+    paddingHorizontal: 15,
+    height: 50,
+    shadowColor: colors.utility.shadow,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-    borderRadius: 25,
-    padding: 15,
-    marginBottom: 15,
+    flex: 1,
+    color: colors.text.primary,
     fontSize: 16,
-    color: "#6D435A",
   },
   button: {
-    backgroundColor: "#FFB6C1",
-    borderRadius: 25,
-    padding: 15,
-    alignItems: "center",
-    marginBottom: 15,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  buttonGradient: {
+    paddingVertical: 15,
+    alignItems: 'center',
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonText: {
-    color: "#6D435A",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  linkText: {
-    color: "#6D435A",
+    color: colors.text.inverse,
     fontSize: 16,
-    textAlign: "center",
+    fontWeight: 'bold',
   },
-})
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backIcon: {
+    marginRight: 8,
+  },
+  backText: {
+    color: colors.primary.main,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
 
-export default ForgotPasswordScreen
+export default ForgotPasswordScreen;
 

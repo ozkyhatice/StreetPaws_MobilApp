@@ -29,6 +29,10 @@ export const colors = {
   // Borders and dividers
   border: '#E0E0E0',
   divider: '#EEEEEE',
+  
+  gold: '#FFD700',
+  silver: '#C0C0C0',
+  bronze: '#CD7F32',
 };
 
 export const spacing = {

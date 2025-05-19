@@ -7,19 +7,19 @@ import { combineReducers } from 'redux';
 import authReducer from './auth/authSlice';
 import petsReducer from './pets/petsSlice';
 import themeReducer from './theme/themeSlice';
-import notificationReducer from './notifications/notificationSlice';
+import notificationsReducer from './notifications/notificationSlice';
 
 const persistConfig = {
   key: 'root',
   storage: AsyncStorage,
-  whitelist: ['auth', 'theme'], // Sadece auth ve theme'i kalıcı hale getir
+  whitelist: ['notifications'], // Sadece bu state'ler persist edilecek
 };
 
 const rootReducer = combineReducers({
   auth: authReducer,
   pets: petsReducer,
   theme: themeReducer,
-  notifications: notificationReducer,
+  notifications: notificationsReducer,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
@@ -28,7 +28,15 @@ export const store = configureStore({
   reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
-      serializableCheck: false,
+      serializableCheck: {
+        ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+        // Redux Toolkit'in serializability kontrolünü devre dışı bırak
+        // Bu, tarih ve Timestamp nesneleri için gerekli
+        ignoredActionPaths: ['meta.arg', 'payload.timestamp'],
+        ignoredPaths: [
+          'notifications.items.timestamp',
+        ],
+      },
     }),
 });
 

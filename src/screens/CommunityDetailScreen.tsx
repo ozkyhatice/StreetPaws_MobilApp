@@ -12,7 +12,7 @@ import {
   Share,
   Clipboard,
 } from 'react-native';
-import { Text, Button, Avatar, Chip, Divider, FAB, Dialog, Portal, TextInput, Menu, IconButton, Checkbox } from 'react-native-paper';
+import { Text, Button, Avatar, Chip, Divider, FAB, Dialog, Portal, TextInput, Menu, IconButton, Checkbox, List } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types/navigation';
@@ -22,6 +22,7 @@ import { UserService } from '../services/userService';
 import { Community } from '../types/community';
 import { colors, spacing, typography, borderRadius, shadows } from '../config/theme';
 import { ChevronLeft, Edit2, MessageCircle, UserPlus, Users, MapPin, Calendar, Globe, Lock, Camera, MoreVertical, Settings, Trash2, Mail, Link, Share2, Copy, RefreshCw } from 'lucide-react-native';
+import QRCode from 'react-native-qrcode-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -90,6 +91,9 @@ export default function CommunityDetailScreen() {
   const [membersToAdd, setMembersToAdd] = useState<string[]>([]);
   const [userUsername, setUserUsername] = useState('');
   const [inviteByUsernameMode, setInviteByUsernameMode] = useState(false);
+  const [inviteExpiry, setInviteExpiry] = useState(0); // Saat olarak süre (0=sınırsız)
+  const [inviteUsageLimit, setInviteUsageLimit] = useState(0); // Kullanım limiti (0=sınırsız)
+  const [isInviting, setIsInviting] = useState(false);
   
   const communityService = CommunityService.getInstance();
   const userService = UserService.getInstance();
@@ -397,8 +401,8 @@ export default function CommunityDetailScreen() {
           style={styles.memberAvatar}
         />
         <View style={styles.memberInfo}>
-          <Text style={styles.memberName} numberOfLines={1}>
-            {member.name}
+          <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">
+            {member.name || 'Kullanıcı'}
           </Text>
           {member.isCreator ? (
             <Text style={styles.adminBadge}>Creator</Text>
@@ -438,7 +442,9 @@ export default function CommunityDetailScreen() {
         const result = await communityService.inviteUserByUsername(
           communityId,
           userUsername.trim(),
-          user.uid
+          user.uid,
+          inviteExpiry,
+          inviteUsageLimit
         );
         
         if (result.success) {
@@ -903,49 +909,127 @@ export default function CommunityDetailScreen() {
   };
 
   const resetInviteLink = async () => {
-    if (!user || !isAdmin) return;
+    if (!user) return;
     
+    setIsGeneratingLink(true);
     try {
-      setIsGeneratingLink(true);
+      const result = await communityService.resetInviteLink(
+        communityId, 
+        user.uid,
+        inviteExpiry,
+        inviteUsageLimit
+      );
       
-      const result = await communityService.resetInviteLink(communityId, user.uid);
-      
-      if (result.success && result.inviteCode && result.inviteLink) {
-        setInviteCode(result.inviteCode);
-        setInviteLink(result.inviteLink);
+      if (result.success) {
+        setInviteCode(result.inviteCode || '');
         setWebLink(result.webLink || '');
         
-        Alert.alert('Başarılı', 'Davet bağlantısı başarıyla sıfırlandı');
+        // Başarılı olduğunda bildiri göster
+        Alert.alert('Başarılı', 'Davet bağlantısı başarıyla yenilendi');
       } else {
+        // Hata mesajı göster
         Alert.alert('Hata', result.message);
       }
     } catch (error) {
       console.error('Error resetting invite link:', error);
-      Alert.alert('Hata', 'Davet bağlantısı sıfırlanırken bir sorun oluştu.');
+      Alert.alert('Hata', 'Davet bağlantısı yenilenirken bir sorun oluştu');
     } finally {
       setIsGeneratingLink(false);
     }
   };
 
   const copyInviteLink = () => {
+    if (!webLink) {
+      Alert.alert('Hata', 'Kopyalanacak bağlantı bulunamadı.');
+      return;
+    }
+    
     Clipboard.setString(webLink);
-    Alert.alert('Bilgi', 'Davet bağlantısı panoya kopyalandı.');
+    Alert.alert('Başarılı', 'Davet bağlantısı panoya kopyalandı.');
   };
 
   const shareInviteLink = async () => {
+    if (!webLink || !community) {
+      Alert.alert('Hata', 'Paylaşılacak bağlantı bulunamadı.');
+      return;
+    }
+    
     try {
       const result = await Share.share({
-        message: `${community?.name} topluluğuna katılmak için bu bağlantıyı kullan: ${webLink}`,
+        message: `${community.name} topluluğuna katılmak için bu bağlantıyı kullan: ${webLink}`,
         url: webLink,
-        title: `${community?.name} Topluluğuna Davet`
+        title: `${community.name} Topluluğuna Davet`
       });
       
       if (result.action === Share.sharedAction) {
-        console.log('Link shared successfully');
+        console.log('Bağlantı başarıyla paylaşıldı');
       }
     } catch (error) {
-      console.error('Error sharing invite link:', error);
+      console.error('Davet bağlantısı paylaşılırken hata oluştu:', error);
       Alert.alert('Hata', 'Davet bağlantısı paylaşılırken bir sorun oluştu.');
+    }
+  };
+
+  const inviteUserByUsername = async () => {
+    if (!user || !isAdmin || !userUsername.trim()) return;
+    
+    try {
+      setIsInviting(true);
+      
+      const result = await communityService.inviteUserByUsername(
+        communityId, 
+        userUsername.trim(), 
+        user.uid,
+        inviteExpiry,
+        inviteUsageLimit
+      );
+      
+      if (result.success) {
+        // Başarılı olduğunda bildirim göster
+        Alert.alert('Başarılı', result.message);
+        setUserUsername('');
+        setInviteByUsernameMode(false);
+      } else {
+        // Hata mesajı göster
+        Alert.alert('Hata', result.message);
+      }
+    } catch (error) {
+      console.error('Error inviting user by username:', error);
+      Alert.alert('Hata', 'Kullanıcı davet edilirken bir sorun oluştu');
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const handleJoinWithCode = async (code: string) => {
+    if (!user || !code.trim()) return;
+    
+    try {
+      setIsGeneratingLink(true); // Use existing loading state
+      
+      // Join community with invite code
+      const result = await communityService.joinCommunityByInviteCode(
+        code.trim(),
+        user.uid
+      );
+      
+      if (result.success) {
+        Alert.alert('Başarılı', result.message);
+        // Refresh community data
+        const communityData = await communityService.getCommunityById(communityId);
+        if (communityData) {
+          setCommunity(communityData);
+          setIsMember(communityData.members.includes(user.uid));
+        }
+        hideInviteLinkDialog();
+      } else {
+        Alert.alert('Hata', result.message);
+      }
+    } catch (error) {
+      console.error('Error joining with invite code:', error);
+      Alert.alert('Hata', 'Katılırken bir sorun oluştu');
+    } finally {
+      setIsGeneratingLink(false);
     }
   };
 
@@ -996,6 +1080,13 @@ export default function CommunityDetailScreen() {
                 onPress={showEditDialog}
               >
                 <Edit2 size={20} color={colors.primary} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.inviteButton}
+                onPress={showInviteLinkDialog}
+              >
+                <Link size={20} color={colors.primary} />
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -1159,7 +1250,11 @@ export default function CommunityDetailScreen() {
         {/* Community details */}
         <View style={styles.detailsSection}>
           <Text style={styles.sectionTitle}>Topluluk Hakkında</Text>
-          <Text style={styles.description}>{community.description}</Text>
+          <Text style={styles.description}>
+            {community.description && community.description.trim() !== '' 
+              ? community.description 
+              : 'Bu topluluk henüz bir açıklama eklenmemiş.'}
+          </Text>
           
           {community.location && (
             <View style={styles.locationContainer}>
@@ -1199,7 +1294,7 @@ export default function CommunityDetailScreen() {
         <View style={styles.membersSection}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Üyeler</Text>
-            <TouchableOpacity onPress={viewMembers}>
+            <TouchableOpacity onPress={viewMembers} style={styles.viewAllButton}>
               <Text style={styles.viewAllText}>Tümünü Gör</Text>
             </TouchableOpacity>
           </View>
@@ -1675,17 +1770,60 @@ export default function CommunityDetailScreen() {
         <Dialog
           visible={inviteLinkDialogVisible}
           onDismiss={hideInviteLinkDialog}
-          style={styles.linkDialog}
+          style={[styles.linkDialog, { elevation: 5 }]}
         >
-          <Dialog.Title>Topluluk Davet Bağlantısı</Dialog.Title>
+          <Dialog.Title style={styles.dialogTitle}>Topluluk Davet Bağlantısı</Dialog.Title>
           <Dialog.Content>
             {isGeneratingLink ? (
               <ActivityIndicator size="large" color={colors.primary} />
             ) : (
               <>
                 <View style={styles.inviteLinkContainer}>
-                  <Text style={styles.inviteCode}>{inviteCode}</Text>
-                  <Text style={styles.inviteLink}>{webLink}</Text>
+                  <Text style={styles.inviteCode}>{inviteCode || 'Kod Oluşturuluyor...'}</Text>
+                  <Text style={styles.inviteLink} numberOfLines={2} ellipsizeMode="middle">
+                    {webLink || 'https://app.domain.com/invite/...'}
+                  </Text>
+                </View>
+                
+                <View style={styles.qrCodeContainer}>
+                  {webLink ? (
+                    <QRCode 
+                      value={webLink}
+                      size={180}
+                      color={colors.primary}
+                      backgroundColor={colors.surface}
+                      logo={require('../assets/paw.png')}
+                      logoSize={40}
+                      logoBackgroundColor="white"
+                      logoMargin={2}
+                      logoBorderRadius={10}
+                      quietZone={10}
+                    />
+                  ) : (
+                    <View style={{height: 180, width: 180, justifyContent: 'center', alignItems: 'center'}}>
+                      <Text>QR Kod yüklenemedi</Text>
+                    </View>
+                  )}
+                  <Text style={styles.qrCodeText}>QR Kodu taratarak da katılabilirsiniz</Text>
+                  
+                  {inviteCode && !isMember && (
+                    <Button
+                      mode="contained"
+                      style={styles.joinWithCodeButton}
+                      onPress={() => handleJoinWithCode(inviteCode)}
+                      loading={isGeneratingLink}
+                    >
+                      Bu Kod ile Katıl
+                    </Button>
+                  )}
+                  
+                  {isMember && (
+                    <View style={styles.memberStatusContainer}>
+                      <Text style={styles.memberStatusText}>
+                        ✓ Zaten bu topluluğun üyesisiniz
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 
                 <View style={styles.inviteLinkActions}>
@@ -1693,7 +1831,7 @@ export default function CommunityDetailScreen() {
                     mode="outlined" 
                     onPress={copyInviteLink}
                     style={styles.inviteLinkButton}
-                    icon="content-copy"
+                    icon={({color}) => <Copy color={color} size={18} />}
                   >
                     Kopyala
                   </Button>
@@ -1702,29 +1840,35 @@ export default function CommunityDetailScreen() {
                     mode="contained" 
                     onPress={shareInviteLink}
                     style={styles.inviteLinkButton}
-                    icon="share-variant"
+                    icon={({color}) => <Share2 color={color} size={18} />}
                   >
                     Paylaş
                   </Button>
                 </View>
-                
-                <Button 
-                  mode="outlined"
-                  onPress={resetInviteLink}
-                  style={{marginTop: spacing.sm}}
-                  icon="refresh"
-                >
-                  Bağlantıyı Sıfırla
-                </Button>
-                
-                <Text style={styles.warningText}>
-                  Not: Bağlantıyı sıfırladığınızda eski bağlantı çalışmayacaktır.
-                </Text>
+
+                {isAdmin && (
+                  <View style={styles.inviteAdminActions}>
+                    <Button
+                      mode="outlined"
+                      onPress={resetInviteLink}
+                      style={styles.resetLinkButton}
+                      icon={({color}) => <RefreshCw color={color} size={18} />}
+                    >
+                      Yeni Kod Oluştur
+                    </Button>
+                  </View>
+                )}
+
+                {!isMember && (
+                  <Text style={styles.inviteInstructions}>
+                    Bu topluluğa katılmak için yukarıdaki kodu kullanabilir veya "Bu Kod ile Katıl" butonuna tıklayabilirsiniz.
+                  </Text>
+                )}
               </>
             )}
           </Dialog.Content>
           <Dialog.Actions>
-            <Button onPress={hideInviteLinkDialog}>Kapat</Button>
+            <Button mode="text" textColor={colors.primary} onPress={hideInviteLinkDialog}>Kapat</Button>
           </Dialog.Actions>
         </Dialog>
       </Portal>
@@ -1797,10 +1941,18 @@ const styles = StyleSheet.create({
   },
   editButton: {
     padding: spacing.xs,
+    backgroundColor: colors.primary + '10',
+    borderRadius: 20,
+  },
+  inviteButton: {
+    padding: spacing.xs,
+    backgroundColor: colors.secondary + '15',
+    borderRadius: 20,
   },
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.sm,
   },
   menuButton: {
     padding: spacing.xs,
@@ -1809,6 +1961,11 @@ const styles = StyleSheet.create({
   heroSection: {
     alignItems: 'center',
     padding: spacing.screenPadding,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.large,
+    marginHorizontal: spacing.xs,
+    marginTop: spacing.xs,
+    ...shadows.medium,
   },
   avatarContainer: {
     position: 'relative',
@@ -1816,6 +1973,8 @@ const styles = StyleSheet.create({
   },
   avatar: {
     backgroundColor: colors.primaryLight + '30',
+    borderWidth: 3,
+    borderColor: colors.background,
   },
   editAvatarBadge: {
     position: 'absolute',
@@ -1939,9 +2098,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.md,
   },
+  viewAllButton: {
+    backgroundColor: colors.primary + '10',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.medium,
+  },
   viewAllText: {
     ...typography.body2,
     color: colors.primary,
+    fontWeight: '600',
   },
   membersScrollContent: {
     paddingRight: spacing.xl,
@@ -1954,6 +2120,8 @@ const styles = StyleSheet.create({
   },
   memberAvatar: {
     marginBottom: spacing.xs,
+    borderWidth: 2,
+    borderColor: colors.primary + '30',
   },
   memberName: {
     ...typography.subtitle1,
@@ -1961,6 +2129,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
     marginTop: spacing.xxs,
+    width: 70,
+    fontSize: 12,
   },
   adminChip: {
     backgroundColor: colors.primary + '15',
@@ -2079,10 +2249,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.primary,
     marginBottom: spacing.xs,
+    textAlign: 'center',
   },
   inviteLink: {
     ...typography.body2,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   inviteLinkActions: {
     flexDirection: 'row',
@@ -2128,6 +2300,62 @@ const styles = StyleSheet.create({
   },
   linkDialog: {
     width: '90%',
-    maxWidth: 400,
+    alignSelf: 'center',
+    borderRadius: borderRadius.large,
+    backgroundColor: colors.background,
+    ...shadows.large,
+  },
+  qrCodeContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.small,
+  },
+  qrCodeText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: 'center',
+  },
+  dialogTitle: {
+    fontSize: 18,
+    color: colors.primary,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  joinWithCodeButton: {
+    marginTop: spacing.md,
+    width: '100%',
+  },
+  inviteInstructions: {
+    marginTop: spacing.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    ...typography.body2,
+  },
+  inviteAdminActions: {
+    marginTop: spacing.md,
+  },
+  resetLinkButton: {
+    width: '100%',
+  },
+  memberStatusContainer: {
+    marginTop: spacing.md,
+    backgroundColor: colors.success + '20',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.medium,
+    alignItems: 'center',
+    width: '100%',
+  },
+  memberStatusText: {
+    color: colors.success,
+    ...typography.body2,
+    fontWeight: '600',
   },
 }); 

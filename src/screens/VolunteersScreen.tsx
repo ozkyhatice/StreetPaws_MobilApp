@@ -23,6 +23,7 @@ import { Community } from '../types/community';
 import { CommunityService } from '../services/communityService';
 import { MessagingService } from '../services/messagingService';
 import { UserService } from '../services/userService';
+import { XPService } from '../services/xpService';
 import { format, formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateLevelProgress } from '../utils/levelUtils';
@@ -58,9 +59,9 @@ const mockVolunteers = [
     name: 'Ahmet Yılmaz',
     avatar: 'https://picsum.photos/id/1/200',
     bio: 'Hayvan sever ve 3 yıllık StreetPaws gönüllüsü',
-    level: 5,
-    xp: 2500,
-    completedTasks: 42,
+    level: 1,  // Level will be calculated from XP by XPService
+    xp: 0,     // XP will be provided by XPService
+    completedTasks: 0,
     skills: ['Besleme', 'Veteriner', 'Barınak'],
     location: 'İstanbul, Kadıköy',
     badge: 'Barınak Kahramanı'
@@ -70,9 +71,9 @@ const mockVolunteers = [
     name: 'Ayşe Kaya',
     avatar: 'https://picsum.photos/id/2/200',
     bio: 'Veteriner hekim ve sokak hayvanları koruyucusu',
-    level: 8,
-    xp: 4200,
-    completedTasks: 75,
+    level: 1,
+    xp: 0,
+    completedTasks: 0,
     skills: ['Sağlık', 'İlkyardım', 'Eğitim'],
     location: 'İstanbul, Beşiktaş',
     badge: 'Veteriner Uzmanı'
@@ -82,9 +83,9 @@ const mockVolunteers = [
     name: 'Mehmet Demir',
     avatar: 'https://picsum.photos/id/3/200',
     bio: 'Barınak görevlisi ve sokak hayvanları için çalışan aktivist',
-    level: 6,
-    xp: 3100,
-    completedTasks: 51,
+    level: 1,
+    xp: 0,
+    completedTasks: 0,
     skills: ['Barınak', 'Besleme', 'Tasarım'],
     location: 'İstanbul, Üsküdar',
     badge: 'Hayvan Dostu'
@@ -94,9 +95,9 @@ const mockVolunteers = [
     name: 'Zeynep Çelik',
     avatar: 'https://picsum.photos/id/4/200',
     bio: 'Çevreci ve hayvan hakları savunucusu',
-    level: 4,
-    xp: 1800,
-    completedTasks: 28,
+    level: 1,
+    xp: 0,
+    completedTasks: 0,
     skills: ['Organizasyon', 'Sosyal Medya', 'Eğitim'],
     location: 'İstanbul, Bakırköy',
     badge: 'Sosyal Medya Uzmanı'
@@ -106,9 +107,9 @@ const mockVolunteers = [
     name: 'Can Aydın',
     avatar: 'https://picsum.photos/id/5/200',
     bio: 'Hayvansever mühendis ve hafta sonları gönüllü',
-    level: 3,
-    xp: 1200,
-    completedTasks: 18,
+    level: 1,
+    xp: 0,
+    completedTasks: 0,
     skills: ['Bakım', 'Tasarım', 'İnşaat'],
     location: 'İstanbul, Beylikdüzü',
     badge: 'Yeni Gönüllü'
@@ -225,6 +226,7 @@ export default function VolunteersScreen() {
   const communityService = CommunityService.getInstance();
   const messagingService = MessagingService.getInstance();
   const userService = UserService.getInstance();
+  const xpService = XPService.getInstance();
   
   // Replace mock data with real user data
   const [volunteers, setVolunteers] = useState<any[]>([]);
@@ -243,27 +245,29 @@ export default function VolunteersScreen() {
         const allUsers = await userService.getAllUsers();
         
         // Transform user data to match volunteer format
-        const transformedUsers = allUsers
+        const transformedUsersPromises = allUsers
           .filter(userData => userData && userData.uid)
-          .map(userData => {
-            // Calculate the correct level based on XP
-            const xp = userData.stats?.xpPoints || userData.xp || 0;
-            const calculatedLevel = calculateLevelFromXP(xp);
+          .map(async (userData) => {
+            // Use XPService to get centralized XP data
+            const xpData = await xpService.getCentralizedXP(userData.uid);
+            const taskProgress = await xpService.getTaskProgress(userData.uid);
             
             return {
               id: userData.uid,
               name: userData.displayName || userData.username || `Kullanıcı-${userData.uid.substr(0, 5)}`,
               avatar: userData.photoURL,
               bio: userData.bio || 'StreetPaws gönüllüsü',
-              level: calculatedLevel, // Use calculated level instead of stored level
-              xp: xp,
-              completedTasks: userData.stats?.tasksCompleted || (userData.completedTasks ? userData.completedTasks.length : 0),
+              level: xpData.level,
+              xp: xpData.xp,
+              completedTasks: taskProgress.completedTasks,
               skills: userData.skills || ['Besleme'],
               location: userData.city || 'İstanbul',
               createdAt: userData.createdAt,
-              badge: getBadgeForLevel(calculatedLevel, userData.createdAt)
+              badge: getBadgeForLevel(xpData.level, userData.createdAt)
             };
           });
+
+        const transformedUsers = await Promise.all(transformedUsersPromises);
         
         // Get all unique skills
         const skillsSet = new Set<string>();

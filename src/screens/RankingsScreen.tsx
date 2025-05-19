@@ -12,6 +12,7 @@ import {
 import { Text, Card, Avatar, Button, Chip, Divider, SegmentedButtons } from 'react-native-paper';
 import { colors, spacing, shadows, borderRadius, typography } from '../config/theme';
 import { UserService } from '../services/userService';
+import { XPService } from '../services/xpService';
 import { User } from '../types/user';
 import { Award, MapPin, Star, Trophy } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -24,15 +25,22 @@ type RankingsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 type SortBy = 'xp' | 'level' | 'tasksCompleted';
 
+// Extend User type with centralized data
+interface UserWithXP extends User {
+  centralizedXP: number;
+  centralizedLevel: number;
+}
+
 export default function RankingsScreen() {
   const { user: currentUser } = useAuth();
   const navigation = useNavigation<RankingsScreenNavigationProp>();
-  const [users, setUsers] = useState<User[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserWithXP[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<UserWithXP[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>('xp');
 
   const userService = UserService.getInstance();
+  const xpService = XPService.getInstance();
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -42,15 +50,26 @@ export default function RankingsScreen() {
         
         // Filter out users without proper stats
         const validUsers = allUsers.filter(user => 
-          user && user.uid && (
-            (user.stats && (user.stats.xpPoints > 0 || user.stats.level > 0 || user.stats.tasksCompleted > 0)) || 
-            user.xp > 0 || 
-            (user.completedTasks && user.completedTasks.length > 0)
-          )
+          user && user.uid
         );
         
-        setUsers(validUsers);
-        sortUsers(validUsers, sortBy);
+        // Get centralized XP data for each user
+        const usersWithXPPromises = validUsers.map(async (user) => {
+          const xpData = await xpService.getCentralizedXP(user.uid);
+          return {
+            ...user,
+            centralizedXP: xpData.xp,
+            centralizedLevel: xpData.level
+          } as UserWithXP;
+        });
+        
+        const usersWithXP = await Promise.all(usersWithXPPromises);
+        
+        // Only include users who have some XP
+        const usersWithNonZeroXP = usersWithXP.filter(user => user.centralizedXP > 0);
+        
+        setUsers(usersWithNonZeroXP);
+        sortUsers(usersWithNonZeroXP, sortBy);
       } catch (error) {
         console.error('Error fetching users:', error);
       } finally {
@@ -65,21 +84,21 @@ export default function RankingsScreen() {
     sortUsers(users, sortBy);
   }, [sortBy]);
 
-  const sortUsers = (userList: User[], sortType: SortBy) => {
+  const sortUsers = (userList: UserWithXP[], sortType: SortBy) => {
     const sorted = [...userList];
     
     switch (sortType) {
       case 'xp':
         sorted.sort((a, b) => {
-          const aXP = a.stats?.xpPoints || a.xp || 0;
-          const bXP = b.stats?.xpPoints || b.xp || 0;
+          const aXP = a.centralizedXP;
+          const bXP = b.centralizedXP;
           return bXP - aXP;
         });
         break;
       case 'level':
         sorted.sort((a, b) => {
-          const aLevel = a.stats?.level || 1;
-          const bLevel = b.stats?.level || 1;
+          const aLevel = a.centralizedLevel;
+          const bLevel = b.centralizedLevel;
           return bLevel - aLevel;
         });
         break;
@@ -102,13 +121,12 @@ export default function RankingsScreen() {
     return colors.textSecondary;
   };
 
-  const getValueForSort = (user: User) => {
+  const getValueForSort = (user: UserWithXP) => {
     switch (sortBy) {
       case 'xp':
-        return user.stats?.xpPoints || user.xp || 0;
+        return user.centralizedXP;
       case 'level':
-        const xp = user.stats?.xpPoints || user.xp || 0;
-        return calculateLevelFromXP(xp);
+        return user.centralizedLevel;
       case 'tasksCompleted':
         return user.stats?.tasksCompleted || (user.completedTasks ? user.completedTasks.length : 0);
       default:
@@ -129,10 +147,10 @@ export default function RankingsScreen() {
     }
   };
 
-  const renderUserCard = ({ item, index }: { item: User; index: number }) => {
+  const renderUserCard = ({ item, index }: { item: UserWithXP; index: number }) => {
     const isCurrentUser = currentUser && item.uid === currentUser.uid;
-    const xp = item.stats?.xpPoints || item.xp || 0;
-    const calculatedLevel = calculateLevelFromXP(xp);
+    const xp = item.centralizedXP;
+    const level = item.centralizedLevel;
     
     return (
       <Card 
@@ -187,7 +205,7 @@ export default function RankingsScreen() {
               
               <View style={styles.statItem}>
                 <Award size={16} color={colors.primary} />
-                <Text style={styles.statText}>Seviye {calculatedLevel}</Text>
+                <Text style={styles.statText}>Seviye {level}</Text>
               </View>
             </View>
             

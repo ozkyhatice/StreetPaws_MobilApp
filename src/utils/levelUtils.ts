@@ -8,7 +8,19 @@
  * @returns The user's level
  */
 export const calculateLevelFromXP = (xp: number): number => {
-  return Math.floor(xp / 100) + 1;
+  // Implement a more challenging leveling system with progressive difficulty
+  if (xp < 100) return 1; // Level 1 remains at 0-99 XP
+  
+  // For higher levels, use binary search to find the level
+  let level = 1;
+  let totalXpRequired = 0;
+  
+  while (totalXpRequired <= xp) {
+    level++;
+    totalXpRequired += Math.floor(100 * Math.pow(2.5, level - 1));
+  }
+  
+  return level - 1; // Subtract 1 because we went one level too far
 };
 
 /**
@@ -18,7 +30,14 @@ export const calculateLevelFromXP = (xp: number): number => {
  */
 export const calculateXpForLevel = (level: number): number => {
   if (level <= 1) return 0;
-  return 100 * (level - 1);
+  
+  // Calculate the total XP required to reach this level
+  let totalXp = 0;
+  for (let i = 1; i < level; i++) {
+    totalXp += Math.floor(100 * Math.pow(2.5, i - 1));
+  }
+  
+  return totalXp;
 };
 
 /**
@@ -27,7 +46,7 @@ export const calculateXpForLevel = (level: number): number => {
  * @returns XP amount required for the next level
  */
 export const calculateXpForNextLevel = (level: number): number => {
-  return 100 * level;
+  return calculateXpForLevel(level + 1);
 };
 
 /**

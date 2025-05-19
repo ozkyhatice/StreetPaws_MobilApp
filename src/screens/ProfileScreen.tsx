@@ -61,6 +61,11 @@ const ProfileScreen = () => {
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [profileImage, setProfileImage] = useState(null);
 
+  // Initialize services
+  const xpService = XPService.getInstance();
+  const taskService = TaskService.getInstance();
+  const badgeService = BadgeService.getInstance();
+
   const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
 
   const formatDateWithSlashes = (text: string) => {
@@ -92,23 +97,22 @@ const ProfileScreen = () => {
     if (!user?.uid) return;
     
     try {
-      const taskService = TaskService.getInstance();
-      const allTasks = await taskService.getTasks();
+      // Get accurate XP data from the central XP service
+      try {
+        const centralizedXP = await xpService.getCentralizedXP(user.uid);
       
-      // Count only tasks that are COMPLETED and completed by this user
-      const completedTasks = allTasks.filter(task => 
-        task.status === 'COMPLETED' && 
-        task.completedBy?.id === user.uid
-      );
-      
-      setActualCompletedTaskCount(completedTasks.length);
-      
-      // Calculate total XP from completed tasks - this should match CompletedTasksScreen
-      const totalXP = completedTasks.reduce((sum, task) => sum + (task.xpReward || 0), 0);
-      console.log("ProfileScreen - Calculated XP from completed tasks:", totalXP);
-      
-      // Update the XP value to match the one calculated from completed tasks
-      setActualXP(totalXP);
+        // Use the XP value calculated by the XP service
+        setActualXP(centralizedXP.xp);
+        
+        // Get accurate completed tasks count
+        const taskProgress = await xpService.getTaskProgress(user.uid);
+        setActualCompletedTaskCount(taskProgress.completedTasks);
+        
+        console.log(`ProfileScreen - Updated stats: Tasks=${taskProgress.completedTasks}, XP=${centralizedXP.xp}`);
+      } catch (error) {
+        console.error('Error getting XP and task data:', error);
+        // Keep existing values in case of error
+      }
     } catch (error) {
       console.error('Error loading task stats:', error);
     }
@@ -133,14 +137,16 @@ const ProfileScreen = () => {
           const userData = userDoc.data();
           setUserData(userData);
           
-          // XP verilerini al
-          const xpService = XPService.getInstance();
-          const userXpData = await xpService.getUserXP(user.uid);
-          setXpData(userXpData);
-          
-          // XP değerini ayarla - loadTaskStats fonksiyonu doğru XP değerini ayarlayacak
-          // Burada userData.xp değerini kullanmıyoruz çünkü bu değer tamamlanan görevlerden 
-          // hesaplanan değerle eşleşmiyor olabilir
+          // Get centralized XP data - this calculates XP properly based on task difficulty
+          try {
+            const centralizedXP = await xpService.getCentralizedXP(user.uid);
+            setActualXP(centralizedXP.xp);
+            console.log(`ProfileScreen - XP loaded: ${centralizedXP.xp}`);
+          } catch (xpError) {
+            console.error('Error getting centralized XP:', xpError);
+            // Use fallback from user data if available
+            setActualXP(userData.xp || 0);
+          }
           
           // Profil resmini ayarla
           if (userData.photoURL) {
@@ -152,22 +158,25 @@ const ProfileScreen = () => {
             setBadges(userData.badges);
           }
           
-          // Görev istatistiklerini al - artık XPService'te kategori toplamını kullanıyoruz
+          // Görev istatistiklerini al
+          try {
           const taskProgress = await xpService.getTaskProgress(user.uid);
           
-          // XPService'ten gelen değeri doğrudan kullan, tekrar hesaplama yapma
-          console.log(`ProfileScreen - Setting task count to: ${taskProgress.completedTasks}`);
+            // Tamamlanan görev sayısını ayarla
           setActualCompletedTaskCount(taskProgress.completedTasks);
           
           // TaskStats'ı ayarla
           setTaskStats(taskProgress);
+            
+            console.log(`ProfileScreen - Tasks completed: ${taskProgress.completedTasks}`);
+          } catch (error) {
+            console.error('Error getting task progress:', error);
+            // Set fallback values
+            setActualCompletedTaskCount(userData.stats?.tasksCompleted || 0);
+          }
           
           // Rozetleri kontrol et ve gerekirse yeni rozetler ver
-          const badgeService = BadgeService.getInstance();
           await badgeService.checkAllCategoryBadges(user.uid);
-          
-          // Doğru XP değerini hesapla ve ayarla
-          await loadTaskStats();
         }
       } catch (error) {
         console.error('Error loading user data:', error);
@@ -299,7 +308,6 @@ const ProfileScreen = () => {
 
   const handleTestBadge = async () => {
     try {
-      const badgeService = BadgeService.getInstance();
       await badgeService.awardTestBadge(user.uid);
       Alert.alert('Başarılı', 'Test rozeti eklendi!');
     } catch (error) {
@@ -310,8 +318,6 @@ const ProfileScreen = () => {
 
   const handleTestBadgeLevelUp = async () => {
     try {
-      const badgeService = BadgeService.getInstance();
-      
       // First, check if user has any badges
       if (badges.length === 0) {
         // Award a test badge first
@@ -339,17 +345,36 @@ const ProfileScreen = () => {
     }
   };
 
+  const handleTestXPTasksSync = async () => {
+    if (!user?.uid) {
+      Alert.alert('Hata', 'Kullanıcı kimliği bulunamadı');
+      return;
+    }
+    
+    try {
+      // XP ve Görev verilerini al
+      const xpData = await xpService.getCentralizedXP(user.uid);
+      const taskProgress = await xpService.getTaskProgress(user.uid);
+      
+      // XP ve görev sayısı aynı olmalı
+      const isSync = xpData.xp === taskProgress.completedTasks;
+      
+      Alert.alert(
+        isSync ? 'Senkronize' : 'Senkronize Değil',
+        `XP: ${xpData.xp}\nTamamlanan Görevler: ${taskProgress.completedTasks}\n\n${isSync ? 'XP ve görev sayısı eşleşiyor.' : 'XP ve görev sayısı eşleşmiyor!'}`
+      );
+    } catch (error) {
+      console.error('Error testing XP-Tasks sync:', error);
+      Alert.alert('Test Hatası', 'XP ve görev senkronizasyonu test edilirken bir hata oluştu');
+    }
+  };
+
   const renderProfileInfo = () => {
-    // Görev sayısını doğrudan actualCompletedTaskCount'tan al
-    // Tekrar hesaplama yapma, bu sayı zaten XPService'ten doğru şekilde alındı
+    // Get XP and completed tasks from the centralized service
     const completedTasksCount = actualCompletedTaskCount;
-    
-    // Debug için görev sayısını yazdır
-    console.log(`ProfileScreen - Rendering with task count: ${completedTasksCount}`);
-    
-    // actualXP değerini kullan - bu değer loadTaskStats() tarafından tamamlanan görevlerden hesaplanmış olmalı
     const currentXP = actualXP;
-    console.log(`ProfileScreen - Rendering with XP: ${currentXP}`);
+    
+    console.log(`ProfileScreen - Rendering profile with Tasks=${completedTasksCount}, XP=${currentXP}`);
     
     const currentLevel = calculateLevelFromXP(currentXP);
     const progress = calculateProgressValue(currentXP, currentLevel);
@@ -854,6 +879,18 @@ const ProfileScreen = () => {
 
       {renderEditModal()}
       {renderLevelUpModal()}
+
+      {__DEV__ && (
+        <View style={styles.testButtonContainer}>
+          <Button 
+            mode="outlined" 
+            onPress={handleTestXPTasksSync}
+            style={[styles.testButton, { marginTop: 8 }]}
+          >
+            XP-Görev Senkronizasyonu
+          </Button>
+        </View>
+      )}
     </SafeAreaView>
   );
 };

@@ -1,6 +1,8 @@
 import { db } from '../config/firebase';
 import { collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, arrayUnion, arrayRemove, Timestamp, orderBy, serverTimestamp, increment } from 'firebase/firestore';
 import { Community, CommunityCategory } from '../types/community';
+import { NotificationService } from './notificationService';
+import { UserService } from './userService';
 
 export class CommunityService {
   private static instance: CommunityService;
@@ -248,10 +250,40 @@ export class CommunityService {
           membersCount: (communityData.membersCount || 0) + 1
         });
       } else {
+        // Store the timestamp for the join request
+        const timestamp = Timestamp.now();
+        const joinRequestsTimestamps = { 
+          ...(communityData.joinRequestsTimestamps || {}),
+          [userId]: timestamp 
+        };
+        
         // Create a join request
         await updateDoc(communityRef, {
-          joinRequests: arrayUnion(userId)
+          joinRequests: arrayUnion(userId),
+          joinRequestsTimestamps: joinRequestsTimestamps
         });
+        
+        // Send notification to community admins
+        if (communityData.admins && communityData.admins.length > 0) {
+          const userService = UserService.getInstance();
+          const userData = await userService.getUserById(userId);
+          const notificationService = NotificationService.getInstance();
+          
+          // Send notification to each admin
+          for (const adminId of communityData.admins) {
+            await notificationService.sendNotification({
+              userId: adminId,
+              title: 'Yeni Katılım İsteği',
+              message: `${userData?.displayName || 'Bir kullanıcı'} "${communityData.name}" topluluğuna katılmak istiyor.`,
+              type: 'info',
+              data: { 
+                communityId,
+                userId,
+                actionType: 'JOIN_REQUEST' 
+              }
+            });
+          }
+        }
       }
     } catch (error) {
       console.error('Error joining community:', error);
@@ -345,11 +377,34 @@ export class CommunityService {
         throw new Error('No join request found for this user');
       }
       
+      // Remove timestamp from joinRequestsTimestamps
+      const joinRequestsTimestamps = { ...communityData.joinRequestsTimestamps };
+      if (joinRequestsTimestamps && joinRequestsTimestamps[userId]) {
+        delete joinRequestsTimestamps[userId];
+      }
+      
       // Add to members, remove from join requests
       await updateDoc(communityRef, {
         members: arrayUnion(userId),
         joinRequests: arrayRemove(userId),
+        joinRequestsTimestamps: joinRequestsTimestamps,
         membersCount: (communityData.membersCount || 0) + 1
+      });
+      
+      // Send notification to user
+      const notificationService = NotificationService.getInstance();
+      const userService = UserService.getInstance();
+      const adminData = await userService.getUserById(adminId);
+      
+      await notificationService.sendNotification({
+        userId: userId,
+        title: 'Katılım İsteği Onaylandı',
+        message: `"${communityData.name}" topluluğuna katılım isteğiniz onaylandı.`,
+        type: 'success',
+        data: { 
+          communityId,
+          actionType: 'JOIN_REQUEST_APPROVED' 
+        }
       });
     } catch (error) {
       console.error('Error approving join request:', error);
@@ -544,7 +599,7 @@ export class CommunityService {
   }
   
   /**
-   * Topluluğun ismini, açıklamasını veya ayarlarını değiştirmek için
+   * Topluluğun ismini, açıklamasını ve ayarlarını değiştirmek için
    * @param communityId Topluluk kimliği
    * @param updates Güncellenecek alanlar
    * @param adminId İşlemi yapan yönetici kimliği
@@ -1063,9 +1118,15 @@ export class CommunityService {
   /**
    * Topluluk için davet bağlantısı oluşturur veya var olan bağlantıyı getirir
    * @param communityId Topluluk ID'si
+   * @param expireHours Davet kodunun geçerlilik süresi (saat olarak, 0=sınırsız)
+   * @param usageLimit Davet kodunun kullanım limiti (0=sınırsız)
    * @returns Topluluk için bağlantı kodu ve tam URL
    */
-  async generateInviteLink(communityId: string): Promise<{inviteCode: string, inviteLink: string, webLink: string}> {
+  async generateInviteLink(
+    communityId: string, 
+    expireHours: number = 0, 
+    usageLimit: number = 0
+  ): Promise<{inviteCode: string, inviteLink: string, webLink: string}> {
     try {
       const communityRef = doc(db, this.communitiesCollection, communityId);
       const communitySnap = await getDoc(communityRef);
@@ -1076,8 +1137,8 @@ export class CommunityService {
       
       const communityData = communitySnap.data() as Community;
       
-      // Eğer zaten bir davet kodu varsa, onu kullan
-      if (communityData.inviteCode) {
+      // Eğer zaten bir davet kodu varsa ve hala geçerliyse, onu kullan
+      if (communityData.inviteCode && this.isInviteCodeValid(communityData)) {
         return {
           inviteCode: communityData.inviteCode,
           inviteLink: `comunity://invite/${communityData.inviteCode}`,
@@ -1092,9 +1153,20 @@ export class CommunityService {
         inviteCode += codeChars.charAt(Math.floor(Math.random() * codeChars.length));
       }
       
+      // Süre sınırı varsa, son geçerlilik tarihini hesapla
+      let expiry = null;
+      if (expireHours > 0) {
+        const expiryDate = new Date();
+        expiryDate.setHours(expiryDate.getHours() + expireHours);
+        expiry = Timestamp.fromDate(expiryDate);
+      }
+      
       // Davet kodunu topluluğa kaydet
       await updateDoc(communityRef, {
-        inviteCode: inviteCode
+        inviteCode: inviteCode,
+        inviteCodeExpiry: expiry,
+        inviteCodeUsageLimit: usageLimit,
+        inviteCodeUsageCount: 0
       });
       
       // Web URL ve derin bağlantı formatında davet linki oluştur
@@ -1105,6 +1177,97 @@ export class CommunityService {
     } catch (error) {
       console.error('Davet bağlantısı oluşturulurken hata oluştu:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Bir topluluk için davet kodunun geçerli olup olmadığını kontrol eder
+   * @param community - Topluluk verisi
+   * @returns Davet kodunun geçerli olup olmadığı
+   */
+  private isInviteCodeValid(community: Community): boolean {
+    // Davet kodu yoksa geçersiz
+    if (!community.inviteCode) return false;
+    
+    // Süre kontrolü
+    if (community.inviteCodeExpiry) {
+      const now = new Date();
+      const expiry = community.inviteCodeExpiry.toDate ? 
+        community.inviteCodeExpiry.toDate() : 
+        new Date(community.inviteCodeExpiry);
+      
+      if (now > expiry) return false;
+    }
+    
+    // Kullanım limiti kontrolü
+    if (community.inviteCodeUsageLimit && community.inviteCodeUsageCount) {
+      if (community.inviteCodeUsageLimit > 0 && 
+          community.inviteCodeUsageCount >= community.inviteCodeUsageLimit) {
+        return false;
+      }
+    }
+    
+    return true;
+  }
+
+  /**
+   * Davet kodu ile topluluğa katılır
+   * @param inviteCode Topluluk davet kodu
+   * @param userId Katılacak kullanıcı ID'si
+   * @returns Başarı durumu ve mesaj
+   */
+  async joinCommunityByInviteCode(inviteCode: string, userId: string): Promise<{success: boolean, message: string, communityId?: string}> {
+    try {
+      // Önce davet kodunu doğrula
+      const communityId = await this.validateInviteCode(inviteCode);
+      
+      if (!communityId) {
+        return { success: false, message: 'Geçersiz davet kodu veya topluluk bulunamadı' };
+      }
+      
+      // Topluluğu kontrol et
+      const communityRef = doc(db, this.communitiesCollection, communityId);
+      const communitySnap = await getDoc(communityRef);
+      
+      if (!communitySnap.exists()) {
+        return { success: false, message: 'Topluluk bulunamadı' };
+      }
+      
+      const communityData = communitySnap.data() as Community;
+      
+      // Davet kodunun geçerliliğini kontrol et
+      if (!this.isInviteCodeValid(communityData)) {
+        return { success: false, message: 'Bu davet kodunun süresi dolmuş veya kullanım limiti aşılmış' };
+      }
+      
+      // Kullanıcı zaten üye mi kontrol et
+      if (communityData.members.includes(userId)) {
+        return { success: false, message: 'Zaten bu topluluğun üyesisiniz', communityId };
+      }
+      
+      // Kullanıcı yasaklı mı kontrol et
+      const bannedMembers = communityData.bannedMembers || [];
+      const isBanned = bannedMembers.some((banned: any) => banned.userId === userId);
+      
+      if (isBanned) {
+        return { success: false, message: 'Bu topluluktan yasaklandınız' };
+      }
+      
+      // Topluluğa katılma işlemi
+      await updateDoc(communityRef, {
+        members: arrayUnion(userId),
+        membersCount: increment(1),
+        inviteCodeUsageCount: increment(1)
+      });
+      
+      return { 
+        success: true, 
+        message: 'Topluluğa başarıyla katıldınız', 
+        communityId 
+      };
+    } catch (error) {
+      console.error('Davet kodu ile katılırken hata oluştu:', error);
+      return { success: false, message: 'İşlem sırasında bir hata oluştu' };
     }
   }
 
@@ -1134,67 +1297,19 @@ export class CommunityService {
   }
 
   /**
-   * Davet kodu ile topluluğa katılır
-   * @param inviteCode Topluluk davet kodu
-   * @param userId Katılacak kullanıcı ID'si
-   * @returns Başarı durumu ve mesaj
-   */
-  async joinCommunityByInviteCode(inviteCode: string, userId: string): Promise<{success: boolean, message: string, communityId?: string}> {
-    try {
-      // Önce davet kodunu doğrula
-      const communityId = await this.validateInviteCode(inviteCode);
-      
-      if (!communityId) {
-        return { success: false, message: 'Geçersiz davet kodu veya topluluk bulunamadı' };
-      }
-      
-      // Topluluğu kontrol et
-      const communityRef = doc(db, this.communitiesCollection, communityId);
-      const communitySnap = await getDoc(communityRef);
-      
-      if (!communitySnap.exists()) {
-        return { success: false, message: 'Topluluk bulunamadı' };
-      }
-      
-      const communityData = communitySnap.data() as Community;
-      
-      // Kullanıcı zaten üye mi kontrol et
-      if (communityData.members.includes(userId)) {
-        return { success: false, message: 'Zaten bu topluluğun üyesisiniz', communityId };
-      }
-      
-      // Kullanıcı yasaklı mı kontrol et
-      const bannedMembers = communityData.bannedMembers || [];
-      const isBanned = bannedMembers.some((banned: any) => banned.userId === userId);
-      
-      if (isBanned) {
-        return { success: false, message: 'Bu topluluktan yasaklandınız' };
-      }
-      
-      // Topluluğa katılma işlemi
-      await updateDoc(communityRef, {
-        members: arrayUnion(userId),
-        membersCount: increment(1)
-      });
-      
-      return { 
-        success: true, 
-        message: 'Topluluğa başarıyla katıldınız', 
-        communityId 
-      };
-    } catch (error) {
-      console.error('Davet kodu ile katılırken hata oluştu:', error);
-      return { success: false, message: 'İşlem sırasında bir hata oluştu' };
-    }
-  }
-
-  /**
    * Topluluk davet kodunu sıfırlar
    * @param communityId Topluluk ID'si
    * @param adminId İşlemi yapan yönetici ID'si
+   * @param expireHours Davet kodunun geçerlilik süresi (saat olarak, 0=sınırsız)
+   * @param usageLimit Davet kodunun kullanım limiti (0=sınırsız)
    * @returns Başarı durumu ve mesaj
    */
-  async resetInviteLink(communityId: string, adminId: string): Promise<{success: boolean, message: string, inviteCode?: string, inviteLink?: string, webLink?: string}> {
+  async resetInviteLink(
+    communityId: string, 
+    adminId: string,
+    expireHours: number = 0,
+    usageLimit: number = 0
+  ): Promise<{success: boolean, message: string, inviteCode?: string, inviteLink?: string, webLink?: string}> {
     try {
       const communityRef = doc(db, this.communitiesCollection, communityId);
       const communitySnap = await getDoc(communityRef);
@@ -1210,28 +1325,15 @@ export class CommunityService {
         return { success: false, message: 'Bu işlemi yapmaya yetkiniz yok' };
       }
       
-      // Yeni davet kodu oluştur
-      const codeChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      let inviteCode = '';
-      for (let i = 0; i < 8; i++) {
-        inviteCode += codeChars.charAt(Math.floor(Math.random() * codeChars.length));
-      }
-      
-      // Davet kodunu güncelle
-      await updateDoc(communityRef, {
-        inviteCode: inviteCode
-      });
-      
-      // Web URL ve derin bağlantı formatında davet linki oluştur
-      const inviteLink = `comunity://invite/${inviteCode}`;
-      const webLink = `https://app.domain.com/invite/${inviteCode}`;
+      // Yeni davet bağlantısı oluştur
+      const linkData = await this.generateInviteLink(communityId, expireHours, usageLimit);
       
       return { 
         success: true, 
         message: 'Davet bağlantısı başarıyla sıfırlandı',
-        inviteCode,
-        inviteLink,
-        webLink
+        inviteCode: linkData.inviteCode,
+        inviteLink: linkData.inviteLink,
+        webLink: linkData.webLink
       };
     } catch (error) {
       console.error('Davet bağlantısı sıfırlanırken hata oluştu:', error);
@@ -1244,12 +1346,16 @@ export class CommunityService {
    * @param communityId Topluluk ID'si
    * @param username Davet edilecek kullanıcı adı
    * @param adminId İşlemi yapan yönetici ID'si
+   * @param expireHours Davet kodunun geçerlilik süresi (saat olarak, 0=sınırsız)
+   * @param usageLimit Davet kodunun kullanım limiti (0=sınırsız)
    * @returns Başarı durumu ve mesaj
    */
   async inviteUserByUsername(
     communityId: string,
     username: string,
-    adminId: string
+    adminId: string,
+    expireHours: number = 72, // Varsayılan 3 gün
+    usageLimit: number = 1 // Varsayılan tek kullanımlık
   ): Promise<{success: boolean, message: string, inviteCode?: string, inviteLink?: string, webLink?: string}> {
     try {
       // Topluluk bilgilerini kontrol et
@@ -1291,20 +1397,156 @@ export class CommunityService {
         return { success: false, message: 'Bu kullanıcı topluluktan yasaklanmış' };
       }
       
-      // Davet bağlantısı oluştur
-      const linkData = await this.generateInviteLink(communityId);
+      // Davet bağlantısı oluştur - özelleştirilmiş davet kodu (süreli ve tek kullanımlık)
+      const linkData = await this.generateInviteLink(communityId, expireHours, usageLimit);
       
-      // TODO: Kullanıcıya bildirim veya e-posta gönderme işlemi eklenebilir
+      // Admin kullanıcı bilgilerini al
+      const adminUserRef = doc(db, 'users', adminId);
+      const adminUserSnap = await getDoc(adminUserRef);
+      const adminName = adminUserSnap.exists() 
+        ? adminUserSnap.data().displayName || 'Bir yönetici'
+        : 'Bir yönetici';
+      
+      // Kullanıcıya bildirim gönder
+      const notificationService = NotificationService.getInstance();
+      await notificationService.sendInvitationNotification(
+        userId,
+        adminName,
+        communityData.name,
+        linkData.inviteCode
+      );
+      
+      // Davet süresi bilgisi
+      let expiryInfo = '';
+      if (expireHours > 0) {
+        expiryInfo = ` (${expireHours} saat geçerli)`;
+      }
       
       return { 
         success: true, 
-        message: `${username} kullanıcısına davet bağlantısı oluşturuldu`,
+        message: `${username} kullanıcısına özel davet bağlantısı oluşturuldu ve bildirim gönderildi${expiryInfo}`,
         inviteCode: linkData.inviteCode,
         inviteLink: linkData.inviteLink,
         webLink: linkData.webLink
       };
     } catch (error) {
       console.error('Kullanıcı davet edilirken hata oluştu:', error);
+      return { success: false, message: 'İşlem sırasında bir hata oluştu' };
+    }
+  }
+
+  /**
+   * Yönetici olduğu toplulukların katılım isteklerini getirir
+   * @param adminId Yönetici ID'si
+   * @returns Katılım istekleri
+   */
+  async getJoinRequestsForAdmin(adminId: string): Promise<any[]> {
+    try {
+      // Kullanıcının yönetici olduğu toplulukları bul
+      const communitiesRef = collection(db, this.communitiesCollection);
+      const q = query(
+        communitiesRef,
+        where('admins', 'array-contains', adminId)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.empty) {
+        return [];
+      }
+      
+      const requests: any[] = [];
+      const userService = UserService.getInstance();
+      
+      // Her topluluktaki katılım isteklerini kontrol et
+      for (const doc of querySnapshot.docs) {
+        const communityData = doc.data() as Community;
+        
+        // Katılım istekleri varsa
+        if (communityData.joinRequests && communityData.joinRequests.length > 0) {
+          for (const userId of communityData.joinRequests) {
+            // Kullanıcı bilgilerini getir
+            const userData = await userService.getUserById(userId);
+            
+            if (userData) {
+              requests.push({
+                communityId: doc.id,
+                communityName: communityData.name,
+                communityPhotoURL: communityData.photoURL,
+                userId: userId,
+                userName: userData.displayName || userData.username || 'Kullanıcı',
+                userPhotoURL: userData.photoURL,
+                timestamp: communityData.joinRequestsTimestamps?.[userId] || new Date(),
+              });
+            }
+          }
+        }
+      }
+      
+      // Tarih sırasına göre sırala (en yeniler önce)
+      return requests.sort((a, b) => {
+        const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
+        const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+        return dateB - dateA;
+      });
+    } catch (error) {
+      console.error('Error getting join requests for admin:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Katılım isteğini reddeder
+   * @param communityId Topluluk ID'si
+   * @param userId Kullanıcı ID'si
+   * @param adminId İşlemi yapan yönetici ID'si
+   * @returns Başarı durumu ve mesaj
+   */
+  async rejectJoinRequest(communityId: string, userId: string, adminId: string): Promise<{success: boolean, message: string}> {
+    try {
+      const communityRef = doc(db, this.communitiesCollection, communityId);
+      const communitySnap = await getDoc(communityRef);
+      
+      if (!communitySnap.exists()) {
+        return { success: false, message: 'Topluluk bulunamadı' };
+      }
+      
+      const communityData = communitySnap.data() as Community;
+      
+      // Yönetici kontrolü
+      if (!this.isUserAdmin(communityData, adminId)) {
+        return { success: false, message: 'Bu işlemi yapmaya yetkiniz yok' };
+      }
+      
+      // İstek var mı kontrol et
+      if (!communityData.joinRequests?.includes(userId)) {
+        return { success: false, message: 'Bu kullanıcı için katılım isteği bulunamadı' };
+      }
+      
+      // Katılım isteğini kaldır
+      const joinRequestsTimestamps = { ...communityData.joinRequestsTimestamps };
+      if (joinRequestsTimestamps && joinRequestsTimestamps[userId]) {
+        delete joinRequestsTimestamps[userId];
+      }
+      
+      await updateDoc(communityRef, {
+        joinRequests: arrayRemove(userId),
+        joinRequestsTimestamps: joinRequestsTimestamps
+      });
+      
+      // Bildirim gönder
+      const notificationService = NotificationService.getInstance();
+      await notificationService.sendNotification({
+        userId: userId,
+        title: 'Katılım İsteği Reddedildi',
+        message: `"${communityData.name}" topluluğuna katılım isteğiniz reddedildi.`,
+        type: 'info',
+        data: { communityId }
+      });
+      
+      return { success: true, message: 'Katılım isteği reddedildi' };
+    } catch (error) {
+      console.error('Error rejecting join request:', error);
       return { success: false, message: 'İşlem sırasında bir hata oluştu' };
     }
   }

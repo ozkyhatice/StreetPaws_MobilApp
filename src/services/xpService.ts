@@ -1,8 +1,9 @@
 import { XPActivity, XP_REWARDS } from '../types/xp';
 import { db } from '../config/firebase';
-import { collection, doc, getDoc, updateDoc, increment, arrayUnion, query, where, orderBy, limit, getDocs, setDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, updateDoc, increment, arrayUnion, query, where, orderBy, limit, getDocs, setDoc, onSnapshot } from 'firebase/firestore';
 import { EmergencyLevel } from '../types/task';
 import { BadgeService } from './badgeService';
+import { calculateLevelFromXP, calculateProgressValue, calculateXpForNextLevel, calculateXpForLevel } from '../utils/levelUtils';
 
 interface UserXPData {
   userId: string;
@@ -22,22 +23,9 @@ interface UserXPData {
 }
 
 function calculateUserLevel(xp: number): { level: number; progress: number } {
-  const baseXP = 100;
-  const exponent = 1.5;
-  
-  let level = 1;
-  let xpForCurrentLevel = 0;
-  let xpForNextLevel = baseXP;
-  
-  while (xp >= xpForNextLevel) {
-    level++;
-    xpForCurrentLevel = xpForNextLevel;
-    xpForNextLevel += Math.floor(baseXP * Math.pow(level, exponent));
-  }
-  
-  const xpInCurrentLevel = xp - xpForCurrentLevel;
-  const xpRequiredForNextLevel = xpForNextLevel - xpForCurrentLevel;
-  const progress = xpInCurrentLevel / xpRequiredForNextLevel;
+  // Use the same formula as in levelUtils.ts
+  const level = calculateLevelFromXP(xp);
+  const progress = calculateProgressValue(xp, level);
   
   return { level, progress };
 }
@@ -46,6 +34,16 @@ export class XPService {
   private static instance: XPService;
   private readonly usersCollection = 'users';
   private readonly tasksCollection = 'tasks';
+  
+  // XP önbelleği - kullanıcıların XP değerlerini saklayarak tekrarlanan sorguları önler
+  private xpCache: Map<string, {
+    xp: number;
+    timestamp: number;
+    level: number;
+  }> = new Map();
+  
+  // XP değişikliklerini dinlemek için abonelik fonksiyonları
+  private xpListeners: Map<string, Function[]> = new Map();
 
   private constructor() {}
 
@@ -55,47 +53,151 @@ export class XPService {
     }
     return XPService.instance;
   }
+  
+  // Tüm ekranlarda tutarlı XP değerlerine erişmek için merkezi bir metot
+  async getCentralizedXP(userId: string): Promise<{
+    xp: number;
+    level: number;
+  }> {
+    try {
+      // Önbellekte son 30 saniye içinde yüklenmiş güncel veri varsa, onu kullan
+      const cached = this.xpCache.get(userId);
+      const now = Date.now();
+      if (cached && (now - cached.timestamp < 30000)) {
+        console.log(`XPService: Using cached XP for user ${userId}: ${cached.xp} (Level ${cached.level})`);
+        return {
+          xp: cached.xp,
+          level: cached.level
+        };
+      }
+      
+      // Kullanıcı belgesini al
+      const userRef = doc(db, this.usersCollection, userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        console.log(`XPService: User document not found for ${userId}, returning default values`);
+        return {
+          xp: 0,
+          level: 1
+        };
+      }
+      
+      const userData = userDoc.data();
+      
+      // Tamamlanan görevlerin XP'lerini topla
+      const taskCompletions = userData.taskCompletions || [];
+      const totalXP = taskCompletions.reduce((sum, task) => sum + (task.xp || 0), 0);
+      
+      // Seviyeyi hesapla
+      const level = calculateLevelFromXP(totalXP);
+      
+      // Önbelleğe al
+      this.xpCache.set(userId, {
+        xp: totalXP,
+        level,
+        timestamp: now
+      });
+      
+      console.log(`XPService: Calculated total XP from completed tasks for user ${userId}: ${totalXP} (Level ${level})`);
+      
+      return {
+        xp: totalXP,
+        level
+      };
+    } catch (error) {
+      console.error(`XPService: Error getting centralized XP: ${error}`);
+      return {
+        xp: 0,
+        level: 1
+      };
+    }
+  }
+  
+  // Belirli bir süre (varsayılan: 10 dakika) sonra önbelleği temizleyen metot
+  clearXPCache(userId?: string, timeout: number = 600000) {
+    if (userId) {
+      // Belirli bir kullanıcının önbelleğini temizle
+      setTimeout(() => {
+        this.xpCache.delete(userId);
+        console.log(`XPService: Cleared cache for user ${userId}`);
+      }, timeout);
+    } else {
+      // Tüm önbelleği temizle
+      setTimeout(() => {
+        this.xpCache.clear();
+        console.log(`XPService: Cleared entire XP cache`);
+      }, timeout);
+    }
+  }
+  
+  // XP değişikliklerini dinlemek için
+  subscribeToXPChanges(userId: string, callback: (xp: number, level: number) => void): () => void {
+    // Kullanıcının Firestore belgesini dinle
+    const userRef = doc(db, this.usersCollection, userId);
+    const unsubscribe = onSnapshot(userRef, (doc) => {
+      if (doc.exists()) {
+        const userData = doc.data();
+        const xp = userData?.xp || 0;
+        const level = calculateLevelFromXP(xp);
+        
+        // Önbelleği güncelle
+        this.xpCache.set(userId, {
+          xp,
+          level,
+          timestamp: Date.now()
+        });
+        
+        // Callback'i çağır
+        callback(xp, level);
+      }
+    }, (error) => {
+      console.error(`XPService: Error listening to XP changes for user ${userId}:`, error);
+    });
+    
+    // Dinleyici listesine ekle
+    if (!this.xpListeners.has(userId)) {
+      this.xpListeners.set(userId, []);
+    }
+    this.xpListeners.get(userId)?.push(callback);
+    
+    return unsubscribe;
+  }
+  
+  // Tüm dinleyicileri kaldır
+  unsubscribeAllXPListeners(userId: string): void {
+    this.xpListeners.delete(userId);
+  }
 
   async getUserXP(userId: string): Promise<UserXPData> {
+    // Öncelikle merkezi metodu kullan
+    const { xp, level } = await this.getCentralizedXP(userId);
+    
     const userDoc = await getDoc(doc(db, this.usersCollection, userId));
     const userData = userDoc.data();
     
-    if (!userData?.xp) {
-      return {
-        userId,
-        currentLevel: 1,
-        totalXP: 0,
-        level: 1,
-        currentLevelXP: 0,
-        xpToNextLevel: 100,
-        recentActivities: [],
-        taskCompletions: [],
-        streak: 0,
-        lastTaskCompletionDate: null
-      };
-    }
-
-    const { level, progress } = calculateUserLevel(userData.xp);
-    const nextLevelXP = Math.ceil((1 - progress) * 100);
+    const nextLevelXP = calculateXpForNextLevel(level);
+    const currentLevelXP = calculateXpForLevel(level);
+    const progress = calculateProgressValue(xp, level);
 
     return {
       userId,
       currentLevel: level,
-      totalXP: userData.xp,
+      totalXP: xp,
       level,
       currentLevelXP: Math.floor(progress * 100),
-      xpToNextLevel: nextLevelXP,
-      recentActivities: userData.recentActivities || [],
-      taskCompletions: userData.taskCompletions || [],
-      streak: userData.streak || 0,
-      lastTaskCompletionDate: userData.lastTaskCompletionDate || null
+      xpToNextLevel: nextLevelXP - currentLevelXP,
+      recentActivities: userData?.recentActivities || [],
+      taskCompletions: userData?.taskCompletions || [],
+      streak: userData?.streak || 0,
+      lastTaskCompletionDate: userData?.lastTaskCompletionDate || null
     };
   }
 
   async addXP(userId: string, activity: XPActivity): Promise<void> {
     try {
-      // XP ekleme aktivitesini loglama
-      console.log(`Adding XP to user ${userId}: ${activity.xpAmount} XP for ${activity.title}`);
+      // XP aktivitesini logla
+      console.log(`Adding XP activity to user ${userId}: ${activity.xpAmount} XP for ${activity.title}`);
       
       // Aktiviteye zaman damgası ekle
       const activityWithTimestamp = {
@@ -103,17 +205,29 @@ export class XPService {
         timestamp: new Date().toISOString()
       };
       
+      // Görev tamamlama kaydı olarak ekle
+      const taskCompletion = {
+        taskId: `activity_${Date.now()}`,
+        xp: activity.xpAmount,
+        timestamp: new Date().toISOString(),
+        title: activity.title,
+        isEmergency: false
+      };
+      
       // Firestore güncellemesi
       const userRef = doc(db, this.usersCollection, userId);
       
       await updateDoc(userRef, {
-        xp: increment(activity.xpAmount),
-        recentActivities: arrayUnion(activityWithTimestamp)
+        recentActivities: arrayUnion(activityWithTimestamp),
+        taskCompletions: arrayUnion(taskCompletion)
       });
       
-      console.log(`XPService: Successfully added ${activity.xpAmount} XP to user ${userId}`);
+      // XP önbelleğini temizle
+      this.xpCache.delete(userId);
+      
+      console.log(`XPService: Added activity for user ${userId}: ${activity.title}`);
     } catch (error) {
-      console.error(`XPService: Error adding XP to user ${userId}: ${error.message}`);
+      console.error(`XPService: Error adding XP activity for user ${userId}: ${error.message}`);
     }
   }
 
@@ -125,10 +239,10 @@ export class XPService {
     emergencyLevel?: EmergencyLevel
   ): Promise<void> {
     try {
-      // Temel XP ekle
+      // Temel XP hesapla
       let xpAmount = XP_REWARDS.TASK_COMPLETION;
       
-      // Acil durum ise ekstra XP ekle
+      // Acil durum için ekstra XP
       if (isEmergency && emergencyLevel) {
         if (emergencyLevel === 'URGENT') {
           xpAmount += XP_REWARDS.EMERGENCY_TASK_URGENT;
@@ -137,17 +251,9 @@ export class XPService {
         }
       }
       
-      console.log(`Adding task completion XP: ${xpAmount} for task "${taskTitle}"`);
+      console.log(`Adding task completion for user ${userId}: "${taskTitle}" (XP: ${xpAmount})`);
       
-      // XP ekle
-      await this.addXP(userId, {
-        title: 'Görev Tamamlandı',
-        description: `"${taskTitle}" görevi başarıyla tamamlandı`,
-        xpAmount: xpAmount,
-        type: 'TASK_COMPLETION',
-      });
-      
-      // Görev tamamlama kaydı - null veya undefined değer olmamasını sağla
+      // Görev tamamlama kaydı
       const taskCompletion = {
         taskId: taskId || 'unknown',
         xp: xpAmount,
@@ -156,16 +262,15 @@ export class XPService {
         title: taskTitle || 'Görev'
       };
       
-      // Kullanıcı belgesini kontrol et, yoksa oluştur
+      // Kullanıcı belgesini kontrol et
       const userRef = doc(db, this.usersCollection, userId);
       const userDoc = await getDoc(userRef);
       
       if (!userDoc.exists()) {
         console.log(`XPService: User does not exist, creating new document for user ${userId}`);
-        // Kullanıcı belgesi yoksa yeni oluştur
+        // Yeni kullanıcı belgesi oluştur
         await setDoc(userRef, {
           userId: userId,
-          xp: xpAmount,
           recentActivities: [],
           taskCompletions: [taskCompletion],
           stats: {
@@ -174,16 +279,20 @@ export class XPService {
           lastTaskCompletionDate: new Date().toISOString()
         });
       } else {
-        // Kullanıcı belgesi varsa güncelle
+        // Mevcut kullanıcı belgesini güncelle
         await updateDoc(userRef, {
           taskCompletions: arrayUnion(taskCompletion),
-          lastTaskCompletionDate: new Date().toISOString()
+          lastTaskCompletionDate: new Date().toISOString(),
+          'stats.tasksCompleted': increment(1)
         });
       }
       
+      // XP önbelleğini temizle
+      this.xpCache.delete(userId);
+      
       console.log(`XPService: Updated user ${userId} with task completion data`);
       
-      // Çoklu görev ödüllerini kontrol et
+      // Çoklu görev bonuslarını kontrol et
       await this.checkAndAddMultipleTaskBonus(userId);
     } catch (error) {
       console.error(`XPService: Error in addTaskCompletionXP for user ${userId}: ${error.message}`);

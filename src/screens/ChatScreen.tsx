@@ -13,6 +13,7 @@ import {
   Keyboard,
   Alert,
   Modal,
+  Linking,
 } from 'react-native';
 import { Text, TextInput, Avatar, IconButton, Divider, Badge, Dialog, Portal, Button } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -559,8 +560,30 @@ export default function ChatScreen() {
             <TouchableOpacity 
               style={styles.linkPreviewContainer}
               onPress={() => {
-                // Here you would open the link using Linking API
-                Alert.alert('Bağlantı', item.content);
+                const url = item.content;
+                // Check if it's a community invite link
+                if (url.includes('/invite/')) {
+                  // Extract invite code
+                  const inviteCode = url.split('/invite/')[1];
+                  if (inviteCode) {
+                    // Navigate to JoinByInvite screen with the code
+                    navigation.navigate('JoinByInvite', { inviteCode });
+                  } else {
+                    Alert.alert('Hata', 'Geçersiz davet bağlantısı');
+                  }
+                } else {
+                  // For regular URLs, open with Linking API
+                  Linking.canOpenURL(url).then(supported => {
+                    if (supported) {
+                      Linking.openURL(url);
+                    } else {
+                      Alert.alert('Hata', 'Bu bağlantı açılamıyor: ' + url);
+                    }
+                  }).catch(err => {
+                    console.error('Bağlantı açılırken hata oluştu:', err);
+                    Alert.alert('Hata', 'Bağlantı açılırken bir sorun oluştu');
+                  });
+                }
               }}
             >
               <View style={styles.linkContent}>

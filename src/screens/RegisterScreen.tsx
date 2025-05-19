@@ -13,7 +13,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Modal
+  Modal,
+  Dimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -22,9 +23,11 @@ import { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../config/theme';
+import { colors } from '../theme/colors';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+
+const { width } = Dimensions.get('window');
 
 type RegisterScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -153,7 +156,7 @@ const RegisterScreen = () => {
     >
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
-          <Ionicons name="mail-outline" size={50} color={colors.primary} style={styles.modalIcon} />
+          <Ionicons name="mail-outline" size={50} color={colors.primary.main} style={styles.modalIcon} />
           <Text style={styles.modalTitle}>E-posta Doğrulaması</Text>
           <Text style={styles.modalText}>
             Kaydınız başarıyla oluşturuldu. Lütfen {formData.email} adresine gönderilen doğrulama e-postasını kontrol edin.
@@ -184,7 +187,7 @@ const RegisterScreen = () => {
       style={styles.container}
     >
       <LinearGradient
-        colors={['#FFD1DC', '#F7CAC9', '#F0E68C']}
+        colors={[colors.background.primary, colors.background.secondary, colors.background.tertiary]}
         style={styles.gradient}
       >
         <ScrollView 
@@ -192,147 +195,168 @@ const RegisterScreen = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoContainer}>
-            <Image source={require('../assets/register.png')} style={styles.logo} />
-            <Text style={styles.title}>Kayıt Ol</Text>
-            <Text style={styles.subtitle}>Sokak Dostları ailesine katıl</Text>
+            <LinearGradient
+              colors={[colors.primary.light, colors.primary.main]}
+              style={styles.logoBackground}
+            >
+              <Image source={require('../assets/register.png')} style={styles.logo} />
+            </LinearGradient>
+            <Text style={styles.title}>Sokak Dostlarına Katıl</Text>
+            <Text style={styles.subtitle}>Yardıma ihtiyacı olan dostlarımız için bir adım at</Text>
           </View>
 
           <View style={styles.formContainer}>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="person-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Kullanıcı Adı"
-                placeholderTextColor="#B5838D"
-                value={formData.username}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, username: text }))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="person-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Ad"
-                placeholderTextColor="#B5838D"
-                value={formData.firstName}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, firstName: text }))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="person-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Soyad"
-                placeholderTextColor="#B5838D"
-                value={formData.lastName}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, lastName: text }))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="calendar-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Doğum Tarihi (GG/AA/YYYY)"
-                placeholderTextColor="#B5838D"
-                value={formData.dateOfBirth}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, dateOfBirth: text }))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="location-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Şehir"
-                placeholderTextColor="#B5838D"
-                value={formData.city}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, city: text }))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="document-text-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={[styles.input, styles.bioInput]}
-                placeholder="Hakkında"
-                placeholderTextColor="#B5838D"
-                value={formData.bio}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, bio: text }))}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="mail-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="E-posta"
-                placeholderTextColor="#B5838D"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                value={formData.email}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="call-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Telefon (İsteğe bağlı)"
-                placeholderTextColor="#B5838D"
-                keyboardType="phone-pad"
-                value={formData.phoneNumber}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, phoneNumber: text }))}
-              />
-            </View>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Şifre"
-                placeholderTextColor="#B5838D"
-                secureTextEntry={!showPassword}
-                value={formData.password}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, password: text }))}
-              />
-              <TouchableOpacity 
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-              >
-                <Ionicons 
-                  name={showPassword ? "eye-outline" : "eye-off-outline"}
-                  size={20}
-                  color="#B5838D"
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>Kişisel Bilgiler</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Kullanıcı Adı"
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.username}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, username: text }))}
                 />
-              </TouchableOpacity>
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.inputWrapper, styles.halfInput]}>
+                  <Ionicons name="person-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Ad"
+                    placeholderTextColor={colors.text.tertiary}
+                    value={formData.firstName}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, firstName: text }))}
+                  />
+                </View>
+
+                <View style={[styles.inputWrapper, styles.halfInput]}>
+                  <Ionicons name="person-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Soyad"
+                    placeholderTextColor={colors.text.tertiary}
+                    value={formData.lastName}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, lastName: text }))}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.rowContainer}>
+                <View style={[styles.inputWrapper, styles.halfInput]}>
+                  <Ionicons name="calendar-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Doğum Tarihi"
+                    placeholderTextColor={colors.text.tertiary}
+                    value={formData.dateOfBirth}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, dateOfBirth: text }))}
+                  />
+                </View>
+
+                <View style={[styles.inputWrapper, styles.halfInput]}>
+                  <Ionicons name="location-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Şehir"
+                    placeholderTextColor={colors.text.tertiary}
+                    value={formData.city}
+                    onChangeText={(text) => setFormData(prev => ({ ...prev, city: text }))}
+                  />
+                </View>
+              </View>
             </View>
 
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed-outline" size={20} color="#B5838D" style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Şifre Tekrar"
-                placeholderTextColor="#B5838D"
-                secureTextEntry={!showConfirmPassword}
-                value={formData.confirmPassword}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, confirmPassword: text }))}
-              />
-              <TouchableOpacity 
-                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                style={styles.eyeIcon}
-              >
-                <Ionicons 
-                  name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
-                  size={20}
-                  color="#B5838D"
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>İletişim Bilgileri</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="E-posta"
+                  placeholderTextColor={colors.text.tertiary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={formData.email}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, email: text }))}
                 />
-              </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Ionicons name="call-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Telefon (İsteğe bağlı)"
+                  placeholderTextColor={colors.text.tertiary}
+                  keyboardType="phone-pad"
+                  value={formData.phoneNumber}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, phoneNumber: text }))}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>Profil Bilgileri</Text>
+              <View style={[styles.inputWrapper, styles.bioWrapper]}>
+                <Ionicons name="document-text-outline" size={20} color={colors.primary.main} style={[styles.inputIcon, styles.bioIcon]} />
+                <TextInput
+                  style={[styles.input, styles.bioInput]}
+                  placeholder="Kendini tanıt..."
+                  placeholderTextColor={colors.text.tertiary}
+                  value={formData.bio}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, bio: text }))}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>Güvenlik</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Şifre"
+                  placeholderTextColor={colors.text.tertiary}
+                  secureTextEntry={!showPassword}
+                  value={formData.password}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, password: text }))}
+                />
+                <TouchableOpacity 
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                >
+                  <Ionicons 
+                    name={showPassword ? "eye-outline" : "eye-off-outline"}
+                    size={20}
+                    color={colors.primary.main}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color={colors.primary.main} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Şifre Tekrar"
+                  placeholderTextColor={colors.text.tertiary}
+                  secureTextEntry={!showConfirmPassword}
+                  value={formData.confirmPassword}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, confirmPassword: text }))}
+                />
+                <TouchableOpacity 
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                  style={styles.eyeIcon}
+                >
+                  <Ionicons 
+                    name={showConfirmPassword ? "eye-outline" : "eye-off-outline"}
+                    size={20}
+                    color={colors.primary.main}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -340,18 +364,23 @@ const RegisterScreen = () => {
               onPress={handleRegister}
               disabled={isLoading}
             >
-              {isLoading ? (
-                <ActivityIndicator color="#6D435A" />
-              ) : (
-                <Text style={styles.buttonText}>Kayıt Ol</Text>
-              )}
+              <LinearGradient
+                colors={[colors.primary.main, colors.primary.dark]}
+                style={styles.buttonGradient}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color={colors.text.inverse} />
+                ) : (
+                  <Text style={styles.buttonText}>Kayıt Ol</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
 
             <TouchableOpacity 
               onPress={() => navigation.navigate('Login')}
               style={styles.loginLink}
             >
-              <Text style={styles.linkText}>Zaten hesabınız var mı? Giriş yapın</Text>
+              <Text style={styles.linkText}>Zaten hesabın var mı? <Text style={styles.linkTextBold}>Giriş yap</Text></Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -370,77 +399,127 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 20,
   },
   logoContainer: {
     alignItems: 'center',
     marginBottom: 30,
   },
+  logoBackground: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   logo: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 15,
+    width: 80,
+    height: 80,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#6D435A',
+    color: colors.text.primary,
     marginBottom: 10,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    color: '#6D435A',
-    marginBottom: 20,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: 30,
   },
   formContainer: {
+    width: '100%',
+  },
+  formSection: {
+    marginBottom: 25,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 15,
+  },
+  rowContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     width: '100%',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderRadius: 10,
+    backgroundColor: colors.background.secondary,
+    borderRadius: 12,
     marginBottom: 15,
     paddingHorizontal: 15,
     height: 50,
+    shadowColor: colors.utility.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  halfInput: {
+    width: (width - 50) / 2,
   },
   inputIcon: {
-    width: 20,
+    width: 24,
     textAlign: 'center',
   },
   input: {
     flex: 1,
     marginLeft: 10,
-    color: '#6D435A',
+    color: colors.text.primary,
     fontSize: 16,
   },
+  bioWrapper: {
+    height: 100,
+    alignItems: 'flex-start',
+  },
+  bioIcon: {
+    marginTop: 12,
+  },
+  bioInput: {
+    height: 80,
+    textAlignVertical: 'top',
+    paddingTop: 12,
+  },
   eyeIcon: {
-    padding: 10,
+    padding: 8,
   },
   button: {
-    backgroundColor: '#FFB6C1',
-    borderRadius: 25,
-    padding: 15,
-    alignItems: 'center',
+    borderRadius: 12,
     marginTop: 10,
-    marginBottom: 15,
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  buttonGradient: {
+    paddingVertical: 15,
+    alignItems: 'center',
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonText: {
-    color: '#6D435A',
+    color: colors.text.inverse,
     fontSize: 18,
     fontWeight: 'bold',
   },
   loginLink: {
     alignItems: 'center',
+    marginBottom: 20,
   },
   linkText: {
-    color: '#6D435A',
+    color: colors.text.secondary,
     fontSize: 16,
+  },
+  linkTextBold: {
+    color: colors.primary.main,
+    fontWeight: 'bold',
   },
   modalContainer: {
     flex: 1,
@@ -449,11 +528,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: colors.background.secondary,
     borderRadius: 20,
-    padding: 20,
+    padding: 25,
     width: '90%',
     alignItems: 'center',
+    shadowColor: colors.utility.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
   modalIcon: {
     marginBottom: 20,
@@ -461,37 +545,32 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#6D435A',
+    color: colors.text.primary,
     marginBottom: 15,
     textAlign: 'center',
   },
   modalText: {
     fontSize: 16,
-    color: '#6D435A',
+    color: colors.text.secondary,
     textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 22,
+    marginBottom: 25,
+    lineHeight: 24,
   },
   modalButton: {
-    backgroundColor: '#FFB6C1',
-    borderRadius: 25,
+    backgroundColor: colors.primary.main,
+    borderRadius: 12,
     padding: 15,
     width: '100%',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   loginButton: {
-    backgroundColor: '#6D435A',
+    backgroundColor: colors.primary.dark,
   },
   modalButtonText: {
-    color: '#6D435A',
+    color: colors.text.inverse,
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  bioInput: {
-    height: 80,
-    textAlignVertical: 'top',
-    paddingTop: 10,
   },
 });
 

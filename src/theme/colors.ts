@@ -1,186 +1,186 @@
 export const colors = {
   // Ana renkler
   primary: {
-    main: '#6C63FF', // Canlı mor
-    light: '#8B85FF',
-    dark: '#4A42FF',
-    gradient: ['#6C63FF', '#4A42FF'],
+    main: '#4A90E2', // Güven verici mavi
+    light: '#6AA9E9',
+    dark: '#2E7BC9',
+    gradient: ['#4A90E2', '#2E7BC9'],
   },
   secondary: {
-    main: '#FF6B6B', // Canlı mercan
-    light: '#FF8E8E',
-    dark: '#FF4848',
-    gradient: ['#FF6B6B', '#FF4848'],
+    main: '#66BB6A', // Doğal yeşil
+    light: '#88CB8C',
+    dark: '#4C9850',
+    gradient: ['#66BB6A', '#4C9850'],
   },
   accent: {
-    main: '#4ECDC4', // Turkuaz
-    light: '#6FF7EE',
-    dark: '#37B8B0',
-    gradient: ['#4ECDC4', '#37B8B0'],
+    main: '#FFA726', // Sıcak turuncu
+    light: '#FFB851',
+    dark: '#F57C00',
+    gradient: ['#FFA726', '#F57C00'],
   },
 
-  // Oyun renkleri
+  // Oyun renkleri (Başarı göstergeleri)
   game: {
-    success: '#00E676', // Parlak yeşil
-    error: '#FF5252', // Parlak kırmızı
-    warning: '#FFD740', // Parlak sarı
-    info: '#40C4FF', // Parlak mavi
-    special: '#FF4081', // Parlak pembe
+    success: '#66BB6A', // Başarılı yardım
+    error: '#EF5350', // Acil durum
+    warning: '#FFB74D', // Dikkat gerektiren
+    info: '#4A90E2', // Bilgilendirme
+    special: '#AB47BC', // Özel başarı
   },
 
-  // Seviye renkleri
+  // Seviye renkleri (Yardımsever seviyeleri)
   level: {
     bronze: {
-      start: '#FFA375',
-      end: '#FF7043',
-      text: '#BF360C',
+      start: '#D7CCC8', // Bronz başlangıç
+      end: '#BCAAA4',
+      text: '#795548',
     },
     silver: {
-      start: '#B2EBF2',
-      end: '#80DEEA',
-      text: '#006064',
+      start: '#E0E0E0',
+      end: '#BDBDBD',
+      text: '#616161',
     },
     gold: {
       start: '#FFE082',
       end: '#FFD54F',
-      text: '#FF6F00',
+      text: '#F57F17',
     },
     platinum: {
-      start: '#E1BEE7',
-      end: '#CE93D8',
-      text: '#4A148C',
+      start: '#B2EBF2',
+      end: '#80DEEA',
+      text: '#006064',
     },
     diamond: {
       start: '#90CAF9',
-      end: '#42A5F5',
-      text: '#0D47A1',
+      end: '#64B5F6',
+      text: '#1565C0',
     },
   },
 
-  // Başarı rozeti renkleri
+  // Başarı rozeti renkleri (Yardım başarıları)
   achievement: {
     locked: {
-      background: '#ECEFF1',
-      icon: '#B0BEC5',
-      text: '#546E7A',
+      background: '#F5F5F5',
+      icon: '#BDBDBD',
+      text: '#757575',
     },
     unlocked: {
       background: '#E8F5E9',
-      icon: '#00E676',
-      text: '#00C853',
+      icon: '#66BB6A',
+      text: '#2E7D32',
     },
     rare: {
-      background: '#E8EAF6',
-      icon: '#6C63FF',
-      text: '#3F51B5',
+      background: '#E3F2FD',
+      icon: '#4A90E2',
+      text: '#1565C0',
     },
     epic: {
-      background: '#FCE4EC',
-      icon: '#FF4081',
-      text: '#C2185B',
+      background: '#FFF3E0',
+      icon: '#FFA726',
+      text: '#F57C00',
     },
     legendary: {
-      background: '#FFF3E0',
-      icon: '#FFD740',
-      text: '#FF6F00',
+      background: '#F3E5F5',
+      icon: '#AB47BC',
+      text: '#6A1B9A',
     },
   },
 
-  // XP ve puan renkleri
+  // XP ve puan renkleri (Yardım puanları)
   points: {
     xp: {
-      background: '#E0F7FA',
-      icon: '#00B8D4',
-      text: '#006064',
+      background: '#E3F2FD',
+      icon: '#4A90E2',
+      text: '#1565C0',
     },
     coins: {
-      background: '#FFF8E1',
-      icon: '#FFD740',
-      text: '#FF6F00',
+      background: '#FFF3E0',
+      icon: '#FFA726',
+      text: '#F57C00',
     },
     gems: {
-      background: '#F3E5F5',
-      icon: '#AA00FF',
-      text: '#4A148C',
+      background: '#E8F5E9',
+      icon: '#66BB6A',
+      text: '#2E7D32',
     },
   },
 
-  // Görev kategorileri
+  // Görev kategorileri (Yardım türleri)
   categories: {
     FEEDING: {
-      background: '#E8F5E9',
-      icon: '#00E676',
-      text: '#00C853',
+      background: '#FFF3E0',
+      icon: '#FFA726',
+      text: '#F57C00',
     },
     HEALTH: {
-      background: '#FBE9E7',
-      icon: '#FF5252',
-      text: '#D50000',
+      background: '#FFEBEE',
+      icon: '#EF5350',
+      text: '#C62828',
     },
     SHELTER: {
       background: '#E3F2FD',
-      icon: '#40C4FF',
-      text: '#0091EA',
+      icon: '#4A90E2',
+      text: '#1565C0',
     },
     CLEANING: {
-      background: '#E0F2F1',
-      icon: '#1DE9B6',
-      text: '#00BFA5',
+      background: '#E8F5E9',
+      icon: '#66BB6A',
+      text: '#2E7D32',
     },
     OTHER: {
       background: '#F3E5F5',
-      icon: '#E040FB',
-      text: '#AA00FF',
+      icon: '#AB47BC',
+      text: '#6A1B9A',
     },
   },
 
-  // Görev durumları
+  // Görev durumları (Yardım durumları)
   status: {
     OPEN: {
       background: '#E3F2FD',
-      text: '#2196F3',
-      gradient: ['#90CAF9', '#42A5F5'],
+      text: '#4A90E2',
+      gradient: ['#90CAF9', '#4A90E2'],
     },
     IN_PROGRESS: {
       background: '#FFF3E0',
-      text: '#FF9800',
-      gradient: ['#FFCC80', '#FF9800'],
+      text: '#FFA726',
+      gradient: ['#FFCC80', '#FFA726'],
     },
     COMPLETED: {
       background: '#E8F5E9',
-      text: '#4CAF50',
-      gradient: ['#A5D6A7', '#4CAF50'],
+      text: '#66BB6A',
+      gradient: ['#A5D6A7', '#66BB6A'],
     },
     CANCELLED: {
       background: '#FFEBEE',
-      text: '#F44336',
-      gradient: ['#EF9A9A', '#F44336'],
+      text: '#EF5350',
+      gradient: ['#EF9A9A', '#EF5350'],
     },
   },
 
   // Arka plan renkleri
   background: {
-    primary: '#FAFAFA',
-    secondary: '#FFFFFF',
-    tertiary: '#F5F5F5',
-    card: '#FFFFFF',
-    modal: '#FFFFFF',
+    primary: '#FAFAFA', // Ana arka plan
+    secondary: '#FFFFFF', // İkincil arka plan
+    tertiary: '#F5F5F5', // Üçüncül arka plan
+    card: '#FFFFFF', // Kart arka planı
+    modal: '#FFFFFF', // Modal arka planı
   },
 
   // Metin renkleri
   text: {
-    primary: '#212121',
-    secondary: '#757575',
-    tertiary: '#9E9E9E',
-    inverse: '#FFFFFF',
-    accent: '#6C63FF',
+    primary: '#2C3E50', // Koyu lacivert (ana metin)
+    secondary: '#34495E', // Orta lacivert (ikincil metin)
+    tertiary: '#7F8C8D', // Gri (üçüncül metin)
+    inverse: '#FFFFFF', // Beyaz (ters metin)
+    accent: '#4A90E2', // Mavi (vurgu metni)
   },
 
   // Gölge ve kenarlık renkleri
   utility: {
-    divider: '#E0E0E0',
-    border: '#EEEEEE',
-    shadow: '#000000',
-    overlay: 'rgba(0, 0, 0, 0.5)',
+    divider: '#ECEFF1', // Bölücü çizgi
+    border: '#E3F2FD', // Kenarlık
+    shadow: 'rgba(0, 0, 0, 0.1)', // Gölge
+    overlay: 'rgba(0, 0, 0, 0.5)', // Kaplama
   },
 }; 

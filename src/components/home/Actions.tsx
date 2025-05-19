@@ -47,7 +47,7 @@ export const Actions = () => {
         activeOpacity={0.6}
       >
         <Users size={isSmallScreen ? 24 : 32} color={colors.primary} />
-        <Text variant="titleMedium" style={styles.actionTitle}>Gönüllüler</Text>
+        <Text variant="titleMedium" style={styles.actionTitle}>Topluluklar</Text>
         <Text variant="bodySmall" style={styles.actionDescription}>
           Diğer gönüllülerle iletişime geç
         </Text>

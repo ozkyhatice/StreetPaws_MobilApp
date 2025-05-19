@@ -9,6 +9,7 @@ export interface Community {
   admins: string[]; // userIds of admins
   category: CommunityCategory;
   photoURL?: string;
+  bannerURL?: string;
   location?: {
     latitude: number;
     longitude: number;
@@ -16,8 +17,12 @@ export interface Community {
   };
   isPublic: boolean;
   joinRequests?: string[]; // userIds of pending join requests
+  joinRequestsTimestamps?: {[userId: string]: any};
   tags?: string[];
   inviteCode?: string; // davet kodu
+  inviteCodeExpiry?: any; // Davet kodunun geçerlilik süresi (Timestamp)
+  inviteCodeUsageLimit?: number; // Davet kodu kullanım limiti (0=sınırsız)
+  inviteCodeUsageCount?: number; // Davet kodunun kaç kez kullanıldığı
   isDeleted?: boolean;
   deletedAt?: any; // Timestamp
   deletedBy?: string;
@@ -34,15 +39,12 @@ export interface Community {
   };
   bannedMembers?: Array<{
     userId: string;
-    bannedBy: string;
-    bannedAt: any; // Timestamp
+    banTime: any;
     reason?: string;
   }>;
   mutedMembers?: Array<{
     userId: string;
-    mutedBy: string;
-    mutedAt: any; // Timestamp
-    muteEndTime: any; // Timestamp
+    muteEndTime: any;
     reason?: string;
   }>;
   messagePermissions?: {
