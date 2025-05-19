@@ -254,7 +254,8 @@ export default function VolunteersScreen() {
             completedTasks: userData.stats?.tasksCompleted || (userData.completedTasks ? userData.completedTasks.length : 0),
             skills: userData.skills || ['Besleme'],
             location: userData.city || 'İstanbul',
-            badge: getBadgeForLevel(userData.stats?.level || 1)
+            createdAt: userData.createdAt,
+            badge: getBadgeForLevel(userData.stats?.level || 1, userData.createdAt)
           }));
         
         // Get all unique skills
@@ -279,13 +280,26 @@ export default function VolunteersScreen() {
     fetchVolunteers();
   }, []);
   
-  // Helper function to determine badge based on level
-  const getBadgeForLevel = (level: number) => {
+  // Helper function to determine badge based on level and registration date
+  const getBadgeForLevel = (level: number, createdAt?: string) => {
     if (level >= 10) return 'Kurtarıcı Kahraman';
     if (level >= 7) return 'Veteriner Uzmanı';
     if (level >= 5) return 'Barınak Kahramanı';
     if (level >= 3) return 'Hayvan Dostu';
-    return 'Yeni Gönüllü';
+    
+    // Only return 'Yeni Gönüllü' if the user registered less than a week ago
+    if (createdAt) {
+      const registrationDate = new Date(createdAt);
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      
+      if (registrationDate > oneWeekAgo) {
+        return 'Yeni Gönüllü';
+      }
+    }
+    
+    // Default badge if not a new volunteer and level < 3
+    return 'Hayvan Dostu';
   };
   
   // Real-time data fetching
@@ -665,12 +679,30 @@ export default function VolunteersScreen() {
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
           <Star size={16} color={colors.warning} />
-          <Text style={styles.statText}>{item.xp} XP</Text>
+          <Text style={styles.statText}>{Math.round(item.xp)} XP</Text>
         </View>
         <View style={styles.statItem}>
           <Clock size={16} color={colors.primary} />
           <Text style={styles.statText}>{item.completedTasks} Görev</Text>
         </View>
+      </View>
+      
+      <View style={styles.levelProgressContainer}>
+        <Text style={styles.levelProgressText}>Seviye {item.level}</Text>
+        <View style={styles.levelProgressBarBackground}>
+          <View 
+            style={[
+              styles.levelProgressBar, 
+              {
+                width: `${calculateLevelProgress(item.level, item.xp)}%`,
+                backgroundColor: getBadgeColor(item.level)
+              }
+            ]} 
+          />
+        </View>
+        <Text style={styles.levelProgressTextXP}>
+          {Math.round(item.xp)} / {calculateXpForNextLevel(item.level)} XP
+        </Text>
       </View>
       
       <View style={styles.skillContainer}>
@@ -1101,6 +1133,29 @@ export default function VolunteersScreen() {
       recipientName: communityName,
       isCommunityChat: true
     });
+  };
+
+  // Helper function to calculate level progress percentage
+  const calculateLevelProgress = (level: number, xp: number) => {
+    const currentLevelXp = calculateXpForLevel(level);
+    const nextLevelXp = calculateXpForNextLevel(level);
+    const levelDiff = nextLevelXp - currentLevelXp;
+    const levelProgress = xp - currentLevelXp;
+    
+    // Calculate percentage (clamped between 0-100)
+    const percentage = Math.min(100, Math.max(0, (levelProgress / levelDiff) * 100));
+    return percentage;
+  };
+  
+  // Calculate XP needed for a specific level
+  const calculateXpForLevel = (level: number) => {
+    // Base formula: 100 * level^1.5
+    return Math.floor(100 * Math.pow(level - 1, 1.5));
+  };
+  
+  // Calculate XP needed for next level
+  const calculateXpForNextLevel = (level: number) => {
+    return Math.floor(100 * Math.pow(level, 1.5));
   };
 
   return (
@@ -1764,5 +1819,30 @@ const styles = StyleSheet.create({
   },
   conversationAvatarIcon: {
     backgroundColor: colors.primary,
+  },
+  levelProgressContainer: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  levelProgressText: {
+    ...typography.body2,
+    fontWeight: '600',
+    marginBottom: spacing.xxs,
+  },
+  levelProgressBarBackground: {
+    height: 8,
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: spacing.xxs,
+  },
+  levelProgressBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  levelProgressTextXP: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    textAlign: 'right',
   },
 });
