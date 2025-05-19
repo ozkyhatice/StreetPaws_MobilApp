@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -26,6 +26,7 @@ import { UserService } from '../services/userService';
 import { TaskService } from '../services/taskService';
 import { BadgeCollection } from '../components/BadgeCollection';
 import { XPService } from '../services/xpService';
+import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateProgressValue } from '../utils/levelUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -297,31 +298,14 @@ const ProfileScreen = () => {
   };
 
   const handleTestBadge = async () => {
-    if (!user?.uid) return;
-    
     try {
       const badgeService = BadgeService.getInstance();
-      const newBadge = await badgeService.awardTestBadge(user.uid);
-      Alert.alert('Başarılı', 'Yeni rozet kazandınız!');
+      await badgeService.awardTestBadge(user.uid);
+      Alert.alert('Başarılı', 'Test rozeti eklendi!');
     } catch (error) {
-      console.error('Error awarding test badge:', error);
-      Alert.alert('Hata', 'Rozet verilirken bir hata oluştu');
+      console.error('Error testing badge:', error);
+      Alert.alert('Hata', 'Rozet test edilirken bir hata oluştu');
     }
-  };
-
-  // XP Level calculations
-  const calculateLevel = (xp: number) => {
-    return Math.floor(Math.sqrt(xp / 100)) + 1;
-  };
-
-  const calculateXPForNextLevel = (level: number) => {
-    return (level * level) * 100;
-  };
-
-  const calculateProgress = (xp: number, level: number) => {
-    const nextLevelXP = calculateXPForNextLevel(level);
-    const currentLevelXP = calculateXPForNextLevel(level - 1);
-    return (xp - currentLevelXP) / (nextLevelXP - currentLevelXP);
   };
 
   const handleTestBadgeLevelUp = async () => {
@@ -367,10 +351,10 @@ const ProfileScreen = () => {
     const currentXP = actualXP;
     console.log(`ProfileScreen - Rendering with XP: ${currentXP}`);
     
-    const currentLevel = calculateLevel(currentXP);
-    const progress = calculateProgress(currentXP, currentLevel);
-    const nextLevelXP = calculateXPForNextLevel(currentLevel);
-    const currentLevelXP = calculateXPForNextLevel(currentLevel - 1);
+    const currentLevel = calculateLevelFromXP(currentXP);
+    const progress = calculateProgressValue(currentXP, currentLevel);
+    const nextLevelXP = calculateXpForNextLevel(currentLevel);
+    const currentLevelXP = calculateXpForLevel(currentLevel);
 
     return (
       <View>

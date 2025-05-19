@@ -18,6 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
+import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateLevelProgress } from '../utils/levelUtils';
 
 type RankingsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -106,7 +107,8 @@ export default function RankingsScreen() {
       case 'xp':
         return user.stats?.xpPoints || user.xp || 0;
       case 'level':
-        return user.stats?.level || 1;
+        const xp = user.stats?.xpPoints || user.xp || 0;
+        return calculateLevelFromXP(xp);
       case 'tasksCompleted':
         return user.stats?.tasksCompleted || (user.completedTasks ? user.completedTasks.length : 0);
       default:
@@ -129,6 +131,8 @@ export default function RankingsScreen() {
 
   const renderUserCard = ({ item, index }: { item: User; index: number }) => {
     const isCurrentUser = currentUser && item.uid === currentUser.uid;
+    const xp = item.stats?.xpPoints || item.xp || 0;
+    const calculatedLevel = calculateLevelFromXP(xp);
     
     return (
       <Card 
@@ -178,12 +182,12 @@ export default function RankingsScreen() {
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <Star size={16} color={colors.warning} />
-                <Text style={styles.statText}>{item.stats?.xpPoints || item.xp || 0} XP</Text>
+                <Text style={styles.statText}>{Math.round(xp)} XP</Text>
               </View>
               
               <View style={styles.statItem}>
                 <Award size={16} color={colors.primary} />
-                <Text style={styles.statText}>Seviye {item.stats?.level || 1}</Text>
+                <Text style={styles.statText}>Seviye {calculatedLevel}</Text>
               </View>
             </View>
             

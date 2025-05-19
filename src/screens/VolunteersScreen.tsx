@@ -25,6 +25,7 @@ import { MessagingService } from '../services/messagingService';
 import { UserService } from '../services/userService';
 import { format, formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
+import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateLevelProgress } from '../utils/levelUtils';
 
 // Define conversation interface to handle both direct and community conversations
 interface ConversationItem {
@@ -1139,34 +1140,6 @@ export default function VolunteersScreen() {
       recipientName: communityName,
       isCommunityChat: true
     });
-  };
-
-  // Helper function to calculate level progress percentage
-  const calculateLevelProgress = (level: number, xp: number) => {
-    const currentLevelXp = calculateXpForLevel(level);
-    const nextLevelXp = calculateXpForNextLevel(level);
-    const levelDiff = nextLevelXp - currentLevelXp;
-    const levelProgress = xp - currentLevelXp;
-    
-    // Calculate percentage (clamped between 0-100)
-    const percentage = Math.min(100, Math.max(0, (levelProgress / levelDiff) * 100));
-    return percentage;
-  };
-  
-  // Calculate XP needed for a specific level
-  const calculateXpForLevel = (level: number) => {
-    if (level <= 1) return 0;
-    return 100 * (level - 1);
-  };
-  
-  // Calculate XP needed for next level
-  const calculateXpForNextLevel = (level: number) => {
-    return 100 * level;
-  };
-  
-  // Calculate level from XP
-  const calculateLevelFromXP = (xp: number) => {
-    return Math.floor(xp / 100) + 1;
   };
 
   return (
