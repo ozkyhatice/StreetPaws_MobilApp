@@ -121,7 +121,7 @@ export default function RankingsScreen() {
       case 'level':
         return 'Seviye';
       case 'tasksCompleted':
-        return 'Görevler';
+        return 'Görev';
       default:
         return '';
     }
@@ -154,7 +154,7 @@ export default function RankingsScreen() {
             />
             
             <View style={styles.userInfo}>
-              <Text style={styles.userName}>
+              <Text style={styles.userName} numberOfLines={1}>
                 {item.displayName || item.username || 'İsimsiz Gönüllü'}
                 {isCurrentUser && ' (Sen)'}
               </Text>
@@ -168,32 +168,36 @@ export default function RankingsScreen() {
               {item.city && (
                 <View style={styles.locationContainer}>
                   <MapPin size={12} color={colors.textSecondary} />
-                  <Text style={styles.locationText}>{item.city}</Text>
+                  <Text style={styles.locationText} numberOfLines={1}>{item.city}</Text>
                 </View>
               )}
             </View>
           </View>
           
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Star size={16} color={colors.warning} />
-              <Text style={styles.statText}>{item.stats?.xpPoints || item.xp || 0} XP</Text>
+          <View style={styles.statsSection}>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Star size={16} color={colors.warning} />
+                <Text style={styles.statText}>{item.stats?.xpPoints || item.xp || 0} XP</Text>
+              </View>
+              
+              <View style={styles.statItem}>
+                <Award size={16} color={colors.primary} />
+                <Text style={styles.statText}>Seviye {item.stats?.level || 1}</Text>
+              </View>
             </View>
             
-            <View style={styles.statItem}>
-              <Award size={16} color={colors.primary} />
-              <Text style={styles.statText}>Seviye {item.stats?.level || 1}</Text>
-            </View>
-            
-            <View style={styles.statItem}>
-              <Trophy size={16} color={colors.secondary} />
-              <Text style={styles.statText}>
-                {item.stats?.tasksCompleted || (item.completedTasks ? item.completedTasks.length : 0)} Görev
-              </Text>
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
+                <Trophy size={16} color={colors.secondary} />
+                <Text style={styles.statText}>
+                  {item.stats?.tasksCompleted || (item.completedTasks ? item.completedTasks.length : 0)} Görev
+                </Text>
+              </View>
             </View>
           </View>
           
-          <View style={styles.rankValue}>
+          <View style={styles.rankValueContainer}>
             <Text style={styles.rankValueText}>
               {getValueForSort(item)} {getLabelForSort()}
             </Text>
@@ -288,6 +292,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     overflow: 'hidden',
     flexDirection: 'row',
+    backgroundColor: colors.surface,
   },
   currentUserCard: {
     borderWidth: 2,
@@ -300,6 +305,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: spacing.sm,
     paddingRight: spacing.md,
+    paddingBottom: spacing.xl,
+    position: 'relative',
   },
   userInfoRow: {
     flexDirection: 'row',
@@ -313,11 +320,13 @@ const styles = StyleSheet.create({
   userInfo: {
     flex: 1,
     marginLeft: spacing.sm,
+    paddingRight: 70,
   },
   userName: {
     fontSize: typography.subtitle1.fontSize,
     fontWeight: '600',
     color: colors.text,
+    marginBottom: 2,
   },
   userBio: {
     fontSize: typography.caption.fontSize,
@@ -334,14 +343,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginLeft: 4,
   },
+  statsSection: {
+    marginTop: spacing.sm,
+    paddingRight: 70,
+  },
   statsRow: {
     flexDirection: 'row',
-    marginTop: spacing.sm,
+    flexWrap: 'wrap',
+    marginBottom: spacing.xs,
   },
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: spacing.md,
+    marginBottom: spacing.xs,
   },
   statText: {
     fontSize: typography.caption.fontSize,
@@ -366,10 +381,18 @@ const styles = StyleSheet.create({
     fontSize: typography.subtitle2.fontSize,
     fontWeight: 'bold',
   },
-  rankValue: {
+  rankValueContainer: {
     position: 'absolute',
     bottom: spacing.sm,
     right: spacing.sm,
+    backgroundColor: colors.primaryLight + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: borderRadius.small,
+    borderWidth: 1,
+    borderColor: colors.primaryLight,
+    minWidth: 60,
+    alignItems: 'center',
   },
   rankValueText: {
     color: colors.primary,
