@@ -247,7 +247,7 @@ export default function VolunteersScreen() {
           .map(userData => ({
             id: userData.uid,
             name: userData.displayName || userData.username || `Kullanıcı-${userData.uid.substr(0, 5)}`,
-            avatar: userData.photoURL || `https://picsum.photos/id/${Math.floor(Math.random() * 100)}/200`,
+            avatar: userData.photoURL,
             bio: userData.bio || 'StreetPaws gönüllüsü',
             level: userData.stats?.level || 1,
             xp: userData.stats?.xpPoints || userData.xp || 0,
@@ -565,9 +565,10 @@ export default function VolunteersScreen() {
   };
 
   const getBadgeColor = (level: number) => {
-    if (level >= 7) return colors.secondary;
-    if (level >= 5) return colors.primary;
-    if (level >= 3) return colors.info;
+    if (level >= 10) return colors.secondary;
+    if (level >= 7) return colors.primary;
+    if (level >= 5) return colors.info;
+    if (level >= 3) return colors.success;
     return colors.warning;
   };
 
@@ -622,18 +623,26 @@ export default function VolunteersScreen() {
     >
       <View style={styles.cardHeader}>
         <View style={styles.avatarContainer}>
-          <Avatar.Image 
-            source={{ uri: item.avatar }} 
-            size={70} 
-            style={styles.avatar}
-          />
+          {item.avatar ? (
+            <Avatar.Image 
+              source={{ uri: item.avatar }} 
+              size={70} 
+              style={styles.avatar}
+            />
+          ) : (
+            <Avatar.Icon 
+              icon="account" 
+              size={70} 
+              style={styles.avatarIcon}
+            />
+          )}
           <View style={[styles.levelBadge, { backgroundColor: getBadgeColor(item.level) }]}>
             <Text style={styles.levelText}>{item.level}</Text>
           </View>
         </View>
 
         <View style={styles.headerInfo}>
-          <Text style={styles.volunteerName}>{item.name}</Text>
+          <Text style={styles.volunteerName} numberOfLines={1}>{item.name}</Text>
           
           <View style={styles.badgeContainer}>
             <Award size={14} color={getBadgeColor(item.level)} />
@@ -644,7 +653,7 @@ export default function VolunteersScreen() {
           
           <View style={styles.locationContainer}>
             <MapPin size={14} color={colors.textSecondary} />
-            <Text style={styles.locationText}>{item.location}</Text>
+            <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
           </View>
         </View>
       </View>
@@ -708,9 +717,6 @@ export default function VolunteersScreen() {
     
     console.log(`Rendering community card for: ${item.name} (${item.id})`);
     
-    // This also checks if item.photoURL is null/undefined and provides a fallback
-    const photoUrl = item.photoURL || 'https://picsum.photos/200';
-    
     return (
       <View style={styles.cardWrapper}>
         <Card 
@@ -721,11 +727,19 @@ export default function VolunteersScreen() {
           <View style={styles.cardContent}>
             <View style={styles.cardHeader}>
               <View style={styles.avatarContainer}>
-                <Avatar.Image 
-                  source={{ uri: photoUrl }} 
-                  size={70} 
-                  style={styles.avatar}
-                />
+                {item.photoURL ? (
+                  <Avatar.Image 
+                    source={{ uri: item.photoURL }} 
+                    size={70} 
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <Avatar.Icon 
+                    icon="account-group" 
+                    size={70} 
+                    style={styles.avatarIcon}
+                  />
+                )}
                 {item.isPublic === false && (
                   <View style={[styles.privateBadge]}>
                     <Text style={styles.privateText}>Özel</Text>
@@ -851,10 +865,19 @@ export default function VolunteersScreen() {
         onPress={navigateToChat}
       >
         <View style={styles.conversationAvatar}>
-          <Avatar.Image 
-            source={{ uri: item.otherUser?.avatar || 'https://picsum.photos/200' }} 
-            size={50} 
-          />
+          {item.otherUser?.avatar ? (
+            <Avatar.Image 
+              source={{ uri: item.otherUser.avatar }} 
+              size={50}
+              style={styles.conversationAvatarImage}
+            />
+          ) : (
+            <Avatar.Icon 
+              icon={item.isCommunityChat ? "account-group" : "account"} 
+              size={50}
+              style={styles.conversationAvatarIcon}
+            />
+          )}
           {(item.unreadCount > 0) && (
             <View style={styles.unreadBadge}>
               <Text style={styles.unreadText}>{item.unreadCount}</Text>
@@ -1389,6 +1412,11 @@ const styles = StyleSheet.create({
     borderColor: colors.surface,
     backgroundColor: colors.primaryLight + '30',
   },
+  avatarIcon: {
+    borderWidth: 2,
+    borderColor: colors.surface,
+    backgroundColor: colors.primary,
+  },
   headerInfo: {
     flex: 1,
   },
@@ -1730,5 +1758,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     paddingHorizontal: 2,
     paddingVertical: 2,
+  },
+  conversationAvatarImage: {
+    backgroundColor: colors.primaryLight + '30',
+  },
+  conversationAvatarIcon: {
+    backgroundColor: colors.primary,
   },
 });
