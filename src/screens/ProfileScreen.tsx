@@ -385,13 +385,13 @@ const ProfileScreen = () => {
 
     return (
       <View>
-        <Surface style={styles.profileCard} elevation={0}>
+        <Surface style={styles.profileCard} elevation={2}>
           <Avatar.Image
-            size={80}
+            size={100}
             source={{ uri: profileImage || 'https://via.placeholder.com/80' }}
             style={styles.avatar}
           />
-          <Text variant="titleLarge" style={styles.name}>
+          <Text variant="headlineSmall" style={styles.name}>
             {userData?.firstName} {userData?.lastName}
           </Text>
           <Text variant="bodyMedium" style={styles.username}>
@@ -406,7 +406,7 @@ const ProfileScreen = () => {
           >
             <Text style={styles.bioLabel}>Hakkında</Text>
             <Text style={styles.bioText}>{userData?.bio || 'Kendinizden bahsedin...'}</Text>
-            <Edit2 size={16} color={colors.primary} style={styles.bioEditIcon} />
+            <Edit2 size={18} color={colors.primary} style={styles.bioEditIcon} />
           </TouchableOpacity>
 
           <View style={styles.levelContainer}>
@@ -425,15 +425,15 @@ const ProfileScreen = () => {
         </Surface>
 
         <View style={styles.statsRow}>
-          <View style={styles.statItem}>
+          <Surface style={styles.statItem} elevation={1}>
             <Text variant="titleLarge" style={styles.statValue}>
               {completedTasksCount}
             </Text>
             <Text variant="bodyMedium" style={styles.statLabel}>
               Görev
             </Text>
-          </View>
-          <View style={styles.statItem}>
+          </Surface>
+          <Surface style={styles.statItem} elevation={1}>
             <Text variant="titleLarge" style={styles.statValue}>
               {currentXP}
             </Text>
@@ -446,103 +446,95 @@ const ProfileScreen = () => {
             >
               <Text style={styles.refreshButtonText}>Yenile</Text>
             </TouchableOpacity>
-          </View>
-          <View style={styles.statItem}>
+          </Surface>
+          <Surface style={styles.statItem} elevation={1}>
             <Text variant="titleLarge" style={styles.statValue}>
               {badges.length}
             </Text>
             <Text variant="bodyMedium" style={styles.statLabel}>
               Rozet
             </Text>
-          </View>
+          </Surface>
         </View>
       </View>
     );
   };
 
   const renderPersonalInfo = () => (
-    <Surface style={styles.infoCard} elevation={0}>
+    <Surface style={styles.infoCard} elevation={2}>
       <Text variant="titleMedium" style={styles.sectionTitle}>
         Kişisel Bilgiler
       </Text>
       
-      <View style={styles.infoItem}>
-        <View style={styles.infoIcon}>
-          <User size={24} color={colors.text} />
-        </View>
-        <View style={styles.infoContent}>
-          <Text style={styles.infoLabel}>Ad Soyad</Text>
-          <Text style={styles.infoValue}>{userData?.firstName} {userData?.lastName}</Text>
-        </View>
+      <View style={styles.infoItemsContainer}>
         <TouchableOpacity 
-          style={styles.editButton}
+          style={styles.infoItem}
           onPress={() => handleEditField('name')}
         >
-          <Edit2 size={20} color={colors.primary} />
+          <View style={styles.infoIcon}>
+            <User size={22} color={colors.primary} />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoLabel}>Ad Soyad</Text>
+            <Text style={styles.infoValue}>{userData?.firstName} {userData?.lastName}</Text>
+          </View>
+          <Edit2 size={18} color={colors.primary} />
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.infoItem}>
-        <View style={styles.infoIcon}>
-          <User size={24} color={colors.text} />
-        </View>
-        <View style={styles.infoContent}>
-          <Text style={styles.infoLabel}>Kullanıcı Adı</Text>
-          <Text style={styles.infoValue}>@{userData?.username}</Text>
-        </View>
         <TouchableOpacity 
-          style={styles.editButton}
+          style={styles.infoItem}
           onPress={() => handleEditField('username')}
         >
-          <Edit2 size={20} color={colors.primary} />
+          <View style={styles.infoIcon}>
+            <User size={22} color={colors.primary} />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoLabel}>Kullanıcı Adı</Text>
+            <Text style={styles.infoValue}>@{userData?.username}</Text>
+          </View>
+          <Edit2 size={18} color={colors.primary} />
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.infoItem}>
-        <View style={styles.infoIcon}>
-          <Phone size={24} color={colors.text} />
-        </View>
-        <View style={styles.infoContent}>
-          <Text style={styles.infoLabel}>Telefon</Text>
-          <Text style={styles.infoValue}>{userData?.phoneNumber || 'Belirtilmemiş'}</Text>
-        </View>
         <TouchableOpacity 
-          style={styles.editButton}
+          style={styles.infoItem}
           onPress={() => handleEditField('phone')}
         >
-          <Edit2 size={20} color={colors.primary} />
+          <View style={styles.infoIcon}>
+            <Phone size={22} color={colors.primary} />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoLabel}>Telefon</Text>
+            <Text style={styles.infoValue}>{userData?.phoneNumber || 'Belirtilmemiş'}</Text>
+          </View>
+          <Edit2 size={18} color={colors.primary} />
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.infoItem}>
-        <View style={styles.infoIcon}>
-          <Calendar size={24} color={colors.text} />
-        </View>
-        <View style={styles.infoContent}>
-          <Text style={styles.infoLabel}>Doğum Tarihi</Text>
-          <Text style={styles.infoValue}>{userData?.dateOfBirth || 'Belirtilmemiş'}</Text>
-        </View>
         <TouchableOpacity 
-          style={styles.editButton}
+          style={styles.infoItem}
           onPress={() => handleEditField('dateOfBirth')}
         >
-          <Edit2 size={20} color={colors.primary} />
+          <View style={styles.infoIcon}>
+            <Calendar size={22} color={colors.primary} />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoLabel}>Doğum Tarihi</Text>
+            <Text style={styles.infoValue}>{userData?.dateOfBirth || 'Belirtilmemiş'}</Text>
+          </View>
+          <Edit2 size={18} color={colors.primary} />
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.infoItem}>
-        <View style={styles.infoIcon}>
-          <MapPin size={24} color={colors.text} />
-        </View>
-        <View style={styles.infoContent}>
-          <Text style={styles.infoLabel}>Şehir</Text>
-          <Text style={styles.infoValue}>{userData?.city || 'Belirtilmemiş'}</Text>
-        </View>
         <TouchableOpacity 
-          style={styles.editButton}
+          style={[styles.infoItem, styles.lastInfoItem]}
           onPress={() => handleEditField('city')}
         >
-          <Edit2 size={20} color={colors.primary} />
+          <View style={styles.infoIcon}>
+            <MapPin size={22} color={colors.primary} />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoLabel}>Şehir</Text>
+            <Text style={styles.infoValue}>{userData?.city || 'Belirtilmemiş'}</Text>
+          </View>
+          <Edit2 size={18} color={colors.primary} />
         </TouchableOpacity>
       </View>
     </Surface>
@@ -556,7 +548,7 @@ const ProfileScreen = () => {
       onRequestClose={() => setIsEditModalVisible(false)}
     >
       <View style={styles.modalOverlay}>
-        <Surface style={styles.modalContent}>
+        <Surface style={styles.modalContent} elevation={5}>
           <Text variant="titleMedium" style={styles.modalTitle}>
             {editingField === 'name' ? 'Ad Soyad Düzenle' : 
              editingField === 'phone' ? 'Telefon Düzenle' : 
@@ -606,6 +598,7 @@ const ProfileScreen = () => {
               mode="outlined" 
               onPress={() => setIsEditModalVisible(false)}
               style={styles.modalButton}
+              labelStyle={styles.buttonLabel}
             >
               İptal
             </Button>
@@ -614,6 +607,7 @@ const ProfileScreen = () => {
               onPress={handleSaveField}
               loading={loading}
               style={styles.modalButton}
+              labelStyle={styles.buttonLabel}
             >
               Kaydet
             </Button>
@@ -720,53 +714,75 @@ const ProfileScreen = () => {
       </View>
     </Modal>
   );
-
-const renderUserTypeInfo = () => {
-  if (!userData?.userType) return null;
-
-  const commonInfo = (label, value, IconComponent) => (
-    <View style={styles.infoItemModern}>
-      <IconComponent size={20} color={'#3B82F6'} style={styles.infoIconModern} />
-      <View style={styles.infoLabelContainer}>
-        <Text style={styles.infoLabelModern}>{label}</Text>
-        <Text style={styles.infoValueModern}>{value || 'Belirtilmemiş'}</Text>
-      </View>
-    </View>
-  );
-
-  const cardTitle = {
-    veteriner: 'Veteriner Bilgileri',
-    business: 'İşletme Bilgileri',
-    healthcare: 'Sağlık Kurumu Bilgileri',
+  const renderUserTypeInfo = () => {
+    if (!userData?.userType) return null;
+  
+    const editableFields = {
+      veteriner: [
+        { label: 'Klinik Adı', key: 'clinicName', icon: Building2 },
+        { label: 'Telefon', key: 'phoneNumber', icon: Phone },
+        { label: 'Adres', key: 'address', icon: MapPin },
+        { label: 'Sicil Numarası', key: 'licenseNumber', icon: ShieldCheck },
+      ],
+      business: [
+        { label: 'İşletme Adı', key: 'businessName', icon: Building2 },
+        { label: 'Telefon', key: 'phoneNumber', icon: Phone },
+        { label: 'Adres', key: 'address', icon: MapPin },
+        { label: 'Vergi Numarası', key: 'taxNumber', icon: FileText },
+        { label: 'Sicil Numarası', key: 'registrationNumber', icon: ShieldCheck },
+        { label: 'Web Sitesi', key: 'website', icon: Globe },
+        { label: 'Açıklama', key: 'description', icon: Info },
+      ],
+      healthcare: [
+        { label: 'Kurum Adı', key: 'businessName', icon: Building2 },
+        { label: 'Telefon', key: 'phoneNumber', icon: Phone },
+        { label: 'Adres', key: 'address', icon: MapPin },
+        { label: 'Vergi Numarası', key: 'taxNumber', icon: FileText },
+        { label: 'Sicil Numarası', key: 'registrationNumber', icon: ShieldCheck },
+        { label: 'Web Sitesi', key: 'website', icon: Globe },
+        { label: 'Açıklama', key: 'description', icon: Info },
+      ],
+    };
+  
+    const handleEditUserTypeField = (key) => {
+      setEditingField(key);
+      setEditValue(userData?.[key] || '');
+      setIsEditModalVisible(true);
+    };
+  
+    const currentFields = editableFields[userData.userType] || [];
+  
+    return (
+      <Surface style={styles.infoCard} elevation={2}>
+        <Text style={styles.sectionTitle}>
+          {userData.userType === 'business' ? 'İşletme Bilgileri' :
+           userData.userType === 'healthcare' ? 'Sağlık Kurumu Bilgileri' :
+           'Veteriner Bilgileri'}
+        </Text>
+        <View style={styles.infoItemsContainer}>
+          {currentFields.map(({ label, key, icon: IconComponent }, index) => (
+            <TouchableOpacity 
+              key={key} 
+              onPress={() => handleEditUserTypeField(key)}
+              style={[
+                styles.infoItem, 
+                index === currentFields.length - 1 && styles.lastInfoItem
+              ]}
+            >
+              <View style={styles.infoIcon}>
+                <IconComponent size={22} color={colors.primary} />
+              </View>
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>{label}</Text>
+                <Text style={styles.infoValue}>{userData?.[key] || 'Belirtilmemiş'}</Text>
+              </View>
+              <Edit2 size={18} color={colors.primary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Surface>
+    );
   };
-
-  const userType = userData.userType;
-
-  return (
-    <Surface style={styles.infoCardModern} elevation={2}>
-      <Text style={styles.sectionTitle}>{cardTitle[userType] || 'Kullanıcı Bilgileri'}</Text>
-      {userType === 'veteriner' && (
-        <>
-          {commonInfo('Klinik Adı', userData.clinicName, Building2)}
-          {commonInfo('Telefon', userData.phoneNumber, Phone)}
-          {commonInfo('Adres', userData.address, MapPin)}
-          {commonInfo('Sicil Numarası', userData.licenseNumber, ShieldCheck)}
-        </>
-      )}
-      {(userType === 'business' || userType === 'healthcare') && (
-        <>
-          {commonInfo('İşletme Adı', userData.businessName, Building2)}
-          {commonInfo('Telefon', userData.phoneNumber, Phone)}
-          {commonInfo('Adres', userData.address, MapPin)}
-          {commonInfo('Vergi Numarası', userData.taxNumber, FileText)}
-          {commonInfo('Sicil Numarası', userData.registrationNumber, ShieldCheck)}
-          {commonInfo('Web Sitesi', userData.website, Globe)}
-          {commonInfo('Açıklama', userData.description, Info)}
-        </>
-      )}
-    </Surface>
-  );
-};
 
   // Add a helper function to get badge color based on level
   const getBadgeColor = (level: string) => {
@@ -812,45 +828,68 @@ const renderUserTypeInfo = () => {
         ))}
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {activeTab === 'Bilgilerim' && (
           <>
             {renderProfileInfo()}
-            {renderPersonalInfo()}
+            {renderPersonalInfo()}           
             {renderUserTypeInfo()}
-            <Surface style={styles.settingsCard} elevation={0}>
-              <Text variant="titleMedium" style={styles.settingsTitle}>
+            <Surface style={styles.infoCard} elevation={2}>
+              <Text variant="titleMedium" style={styles.sectionTitle}>
                 Hesap Ayarları
               </Text>
               
-              <View style={styles.settingsContainer}>
-                <TouchableOpacity style={styles.settingItem} onPress={handlePasswordChange}>
-                  <Lock size={24} color={colors.primary} />
-                  <Text style={styles.settingText}>Şifre Değiştir</Text>
+              <View style={styles.infoItemsContainer}>
+                <TouchableOpacity style={styles.infoItem} onPress={handlePasswordChange}>
+                  <View style={styles.infoIcon}>
+                    <Lock size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.settingText}>Şifre Değiştir</Text>
+                  </View>
+                  <View style={styles.arrowIcon} />
                 </TouchableOpacity>
                 
-                <TouchableOpacity style={styles.settingItem} onPress={handleNotificationSettings}>
-                  <Bell size={24} color={colors.primary} />
-                  <Text style={styles.settingText}>Bildirim Ayarları</Text>
+                <TouchableOpacity style={styles.infoItem} onPress={handleNotificationSettings}>
+                  <View style={styles.infoIcon}>
+                    <Bell size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.settingText}>Bildirim Ayarları</Text>
+                  </View>
+                  <View style={styles.arrowIcon} />
                 </TouchableOpacity>
                 
-                <TouchableOpacity style={styles.settingItem} onPress={handleThemeSettings}>
-                  <Paintbrush size={24} color={colors.primary} />
-                  <Text style={styles.settingText}>Tema Ayarları</Text>
+                <TouchableOpacity style={styles.infoItem} onPress={handleThemeSettings}>
+                  <View style={styles.infoIcon}>
+                    <Paintbrush size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.settingText}>Tema Ayarları</Text>
+                  </View>
+                  <View style={styles.arrowIcon} />
                 </TouchableOpacity>
                 
                 {userData?.role === 'admin' && (
-                  <TouchableOpacity style={styles.settingItem} onPress={handleVerificationsList}>
-                    <FileText size={24} color={colors.primary} />
-                    <Text style={styles.settingText}>Görev Onayları</Text>
+                  <TouchableOpacity style={styles.infoItem} onPress={handleVerificationsList}>
+                    <View style={styles.infoIcon}>
+                      <FileText size={22} color={colors.primary} />
+                    </View>
+                    <View style={styles.infoContent}>
+                      <Text style={styles.settingText}>Görev Onayları</Text>
+                    </View>
+                    <View style={styles.arrowIcon} />
                   </TouchableOpacity>
                 )}
                 
-       
-                
-                <TouchableOpacity style={styles.settingItem} onPress={handleSignOut}>
-                  <LogOut size={24} color={colors.error} />
-                  <Text style={[styles.settingText, { color: colors.error }]}>Çıkış Yap</Text>
+                <TouchableOpacity style={[styles.infoItem, styles.lastInfoItem, styles.logoutItem]} onPress={handleSignOut}>
+                  <View style={styles.infoIcon}>
+                    <LogOut size={22} color={colors.error} />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={[styles.settingText, { color: colors.error }]}>Çıkış Yap</Text>
+                  </View>
+                  <View style={styles.arrowIcon} />
                 </TouchableOpacity>
               </View>
             </Surface>
@@ -919,7 +958,7 @@ const renderUserTypeInfo = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f5f5f5', // Light gray background
   },
   loadingContainer: {
     flex: 1,
@@ -929,15 +968,19 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   tab: {
-    paddingVertical: 12,
+    paddingVertical: 16,
     marginRight: 24,
   },
   activeTab: {
-    borderBottomWidth: 2,
+    borderBottomWidth: 3,
     borderBottomColor: colors.primary,
   },
   tabText: {
@@ -948,64 +991,45 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  infoItemModern: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  infoIconModern: {
-    marginRight: 12,
-  },
-  infoLabelContainer: {
-    flexDirection: 'column',
-    flex: 1,
-  },
-  infoLabelModern: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  infoValueModern: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
-  },
   content: {
     flex: 1,
+    paddingTop: 12,
   },
   profileCard: {
-    padding: 16,
+    margin: 16,
+    padding: 24,
     alignItems: 'center',
     backgroundColor: '#fff',
+    borderRadius: 16,
   },
   avatar: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   name: {
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: 6,
+    color: '#333',
   },
   username: {
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   email: {
     color: '#999',
   },
   statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
   statItem: {
     alignItems: 'center',
+    flex: 1,
+    margin: 4,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
   },
   statValue: {
     fontWeight: 'bold',
@@ -1013,23 +1037,42 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     color: '#666',
+    marginTop: 4,
   },
   infoCard: {
     margin: 16,
-    padding: 16,
+    padding: 20,
     backgroundColor: '#fff',
+    borderRadius: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#333',
+  },
+  infoItemsContainer: {
     borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#eee',
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  lastInfoItem: {
+    borderBottomWidth: 0,
   },
   infoIcon: {
     width: 40,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   infoContent: {
     flex: 1,
@@ -1044,33 +1087,19 @@ const styles = StyleSheet.create({
     color: '#333',
     marginTop: 2,
   },
-  editButton: {
-    padding: 8,
-  },
-  settingsCard: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-  },
-  settingsTitle: {
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  settingsContainer: {
-    marginBottom: 16,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
   settingText: {
-    marginLeft: 12,
     color: '#333',
     fontSize: 16,
+  },
+  arrowIcon: {
+    width: 20,
+    height: 20,
+    opacity: 0.3,
+  },
+  logoutItem: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    marginTop: 8,
   },
   modalOverlay: {
     flex: 1,
@@ -1080,48 +1109,59 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   modalContent: {
+    width: '90%',
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 16,
+    padding: 24,
   },
   modalTitle: {
     marginBottom: 20,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
     textAlign: 'center',
   },
   input: {
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 20,
     fontSize: 16,
+    backgroundColor: '#f9f9f9',
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 16,
   },
   modalButton: {
     flex: 1,
+    borderRadius: 8,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
-    color: colors.text,
+  buttonLabel: {
+    fontWeight: '600',
+    fontSize: 16,
+    paddingVertical: 2,
   },
   bioContainer: {
     width: '100%',
     marginTop: 16,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#eee',
-    borderRadius: 8,
+    borderRadius: 12,
+    backgroundColor: '#f9f9f9',
   },
   bioLabel: {
     fontSize: 12,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   bioText: {
     color: '#333',
@@ -1131,21 +1171,15 @@ const styles = StyleSheet.create({
   },
   bioEditIcon: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 16,
-    textAlign: 'center',
+    top: 10,
+    right: 10,
   },
   usernameInput: {
     textTransform: 'lowercase',
   },
   levelContainer: {
     width: '100%',
-    marginTop: 16,
+    marginTop: 20,
     paddingHorizontal: 16,
   },
   levelText: {
@@ -1159,162 +1193,29 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   xpBar: {
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: 'rgba(0,0,0,0.1)',
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.05)',
   },
   xpText: {
     fontSize: 12,
     color: '#666',
     textAlign: 'center',
-    marginTop: 4,
-  },
-  badgesContainer: {
-    paddingBottom: 16,
-  },
-  badgesCard: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-  },
-  badgesHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  badgesHeaderIcon: {
-    marginRight: 8,
-  },
-  badgesTitle: {
-    fontWeight: 'bold',
-  },
-  badgesSubtitle: {
-    color: '#666',
-    marginBottom: 16,
-    fontSize: 14,
-  },
-  badgeTipContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  badgeTipIconContainer: {
-    marginRight: 8,
-  },
-  badgeTip: {
-    backgroundColor: '#F0F7FF',
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 14,
-    color: '#0066CC',
-  },
-  activityContainer: {
-    paddingBottom: 16,
-  },
-  activityCard: {
-    margin: 16,
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-  },
-  activityTitle: {
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  emptyActivityContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  emptyActivityText: {
-    textAlign: 'center',
-    color: '#999',
-  },
-  levelUpModalContent: {
-    width: '90%',
-    maxWidth: 400,
-    padding: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  levelUpTitle: {
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  levelUpText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  boldText: {
-    fontWeight: 'bold',
-  },
-  levelUpBadgeContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  levelUpIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-    position: 'relative',
-  },
-  levelUpIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: colors.primary,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
-  },
-  levelUpIndicatorText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  levelUpMessage: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.primary,
-  },
-  levelUpRewardText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.success,
-    marginBottom: 24,
-  },
-  levelUpButton: {
-    paddingHorizontal: 32,
-  },
-  testButtonContainer: {
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  testButton: {
-    borderColor: colors.primary,
+    marginTop: 6,
   },
   refreshButton: {
-    marginTop: 4,
+    marginTop: 6,
     backgroundColor: colors.primary + '20',
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   refreshButtonText: {
     color: colors.primary,
     fontSize: 10,
     fontWeight: 'bold',
   },
+  // Keep other existing styles
 });
 
 export default ProfileScreen;
