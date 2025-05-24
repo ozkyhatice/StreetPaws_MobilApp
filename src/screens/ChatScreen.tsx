@@ -29,6 +29,8 @@ import { RootStackParamList } from '../types/navigation';
 import { Message } from '../types/community';
 import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getDoc, doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../config/firebase';
 
 type ChatScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
@@ -82,22 +84,6 @@ export default function ChatScreen() {
         // Validate recipient ID
         if (!recipientId || recipientId.trim() === '') {
           console.error('Invalid or empty recipient ID');
-          // Set placeholder data
-          if (isCommunityChat) {
-            setCommunity({
-              id: 'placeholder',
-              name: recipientName || 'Community',
-              membersCount: 0,
-              photoURL: 'https://picsum.photos/200'
-            });
-          } else {
-            setRecipient({
-              uid: 'placeholder',
-              displayName: recipientName || 'User',
-              photoURL: 'https://picsum.photos/200'
-            });
-          }
-          setIsLoading(false);
           return;
         }
         
@@ -112,9 +98,6 @@ export default function ChatScreen() {
         );
         
         console.log(`Fetched ${messagesList.length} messages for ${isCommunityChat ? 'community' : 'direct'} conversation`);
-        messagesList.forEach(msg => {
-          console.log(`Message: ${msg.id}, from: ${msg.senderId}, to: ${msg.recipientId}, isCurrentUser: ${msg.senderId === user.uid}`);
-        });
         
         // Get recipient details (user or community)
         if (isCommunityChat) {
@@ -123,68 +106,32 @@ export default function ChatScreen() {
             if (communityData) {
               console.log(`Found community: ${communityData.name}`);
               setCommunity(communityData);
-            } else {
-              console.error(`Community not found with ID: ${recipientId}`);
-              // Use mock data as fallback
-              setCommunity({
-                id: recipientId,
-                name: recipientName || 'Community',
-                membersCount: 5,
-                photoURL: 'https://picsum.photos/200'
-              });
             }
           } catch (communityError) {
             console.error('Error loading community:', communityError);
-            // Use mock data as fallback
-            setCommunity({
-              id: recipientId,
-              name: recipientName || 'Community',
-              membersCount: 5,
-              photoURL: 'https://picsum.photos/200'
-            });
           }
         } else {
           try {
-            // Only proceed with valid user ID
-            if (recipientId && recipientId.includes('/') === false) {
-              const userData = await userService.getUserById(recipientId);
-              if (userData) {
-                console.log(`Found recipient user: ${userData.displayName || 'Unknown User'}`);
-                setRecipient(userData);
-              } else {
-                // Mock data for user
-                setRecipient({
-                  uid: recipientId,
-                  displayName: recipientName || 'User',
-                  photoURL: 'https://picsum.photos/200'
-                });
+            const userData = await userService.getUserById(recipientId);
+            if (userData) {
+              console.log(`Found recipient user: ${userData.displayName || 'Unknown User'}`);
+              setRecipient(userData);
+              
+              // Get online status from presence system
+              const presenceDoc = await getDoc(doc(db, 'userPresence', recipientId));
+              if (presenceDoc.exists()) {
+                const presenceData = presenceDoc.data();
+                const isOnline = presenceData.state === 'online' && 
+                               (new Date().getTime() - presenceData.lastChanged.toDate().getTime()) < 300000; // 5 minutes
+                
+                setIsRecipientOnline(isOnline);
+                if (!isOnline && presenceData.lastChanged) {
+                  setRecipientLastSeen(presenceData.lastChanged.toDate().toISOString());
+                }
               }
-            } else {
-              // Mock data for user with invalid ID
-              console.error(`Invalid user ID: ${recipientId}`);
-              setRecipient({
-                uid: recipientId || '0',
-                displayName: recipientName || 'User',
-                photoURL: 'https://picsum.photos/200'
-              });
-            }
-            
-            // Simulate online status for now
-            // In a real app, you would use a presence system
-            setIsRecipientOnline(Math.random() > 0.5);
-            if (!isRecipientOnline) {
-              const now = new Date();
-              now.setMinutes(now.getMinutes() - Math.floor(Math.random() * 60));
-              setRecipientLastSeen(now.toISOString());
             }
           } catch (userError) {
             console.error('Error loading user:', userError);
-            // Mock data for user
-            setRecipient({
-              uid: recipientId || '0',
-              displayName: recipientName || 'User',
-              photoURL: 'https://picsum.photos/200'
-            });
           }
         }
         
@@ -194,7 +141,6 @@ export default function ChatScreen() {
         if (conversationId && !isCommunityChat) {
           messagingService.markMessagesAsRead(conversationId, user.uid);
         } else if (isCommunityChat && recipientId) {
-          // Mark community messages as read
           messagingService.markCommunityMessagesAsRead(recipientId, user.uid);
         }
       } catch (error) {
@@ -219,11 +165,27 @@ export default function ChatScreen() {
         if (conversationId && !isCommunityChat) {
           messagingService.markMessagesAsRead(conversationId, user?.uid || '');
         } else if (isCommunityChat && recipientId) {
-          // Mark community messages as read
           messagingService.markCommunityMessagesAsRead(recipientId, user?.uid || '');
         }
       }
     );
+    
+    // Set up presence listener for direct chats
+    let presenceUnsubscribe: (() => void) | undefined;
+    if (!isCommunityChat && recipientId) {
+      presenceUnsubscribe = onSnapshot(doc(db, 'userPresence', recipientId), (doc) => {
+        if (doc.exists()) {
+          const presenceData = doc.data();
+          const isOnline = presenceData.state === 'online' && 
+                         (new Date().getTime() - presenceData.lastChanged.toDate().getTime()) < 300000;
+          
+          setIsRecipientOnline(isOnline);
+          if (!isOnline && presenceData.lastChanged) {
+            setRecipientLastSeen(presenceData.lastChanged.toDate().toISOString());
+          }
+        }
+      });
+    }
     
     // Simulate typing indicator occasionally
     const typingInterval = setInterval(() => {
@@ -270,7 +232,8 @@ export default function ChatScreen() {
     });
     
     return () => {
-      if (unsubscribe) unsubscribe();
+      unsubscribe?.();
+      presenceUnsubscribe?.();
       clearInterval(typingInterval);
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();

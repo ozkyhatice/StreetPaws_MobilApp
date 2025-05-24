@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -27,6 +27,7 @@ import { XPService } from '../services/xpService';
 import { format, formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateLevelProgress } from '../utils/levelUtils';
+import { User } from '../types/user';
 
 // Define conversation interface to handle both direct and community conversations
 interface ConversationItem {
@@ -48,161 +49,11 @@ interface ConversationItem {
 // Tabs
 enum TabName {
   VOLUNTEERS = 'volunteers',
+  BUSINESSES = 'businesses',
+  VETERINARIANS = 'veterinarians',
   COMMUNITIES = 'communities',
   MESSAGES = 'messages',
 }
-
-// Mock volunteer data - keeping for now
-const mockVolunteers = [
-  {
-    id: '1',
-    name: 'Ahmet Yılmaz',
-    avatar: 'https://picsum.photos/id/1/200',
-    bio: 'Hayvan sever ve 3 yıllık StreetPaws gönüllüsü',
-    level: 1,  // Level will be calculated from XP by XPService
-    xp: 0,     // XP will be provided by XPService
-    completedTasks: 0,
-    skills: ['Besleme', 'Veteriner', 'Barınak'],
-    location: 'İstanbul, Kadıköy',
-    badge: 'Barınak Kahramanı'
-  },
-  {
-    id: '2',
-    name: 'Ayşe Kaya',
-    avatar: 'https://picsum.photos/id/2/200',
-    bio: 'Veteriner hekim ve sokak hayvanları koruyucusu',
-    level: 1,
-    xp: 0,
-    completedTasks: 0,
-    skills: ['Sağlık', 'İlkyardım', 'Eğitim'],
-    location: 'İstanbul, Beşiktaş',
-    badge: 'Veteriner Uzmanı'
-  },
-  {
-    id: '3',
-    name: 'Mehmet Demir',
-    avatar: 'https://picsum.photos/id/3/200',
-    bio: 'Barınak görevlisi ve sokak hayvanları için çalışan aktivist',
-    level: 1,
-    xp: 0,
-    completedTasks: 0,
-    skills: ['Barınak', 'Besleme', 'Tasarım'],
-    location: 'İstanbul, Üsküdar',
-    badge: 'Hayvan Dostu'
-  },
-  {
-    id: '4',
-    name: 'Zeynep Çelik',
-    avatar: 'https://picsum.photos/id/4/200',
-    bio: 'Çevreci ve hayvan hakları savunucusu',
-    level: 1,
-    xp: 0,
-    completedTasks: 0,
-    skills: ['Organizasyon', 'Sosyal Medya', 'Eğitim'],
-    location: 'İstanbul, Bakırköy',
-    badge: 'Sosyal Medya Uzmanı'
-  },
-  {
-    id: '5',
-    name: 'Can Aydın',
-    avatar: 'https://picsum.photos/id/5/200',
-    bio: 'Hayvansever mühendis ve hafta sonları gönüllü',
-    level: 1,
-    xp: 0,
-    completedTasks: 0,
-    skills: ['Bakım', 'Tasarım', 'İnşaat'],
-    location: 'İstanbul, Beylikdüzü',
-    badge: 'Yeni Gönüllü'
-  }
-];
-
-// Sample communities data for initial UI
-const mockCommunities: Community[] = [
-  {
-    id: '1',
-    name: 'İstanbul Sokak Hayvanları',
-    description: 'İstanbul\'daki sokak hayvanlarına yardım için kurulmuş topluluk',
-    category: 'ANIMAL_RESCUE',
-    photoURL: 'https://picsum.photos/id/237/200',
-    createdAt: new Date().toISOString(),
-    createdBy: '1',
-    members: ['1', '2', '3'],
-    membersCount: 3,
-    admins: ['1'],
-    isPublic: true,
-    location: {
-      latitude: 41.0082,
-      longitude: 28.9784,
-      address: 'İstanbul'
-    },
-    tags: ['sokak hayvanları', 'kedi', 'köpek', 'yardım']
-  },
-  {
-    id: '2',
-    name: 'Kadıköy Mama Dağıtım Ekibi',
-    description: 'Kadıköy bölgesinde sokak hayvanları için mama dağıtımı yapan ekip',
-    category: 'FEEDING',
-    photoURL: 'https://picsum.photos/id/169/200',
-    createdAt: new Date().toISOString(),
-    createdBy: '2',
-    members: ['2', '4'],
-    membersCount: 2,
-    admins: ['2'],
-    isPublic: true,
-    location: {
-      latitude: 40.9916,
-      longitude: 29.0233,
-      address: 'Kadıköy, İstanbul'
-    },
-    tags: ['besleme', 'mama dağıtımı', 'kadıköy']
-  },
-  {
-    id: '3',
-    name: 'Veteriner Gönüllüleri',
-    description: 'Sokak hayvanları için gönüllü veteriner hizmeti veren grup',
-    category: 'VETERINARY',
-    photoURL: 'https://picsum.photos/id/219/200',
-    createdAt: new Date().toISOString(),
-    createdBy: '3',
-    members: ['3', '2'],
-    membersCount: 2,
-    admins: ['3'],
-    isPublic: false,
-    tags: ['veteriner', 'tedavi', 'sağlık']
-  }
-];
-
-// Sample conversations for Messages tab
-const mockConversations: ConversationItem[] = [
-  {
-    id: '1',
-    otherUser: {
-      id: '2',
-      name: 'Ayşe Kaya',
-      avatar: 'https://picsum.photos/id/2/200'
-    },
-    lastMessage: {
-      content: 'Merhaba, bu hafta sonu etkinliğe katılabilecek misin?',
-      senderId: '2',
-      createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString()
-    },
-    unreadCount: 1
-  },
-  {
-    id: '2',
-    otherUser: {
-      id: '3',
-      name: 'Mehmet Demir',
-      avatar: 'https://picsum.photos/id/3/200'
-    },
-    lastMessage: {
-      content: 'Görev için teşekkür ederim, yarın görüşürüz!',
-      senderId: 'currentUser',
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
-    },
-    unreadCount: 0
-  }
-];
 
 const { width, height } = Dimensions.get('window');
 const isSmallScreen = width < 375;
@@ -213,148 +64,85 @@ type VolunteersScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 export default function VolunteersScreen() {
   const navigation = useNavigation<VolunteersScreenNavigationProp>();
   const { user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabName>(TabName.VOLUNTEERS);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [volunteers, setVolunteers] = useState<User[]>([]);
+  const [businesses, setBusinesses] = useState<User[]>([]);
+  const [veterinarians, setVeterinarians] = useState<User[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [unreadMessages, setUnreadMessages] = useState(0);
-  
-  // Services
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
+  const [selectedUserType, setSelectedUserType] = useState<'volunteer' | 'business' | 'veterinarian'>('volunteer');
+
+  const userService = UserService.getInstance();
   const communityService = CommunityService.getInstance();
   const messagingService = MessagingService.getInstance();
-  const userService = UserService.getInstance();
-  const xpService = XPService.getInstance();
-  
-  // Replace mock data with real user data
-  const [volunteers, setVolunteers] = useState<any[]>([]);
-  const [allSkills, setAllSkills] = useState<string[]>([]);
-  
-  // Davet ile katılma sayfasına yönlendirme
-  const navigateToJoinByInvite = () => {
-    navigation.navigate('JoinByInvite', {});
-  };
-  
-  // Fetch real user data
+
   useEffect(() => {
     const fetchVolunteers = async () => {
-      setIsLoading(true);
+      if (!user) return;
+      
       try {
+        console.log("Fetching users...");
         const allUsers = await userService.getAllUsers();
         
-        // Transform user data to match volunteer format
-        const transformedUsersPromises = allUsers
-          .filter(userData => userData && userData.uid)
-          .map(async (userData) => {
-            // Use XPService to get centralized XP data
-            const xpData = await xpService.getCentralizedXP(userData.uid);
-            const taskProgress = await xpService.getTaskProgress(userData.uid);
-            
-            return {
-              id: userData.uid,
-              name: userData.displayName || userData.username || `Kullanıcı-${userData.uid.substr(0, 5)}`,
-              avatar: userData.photoURL,
-              bio: userData.bio || 'StreetPaws gönüllüsü',
-              level: xpData.level,
-              xp: xpData.xp,
-              completedTasks: taskProgress.completedTasks,
-              skills: userData.skills || ['Besleme'],
-              location: userData.city || 'İstanbul',
-              createdAt: userData.createdAt,
-              badge: getBadgeForLevel(xpData.level, userData.createdAt)
-            };
-          });
+        // Filter users by type
+        const volunteerUsers = allUsers
+          .filter(u => u.uid !== user.uid && u.role === 'user' && !u.isBusinessAccount)
+          .map(u => ({
+            ...u,
+            xp: u.stats?.xpPoints || 0,
+            level: u.stats?.level || 1,
+            completedTasks: u.stats?.tasksCompleted || 0,
+            badge: getBadgeForLevel(u.stats?.level || 1),
+            skills: u.skills || []
+          })) as User[];
 
-        const transformedUsers = await Promise.all(transformedUsersPromises);
-        
-        // Get all unique skills
-        const skillsSet = new Set<string>();
-        transformedUsers.forEach(user => {
-          if (user.skills && Array.isArray(user.skills)) {
-            user.skills.forEach(skill => skillsSet.add(skill));
-          } else if (typeof user.skills === 'string') {
-            skillsSet.add(user.skills);
-          }
-        });
-        
-        setVolunteers(transformedUsers);
-        setAllSkills(Array.from(skillsSet));
+        const businessUsers = allUsers
+          .filter(u => u.isBusinessAccount && u.businessType === 'business' && u.isApproved)
+          .map(u => ({
+            ...u,
+            xp: u.stats?.xpPoints || 0,
+            level: u.stats?.level || 1,
+            completedTasks: u.stats?.tasksCompleted || 0,
+            badge: 'İşletme',
+            skills: u.services || []
+          })) as User[];
+
+        const veterinarianUsers = allUsers
+          .filter(u => u.isBusinessAccount && u.businessType === 'healthcare' && u.isApproved)
+          .map(u => ({
+            ...u,
+            xp: u.stats?.xpPoints || 0,
+            level: u.stats?.level || 1,
+            completedTasks: u.stats?.tasksCompleted || 0,
+            badge: 'Veteriner',
+            skills: u.services || []
+          })) as User[];
+
+        setVolunteers(volunteerUsers);
+        setBusinesses(businessUsers);
+        setVeterinarians(veterinarianUsers);
       } catch (error) {
-        console.error('Error fetching volunteers:', error);
-      } finally {
-        setIsLoading(false);
+        console.error('Error fetching users:', error);
       }
     };
-    
-    fetchVolunteers();
-  }, []);
-  
-  // Helper function to determine badge based on level and registration date
-  const getBadgeForLevel = (level: number, createdAt?: string) => {
-    if (level >= 10) return 'Kurtarıcı Kahraman';
-    if (level >= 7) return 'Veteriner Uzmanı';
-    if (level >= 5) return 'Barınak Kahramanı';
-    if (level >= 3) return 'Hayvan Dostu';
-    
-    // Only return 'Yeni Gönüllü' if the user registered less than a week ago
-    if (createdAt) {
-      const registrationDate = new Date(createdAt);
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-      
-      if (registrationDate > oneWeekAgo) {
-        return 'Yeni Gönüllü';
-      }
-    }
-    
-    // Default badge if not a new volunteer and level < 3
-    return 'Hayvan Dostu';
-  };
-  
-  // Real-time data fetching
-  useEffect(() => {
+
     const fetchCommunities = async () => {
       if (!user) return;
       
-      setIsLoading(true);
       try {
         console.log("Fetching communities...");
-        
-        // Fetch all public communities
-        const publicCommunities = await communityService.getCommunities({ onlyPublic: true });
-        console.log("Public communities fetched:", publicCommunities.length);
-        
-        // Fetch user's communities
-        const userCommunities = await communityService.getCommunities({ userId: user.uid });
-        console.log("User communities fetched:", userCommunities.length);
-        
-        // Combine and remove duplicates for all communities tab
-        const combinedCommunitiesMap = new Map();
-        
-        // First add all public communities
-        publicCommunities.forEach(community => {
-          combinedCommunitiesMap.set(community.id, community);
-        });
-        
-        // Then add user communities (will overwrite duplicates with user's version)
-        userCommunities.forEach(community => {
-          combinedCommunitiesMap.set(community.id, community);
-        });
-        
-        const combinedCommunities = Array.from(combinedCommunitiesMap.values());
-        console.log("Total combined communities:", combinedCommunities.length);
-        
-        setCommunities(combinedCommunities);
+        const allCommunities = await communityService.getCommunities();
+        setCommunities(allCommunities);
       } catch (error) {
         console.error('Error fetching communities:', error);
-        setCommunities([]);
-      } finally {
-        setIsLoading(false);
       }
     };
-    
+
     const fetchConversations = async () => {
       if (!user) return;
       
@@ -365,197 +153,78 @@ export default function VolunteersScreen() {
         const userConversations = await messagingService.getUserConversations(user.uid);
         console.log(`Fetched ${userConversations.length} direct conversations`);
         
+        // Fetch user's communities
+        const userCommunities = await communityService.getCommunities();
+        const joinedCommunities = userCommunities.filter(c => c.members.includes(user.uid));
+        console.log(`Fetched ${joinedCommunities.length} joined communities`);
+        
         // Transform direct conversations to match our ConversationItem interface
         const directConversations: ConversationItem[] = userConversations
           .filter(conv => conv && (conv.recipientId || (conv.otherUser && conv.otherUser.id)))
-          .map(conv => {
-            console.log(`Processing direct conversation: ${conv.id}`);
-            
-            // Ensure we have valid data
-            if (!conv.otherUser || !conv.otherUser.id) {
-              // Create fallback user data if missing
-              conv.otherUser = {
-                id: conv.recipientId || 'unknown',
-                name: conv.recipientName || 'Unknown User',
-                avatar: conv.recipientAvatar || 'https://picsum.photos/200'
-              };
-            }
-            
-            // Use mock data for testing with hardcoded IDs
-            const userNames = {
-              '1': 'Ahmet Yılmaz',
-              '2': 'Ayşe Kaya',
-              '3': 'Mehmet Demir',
-              '4': 'Zeynep Çelik',
-              '5': 'Can Aydın'
-            };
-            
-            // Check if this is a test/mock conversation
-            const isTestUser = Object.keys(userNames).includes(conv.otherUser.id);
-            
-            // Convert DirectConversation to ConversationItem
-            return {
-              id: conv.id || `direct_${Date.now()}`,
-              otherUser: {
-                id: conv.otherUser.id || conv.recipientId || 'unknown',
-                name: isTestUser ? userNames[conv.otherUser.id] : (conv.otherUser.name || conv.recipientName || 'Unknown User'),
-                avatar: conv.otherUser.avatar || conv.recipientAvatar || 'https://picsum.photos/200'
-              },
-              lastMessage: conv.lastMessage,
-              unreadCount: typeof conv.unreadCount === 'number' ? conv.unreadCount : 
-                          (conv.unreadCount && conv.unreadCount[user.uid]) || 0,
-              isCommunityChat: false
-            };
-          });
-        
-        console.log(`Processed ${directConversations.length} direct conversations`);
-        
-        // Fetch user's communities for community conversations
-        const userCommunities = await communityService.getCommunities({ userId: user.uid });
-        console.log(`Fetched ${userCommunities.length} user communities`);
-        
-        // Transform communities to look like conversations for the messages tab
-        // Include all communities the user is a member of, even without messages
-        const communityConversations: ConversationItem[] = userCommunities
-          .filter(community => community && community.id && community.name) // Filter out invalid communities
-          .map(community => {
-            console.log(`Processing community conversation: ${community.name} (${community.id})`);
-            
-            return {
-              id: `community_${community.id}`,
-              otherUser: {
-                id: community.id || '',
-                name: community.name || 'Unknown Community',
-                avatar: community.photoURL || 'https://picsum.photos/200'
-              },
-              lastMessage: community.lastMessage ? {
-                content: community.lastMessage.content || '',
-                senderId: community.lastMessage.senderId || '',
-                senderName: community.lastMessage.senderName || '',
-                createdAt: typeof community.lastMessage.createdAt === 'string' 
-                  ? community.lastMessage.createdAt 
-                  : community.lastMessage.createdAt?.toDate?.().toISOString() || community.createdAt
-              } : {
-                content: 'Henüz mesaj yok',
-                senderId: '',
-                senderName: '',
-                createdAt: community.createdAt
-              },
-              unreadCount: community.unreadMessages?.[user.uid] || 0,
-              isCommunityChat: true
-            };
-          });
-        
-        // For testing: Add a mock direct conversation if none exist
-        if (directConversations.length === 0) {
-          console.log("No direct conversations found, adding a mock conversation for testing");
-          
-          // Add a mock conversation
-          directConversations.push({
-            id: `mock_direct_${Date.now()}`,
+          .map(conv => ({
+            id: conv.id,
             otherUser: {
-              id: '1',
-              name: 'Ahmet Yılmaz',
-              avatar: 'https://picsum.photos/id/1/200',
+              id: conv.otherUser?.id || conv.recipientId || '',
+              name: conv.otherUser?.name || 'Unknown User',
+              avatar: conv.otherUser?.avatar || 'https://picsum.photos/200'
             },
-            lastMessage: {
-              content: 'Merhaba, nasılsınız?',
-              senderId: '1',
-              createdAt: new Date().toISOString()
-            },
-            unreadCount: 1,
+            lastMessage: conv.lastMessage,
+            unreadCount: conv.unreadCount?.[user.uid] || 0,
             isCommunityChat: false
+          }));
+
+        // Transform communities to match our ConversationItem interface
+        const communityConversations: ConversationItem[] = joinedCommunities.map(community => ({
+          id: `community_${community.id}`,
+          otherUser: {
+            id: community.id,
+            name: community.name,
+            avatar: community.photoURL || 'https://picsum.photos/200'
+          },
+          lastMessage: community.lastMessage,
+          unreadCount: community.unreadMessages?.[user.uid] || 0,
+          isCommunityChat: true
+        }));
+
+        // Combine and sort all conversations by last message time
+        const allConversations = [...directConversations, ...communityConversations]
+          .sort((a, b) => {
+            const timeA = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt).getTime() : 0;
+            const timeB = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt).getTime() : 0;
+            return timeB - timeA;
           });
-        }
-        
-        // Combine direct and community conversations
-        const allConversations: ConversationItem[] = [
-          ...directConversations,
-          ...communityConversations
-        ];
-        
+
         console.log(`Total conversations: ${allConversations.length} (${directConversations.length} direct, ${communityConversations.length} community)`);
         
-        // Sort by most recent message
-        allConversations.sort((a, b) => {
-          // If either is a community chat without messages, prioritize those with messages
-          const aHasNoMessages = a.isCommunityChat && (!a.lastMessage || a.lastMessage.content === 'Henüz mesaj yok');
-          const bHasNoMessages = b.isCommunityChat && (!b.lastMessage || b.lastMessage.content === 'Henüz mesaj yok');
-          
-          if (aHasNoMessages && !bHasNoMessages) return 1;
-          if (!aHasNoMessages && bHasNoMessages) return -1;
-          
-          // Otherwise sort by date
-          const dateA = new Date(a.lastMessage?.createdAt || 0);
-          const dateB = new Date(b.lastMessage?.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
-        });
-        
-        // Count unread messages
-        let unreadCount = 0;
-        allConversations.forEach(conv => {
-          unreadCount += conv.unreadCount || 0;
-        });
-        setUnreadMessages(unreadCount);
-        
-        // Set conversations (even if empty array)
         setConversations(allConversations);
+        
+        // Calculate total unread messages
+        const totalUnread = allConversations.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
+        setUnreadMessages(totalUnread);
       } catch (error) {
         console.error('Error fetching conversations:', error);
-        
-        // Fall back to mock data if there's an error
-        console.log("Using mock conversation data due to error");
-        const mockConversations: ConversationItem[] = [
-          {
-            id: '1',
-            otherUser: {
-              id: '2',
-              name: 'Ayşe Kaya',
-              avatar: 'https://picsum.photos/id/2/200'
-            },
-            lastMessage: {
-              content: 'Merhaba, bu hafta sonu etkinliğe katılabilecek misin?',
-              senderId: '2',
-              createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString()
-            },
-            unreadCount: 1,
-            isCommunityChat: false
-          },
-          {
-            id: '2',
-            otherUser: {
-              id: '3',
-              name: 'Mehmet Demir',
-              avatar: 'https://picsum.photos/id/3/200'
-            },
-            lastMessage: {
-              content: 'Görev için teşekkür ederim, yarın görüşürüz!',
-              senderId: user?.uid || 'currentUser',
-              createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
-            },
-            unreadCount: 0,
-            isCommunityChat: false
-          }
-        ];
-        
-        setConversations(mockConversations);
-        setUnreadMessages(1);
       }
     };
-    
-    fetchCommunities();
-    fetchConversations();
-    
+
+    const loadData = async () => {
+      setIsLoading(true);
+      await Promise.all([
+        fetchVolunteers(),
+        fetchCommunities(),
+        fetchConversations()
+      ]);
+      setIsLoading(false);
+    };
+
+    loadData();
+
     // Set up message notification listener
     const unsubscribeMessages = messagingService.subscribeToNewMessages(user?.uid, () => {
-      fetchConversations(); // Refresh conversations on new message
+      fetchConversations();
     });
-    
+
     return () => {
-      // Clean up listeners
-      if (unsubscribeMessages) {
-        unsubscribeMessages();
-      }
+      unsubscribeMessages?.();
     };
   }, [user]);
 
@@ -572,18 +241,28 @@ export default function VolunteersScreen() {
     }
   }, [conversations]);
 
-  // Update filter to use this new state
-  const filteredVolunteers = volunteers.filter(v => {
-    // Search filter
-    const matchesSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                        v.bio.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        v.location.toLowerCase().includes(searchQuery.toLowerCase());
-  
-    // Skill filter
-    const matchesSkill = selectedSkill ? v.skills.includes(selectedSkill) : true;
+  // Update filteredVolunteers
+  const filteredUsers = useMemo(() => {
+    let users = [];
+    switch (selectedUserType) {
+      case 'volunteer':
+        users = volunteers;
+        break;
+      case 'business':
+        users = businesses;
+        break;
+      case 'veterinarian':
+        users = veterinarians;
+        break;
+    }
     
-    return matchesSearch && matchesSkill;
-  });
+    return users.filter(user => 
+      searchQuery === '' || 
+      user.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.bio?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.location?.address?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [selectedUserType, searchQuery, volunteers, businesses, veterinarians]);
   
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -597,159 +276,184 @@ export default function VolunteersScreen() {
     return colors.warning;
   };
 
-  // Render tab bar
-  const renderTabBar = () => (
-    <View style={styles.tabBarContainer}>
-      <TouchableOpacity
-        style={[styles.tab, activeTab === TabName.VOLUNTEERS && styles.activeTab]}
-        onPress={() => setActiveTab(TabName.VOLUNTEERS)}
+  const getBadgeForLevel = (level: number): string => {
+    if (level >= 10) return 'Uzman Gönüllü';
+    if (level >= 7) return 'Deneyimli Gönüllü';
+    if (level >= 5) return 'Aktif Gönüllü';
+    if (level >= 3) return 'Gönüllü';
+    return 'Yeni Gönüllü';
+  };
+
+  const renderUserCard = ({ item, userType }: { item: User; userType: 'volunteer' | 'business' | 'veterinarian' }) => {
+    const isVolunteer = userType === 'volunteer';
+    const cardColor = userType === 'veterinarian' ? colors.success : 
+                     userType === 'business' ? colors.warning : 
+                     colors.primary;
+
+    return (
+      <TouchableRipple
+        onPress={() => navigation.navigate('UserProfile', { userId: item.uid })}
+        style={styles.cardWrapper}
       >
-        <Users size={20} color={activeTab === TabName.VOLUNTEERS ? colors.primary : colors.textSecondary} />
-        <Text style={[styles.tabText, activeTab === TabName.VOLUNTEERS && styles.activeTabText]}>
-          Gönüllüler
-        </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        style={[styles.tab, activeTab === TabName.COMMUNITIES && styles.activeTab]}
-        onPress={() => setActiveTab(TabName.COMMUNITIES)}
-      >
-        <UserPlus size={20} color={activeTab === TabName.COMMUNITIES ? colors.primary : colors.textSecondary} />
-        <Text style={[styles.tabText, activeTab === TabName.COMMUNITIES && styles.activeTabText]}>
-          Topluluklar
-        </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        style={[styles.tab, activeTab === TabName.MESSAGES && styles.activeTab]}
-        onPress={() => setActiveTab(TabName.MESSAGES)}
-      >
-        <View style={{position: 'relative'}}>
-          <MessageCircle size={20} color={activeTab === TabName.MESSAGES ? colors.primary : colors.textSecondary} />
-          {unreadMessages > 0 && (
-            <View style={styles.messageBadge}>
-              <Text style={styles.messageBadgeText}>
-                {unreadMessages > 99 ? '99+' : unreadMessages}
-              </Text>
+        <LinearGradient
+          colors={[colors.surface, colors.surface + '95']}
+          style={styles.card}
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.avatarSection}>
+              <LinearGradient
+                colors={[cardColor + '20', cardColor + '05']}
+                style={styles.avatarContainer}
+              >
+                {item.photoURL ? (
+                  <Avatar.Image 
+                    source={{ uri: item.photoURL }} 
+                    size={70} 
+                    style={styles.avatar}
+                  />
+                ) : (
+                  <Avatar.Icon 
+                    icon={isVolunteer ? "account" : "domain"}
+                    size={70} 
+                    style={[styles.avatarIcon, { backgroundColor: cardColor + '30' }]}
+                    color={cardColor}
+                  />
+                )}
+                {isVolunteer ? (
+                  <View style={[styles.levelBadge, { backgroundColor: getBadgeColor(item.level) }]}>
+                    <Text style={styles.levelText}>{item.level}</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.roleBadge, { backgroundColor: cardColor }]}>
+                    <Text style={styles.roleText}>
+                      {userType === 'veterinarian' ? 'Vet' : 'İşletme'}
+                    </Text>
+                  </View>
+                )}
+              </LinearGradient>
+
+              <View style={styles.userInfo}>
+                <Text style={styles.userName} numberOfLines={1}>{item.displayName}</Text>
+                
+                <View style={styles.roleContainer}>
+                  <Text style={[styles.roleLabel, { color: cardColor }]}>
+                    {isVolunteer ? getBadgeForLevel(item.level) :
+                     userType === 'veterinarian' ? 'Veteriner Kliniği' : 
+                     'Pet Dostu İşletme'}
+                  </Text>
+                </View>
+                
+                {item.location && item.location.address && (
+                  <View style={styles.locationContainer}>
+                    <MapPin size={14} color={colors.textSecondary} />
+                    <Text style={styles.locationText} numberOfLines={1}>
+                      {item.location.address}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
-          )}
-        </View>
-        <Text style={[styles.tabText, activeTab === TabName.MESSAGES && styles.activeTabText]}>
-          Mesajlar
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
 
-  const renderVolunteerCard = ({ item }) => (
-    <Card 
-      style={styles.card}
-      mode="elevated"
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.avatarContainer}>
-          {item.avatar ? (
-            <Avatar.Image 
-              source={{ uri: item.avatar }} 
-              size={70} 
-              style={styles.avatar}
-            />
-          ) : (
-            <Avatar.Icon 
-              icon="account" 
-              size={70} 
-              style={styles.avatarIcon}
-            />
-          )}
-          <View style={[styles.levelBadge, { backgroundColor: getBadgeColor(item.level) }]}>
-            <Text style={styles.levelText}>{item.level}</Text>
+            <TouchableRipple
+              onPress={() => navigation.navigate('Chat', { 
+                conversationId: '', 
+                recipientId: item.uid, 
+                recipientName: item.displayName 
+              })}
+              style={[styles.messageButton, { backgroundColor: cardColor + '15' }]}
+            >
+              <MessageCircle size={22} color={cardColor} />
+            </TouchableRipple>
           </View>
-        </View>
 
-        <View style={styles.headerInfo}>
-          <Text style={styles.volunteerName} numberOfLines={1}>{item.name}</Text>
-          
-          <View style={styles.badgeContainer}>
-            <Award size={14} color={getBadgeColor(item.level)} />
-            <Text style={[styles.badgeText, { color: getBadgeColor(item.level) }]}>
-              {item.badge}
+          <View style={styles.cardContent}>
+            <Text style={styles.bio} numberOfLines={2}>
+              {item.bio || (userType !== 'volunteer' ? item.businessDescription : 'Henüz bir açıklama eklenmemiş.')}
             </Text>
+
+            <View style={styles.statsContainer}>
+              <LinearGradient
+                colors={[colors.surfaceVariant + '30', colors.surfaceVariant + '10']}
+                style={styles.statsGradient}
+              >
+                <View style={styles.statItem}>
+                  <Star size={18} color={cardColor} />
+                  <Text style={[styles.statValue, { color: cardColor }]}>
+                    {isVolunteer ? `${Math.round(item.xp)} XP` : `${item.rating || 0} Puan`}
+                  </Text>
+                  <Text style={styles.statLabel}>
+                    {isVolunteer ? 'Tecrübe' : 'Değerlendirme'}
+                  </Text>
+                </View>
+
+                <View style={styles.statDivider} />
+
+                <View style={styles.statItem}>
+                  <Award size={18} color={cardColor} />
+                  <Text style={[styles.statValue, { color: cardColor }]}>
+                    {isVolunteer ? `${item.completedTasks}` : `${item.reviewCount || 0}`}
+                  </Text>
+                  <Text style={styles.statLabel}>
+                    {isVolunteer ? 'Görev' : 'Yorum'}
+                  </Text>
+                </View>
+              </LinearGradient>
+            </View>
+
+            {isVolunteer && (
+              <View style={styles.progressContainer}>
+                <View style={styles.progressHeader}>
+                  <Text style={styles.progressTitle}>Seviye {item.level}</Text>
+                  <Text style={styles.progressXP}>
+                    {Math.round(item.xp)} / {calculateXpForNextLevel(item.level)} XP
+                  </Text>
+                </View>
+                <LinearGradient
+                  colors={[colors.surfaceVariant + '20', colors.surfaceVariant + '05']}
+                  style={styles.progressBarBackground}
+                >
+                  <LinearGradient
+                    colors={[getBadgeColor(item.level), getBadgeColor(item.level) + '80']}
+                    style={[
+                      styles.progressBar,
+                      { width: `${calculateLevelProgress(item.level, item.xp)}%` }
+                    ]}
+                  />
+                </LinearGradient>
+              </View>
+            )}
+
+            <View style={styles.skillsContainer}>
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.skillsScroll}
+              >
+                {item.skills?.map(skill => (
+                  <Chip 
+                    key={skill} 
+                    style={[
+                      styles.skillChip,
+                      selectedSkill === skill && { backgroundColor: cardColor + '30' },
+                      !isVolunteer && { backgroundColor: cardColor + '15' }
+                    ]}
+                    textStyle={[
+                      styles.skillChipText,
+                      selectedSkill === skill && { color: cardColor, fontWeight: '600' },
+                      !isVolunteer && { color: cardColor }
+                    ]}
+                    onPress={() => setSelectedSkill(selectedSkill === skill ? null : skill)}
+                  >
+                    {skill}
+                  </Chip>
+                ))}
+              </ScrollView>
+            </View>
           </View>
-          
-          <View style={styles.locationContainer}>
-            <MapPin size={14} color={colors.textSecondary} />
-            <Text style={styles.locationText} numberOfLines={1}>{item.location}</Text>
-          </View>
-        </View>
-      </View>
-      
-      <Divider style={styles.divider} />
-      
-      <Text style={styles.bio} numberOfLines={2}>{item.bio}</Text>
-      
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Star size={16} color={colors.warning} />
-          <Text style={styles.statText}>{Math.round(item.xp)} XP</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Clock size={16} color={colors.primary} />
-          <Text style={styles.statText}>{item.completedTasks} Görev</Text>
-        </View>
-      </View>
-      
-      <View style={styles.levelProgressContainer}>
-        <Text style={styles.levelProgressText}>Seviye {item.level}</Text>
-        <View style={styles.levelProgressBarBackground}>
-          <View 
-            style={[
-              styles.levelProgressBar, 
-              {
-                width: `${calculateLevelProgress(item.level, item.xp)}%`,
-                backgroundColor: item.xp >= 2000 ? colors.warning : getBadgeColor(item.level)
-              }
-            ]} 
-          />
-        </View>
-        <Text style={styles.levelProgressTextXP}>
-          {Math.round(item.xp)} / {calculateXpForNextLevel(item.level)} XP
-        </Text>
-      </View>
-      
-      <View style={styles.skillContainer}>
-        {item.skills.map(skill => (
-          <Chip 
-            key={skill} 
-            style={[
-              styles.skillChip,
-              selectedSkill === skill && styles.selectedSkillChip
-            ]}
-            textStyle={[
-              styles.skillChipText,
-              selectedSkill === skill && styles.selectedSkillText
-            ]}
-            onPress={() => setSelectedSkill(selectedSkill === skill ? null : skill)}
-          >
-            {skill}
-          </Chip>
-        ))}
-      </View>
-      
-      <Button 
-        mode="contained" 
-        style={styles.connectButton}
-        icon={({size, color}) => <MessageCircle size={18} color={color} />}
-        buttonColor={colors.primary}
-        onPress={() => navigation.navigate('Chat', { 
-          conversationId: '', 
-          recipientId: item.id, 
-          recipientName: item.name 
-        })}
-      >
-        İletişime Geç
-      </Button>
-    </Card>
-  );
+        </LinearGradient>
+      </TouchableRipple>
+    );
+  };
 
   const renderCommunityCard = ({ item }: { item: Community }) => {
     // Safety check for invalid community
@@ -861,7 +565,6 @@ export default function VolunteersScreen() {
                     style={styles.chatButton}
                     icon={({size, color}) => <MessageCircle size={18} color={color} />}
                     onPress={() => navigateToCommunityChat(item.id, item.name)}
-                    labelStyle={styles.buttonLabel}
                   >
                     Sohbet
                   </Button>
@@ -996,7 +699,6 @@ export default function VolunteersScreen() {
         style={styles.resetButton}
         onPress={() => {
           setSearchQuery('');
-          setSelectedSkill(null);
         }}
       >
         Filtreleri Temizle
@@ -1146,117 +848,218 @@ export default function VolunteersScreen() {
     });
   };
 
+  const navigateToJoinByInvite = () => {
+    navigation.navigate('JoinByInvite');
+  };
+
+  const renderTabBar = () => (
+    <View style={styles.tabContainer}>
+      <View style={styles.tabBackground}>
+        <LinearGradient
+          colors={[colors.surfaceVariant + '40', colors.surfaceVariant + '10']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.tabGradient}
+        >
+          <TouchableRipple
+            style={[
+              styles.mainTab,
+              activeTab === TabName.VOLUNTEERS && styles.activeMainTab
+            ]}
+            onPress={() => setActiveTab(TabName.VOLUNTEERS)}
+          >
+            <View style={styles.tabContent}>
+              <Users size={20} color={activeTab === TabName.VOLUNTEERS ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.mainTabText, activeTab === TabName.VOLUNTEERS && styles.activeMainTabText]}>
+                Kullanıcılar
+              </Text>
+            </View>
+          </TouchableRipple>
+
+          <TouchableRipple
+            style={[
+              styles.mainTab,
+              activeTab === TabName.COMMUNITIES && styles.activeMainTab
+            ]}
+            onPress={() => setActiveTab(TabName.COMMUNITIES)}
+          >
+            <View style={styles.tabContent}>
+              <UserPlus size={20} color={activeTab === TabName.COMMUNITIES ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.mainTabText, activeTab === TabName.COMMUNITIES && styles.activeMainTabText]}>
+                Topluluklar
+              </Text>
+              <View style={styles.tabBadge}>
+                <Text style={styles.tabBadgeText}>{communities.length}</Text>
+              </View>
+            </View>
+          </TouchableRipple>
+
+          <TouchableRipple
+            style={[
+              styles.mainTab,
+              activeTab === TabName.MESSAGES && styles.activeMainTab
+            ]}
+            onPress={() => setActiveTab(TabName.MESSAGES)}
+          >
+            <View style={styles.tabContent}>
+              <MessageCircle size={20} color={activeTab === TabName.MESSAGES ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.mainTabText, activeTab === TabName.MESSAGES && styles.activeMainTabText]}>
+                Mesajlar
+              </Text>
+              {unreadMessages > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadBadgeText}>{unreadMessages}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableRipple>
+        </LinearGradient>
+      </View>
+    </View>
+  );
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
 
       <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>
-            {activeTab === TabName.VOLUNTEERS && 'Gönüllüler'}
-            {activeTab === TabName.MESSAGES && 'Mesajlar'}
-          </Text>
-          
-          {activeTab === TabName.COMMUNITIES && (
-            <View style={styles.headerActions}>
-              <TouchableOpacity
-                style={styles.joinByCodeButton}
-                onPress={navigateToJoinByInvite}
-              >
-                <Code size={20} color={colors.primary} />
-                <Text style={styles.joinByCodeText}>Kod ile Katıl</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.createCommunityButton]}
-                onPress={() => navigation.navigate('CreateCommunity')}
-              >
-                <Plus size={20} color={colors.primary} />
-                <Text style={styles.joinByCodeText}>Kanal Oluştur</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </View>
+        <LinearGradient
+          colors={[colors.primary + '10', colors.background]}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerContent}>
+            <Text style={styles.title}>
+              {activeTab === TabName.VOLUNTEERS && 'Kullanıcılar'}
+              {activeTab === TabName.COMMUNITIES && 'Topluluklar'}
+              {activeTab === TabName.MESSAGES && 'Mesajlar'}
+            </Text>
+            
+            {activeTab === TabName.COMMUNITIES && (
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={navigateToJoinByInvite}
+                >
+                  <LinearGradient
+                    colors={[colors.primary + '20', colors.primary + '10']}
+                    style={styles.headerButtonGradient}
+                  >
+                    <Code size={18} color={colors.primary} />
+                    <Text style={styles.headerButtonText}>Kod ile Katıl</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.headerButton}
+                  onPress={() => navigation.navigate('CreateCommunity')}
+                >
+                  <LinearGradient
+                    colors={[colors.primary + '20', colors.primary + '10']}
+                    style={styles.headerButtonGradient}
+                  >
+                    <Plus size={18} color={colors.primary} />
+                    <Text style={styles.headerButtonText}>Kanal Oluştur</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
 
-      {/* Tab Bar */}
-      {renderTabBar()}
-      
-      {/* Content based on active tab */}
-      {activeTab === TabName.VOLUNTEERS && (
-        <>
           <View style={styles.searchContainer}>
             <Searchbar
-              placeholder="Gönüllü ara..."
+              placeholder={
+                activeTab === TabName.VOLUNTEERS ? "Kullanıcı ara..." :
+                activeTab === TabName.COMMUNITIES ? "Topluluk ara..." :
+                "Mesajlarda ara..."
+              }
               onChangeText={handleSearch}
               value={searchQuery}
               style={styles.searchbar}
+              iconColor={colors.primary}
+              inputStyle={styles.searchInput}
             />
           </View>
-          
-          <View style={styles.filtersContainer}>
+
+          {renderTabBar()}
+
+          {activeTab === TabName.VOLUNTEERS && (
             <ScrollView 
               horizontal 
-              showsHorizontalScrollIndicator={false} 
-              contentContainerStyle={styles.filtersScroll}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterContainer}
             >
               <Chip
-                mode="outlined"
-                style={[styles.filterChip, !selectedSkill && styles.activeFilterChip]}
-                onPress={() => setSelectedSkill(null)}
-                textStyle={!selectedSkill ? styles.activeFilterText : styles.filterChipText}
+                selected={selectedUserType === 'volunteer'}
+                onPress={() => setSelectedUserType('volunteer')}
+                style={[
+                  styles.filterChip,
+                  selectedUserType === 'volunteer' && styles.selectedFilterChip
+                ]}
+                textStyle={[
+                  styles.filterChipText,
+                  selectedUserType === 'volunteer' && styles.selectedFilterChipText
+                ]}
+                icon={({size, color}) => (
+                  <Users size={16} color={selectedUserType === 'volunteer' ? colors.primary : colors.textSecondary} />
+                )}
               >
-                Tümü
+                Gönüllüler ({volunteers.length})
               </Chip>
-              {allSkills.map(skill => (
-                <Chip
-                  key={skill}
-                  mode="outlined"
-                  style={[
-                    styles.filterChip, 
-                    selectedSkill === skill && styles.activeFilterChip
-                  ]}
-                  onPress={() => setSelectedSkill(selectedSkill === skill ? null : skill)}
-                  textStyle={
-                    selectedSkill === skill 
-                      ? styles.activeFilterText 
-                      : styles.filterChipText
-                  }
-                >
-                  {skill}
-                </Chip>
-              ))}
+
+              <Chip
+                selected={selectedUserType === 'business'}
+                onPress={() => setSelectedUserType('business')}
+                style={[
+                  styles.filterChip,
+                  selectedUserType === 'business' && styles.selectedFilterChip
+                ]}
+                textStyle={[
+                  styles.filterChipText,
+                  selectedUserType === 'business' && styles.selectedFilterChipText
+                ]}
+                icon={({size, color}) => (
+                  <Home size={16} color={selectedUserType === 'business' ? colors.primary : colors.textSecondary} />
+                )}
+              >
+                İşletmeler ({businesses.length})
+              </Chip>
+
+              <Chip
+                selected={selectedUserType === 'veterinarian'}
+                onPress={() => setSelectedUserType('veterinarian')}
+                style={[
+                  styles.filterChip,
+                  selectedUserType === 'veterinarian' && styles.selectedFilterChip
+                ]}
+                textStyle={[
+                  styles.filterChipText,
+                  selectedUserType === 'veterinarian' && styles.selectedFilterChipText
+                ]}
+                icon={({size, color}) => (
+                  <Plus size={16} color={selectedUserType === 'veterinarian' ? colors.primary : colors.textSecondary} />
+                )}
+              >
+                Veterinerler ({veterinarians.length})
+              </Chip>
             </ScrollView>
-          </View>
-          
+          )}
+        </LinearGradient>
+      </View>
+
+      <View style={styles.content}>
+        {activeTab === TabName.VOLUNTEERS && (
           <FlatList
-            data={filteredVolunteers}
-            renderItem={renderVolunteerCard}
-            keyExtractor={item => item.id}
+            data={filteredUsers}
+            renderItem={(props) => renderUserCard({ ...props, userType: selectedUserType })}
+            keyExtractor={item => item.uid}
             contentContainerStyle={styles.list}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>Gönüllü Bulunamadı</Text>
-                <Text style={styles.emptyText}>
-                  Arama kriterlerinize uygun gönüllü bulunamadı. Farklı bir arama deneyin.
-                </Text>
-              </View>
-            )}
+            ListEmptyComponent={renderEmptyList}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            showsVerticalScrollIndicator={false}
           />
-        </>
-      )}
-      
-      {activeTab === TabName.COMMUNITIES && (
-        <>
-          <View style={styles.searchContainer}>
-            <Searchbar
-              placeholder="Topluluk ara..."
-              onChangeText={setSearchQuery}
-              value={searchQuery}
-              style={styles.searchbar}
-            />
-          </View>
-          
+        )}
+
+        {activeTab === TabName.COMMUNITIES && (
           <FlatList
             data={communities.filter(c => 
               searchQuery === '' || 
@@ -1267,37 +1070,12 @@ export default function VolunteersScreen() {
             renderItem={renderCommunityCard}
             keyExtractor={item => item.id}
             contentContainerStyle={styles.list}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>Topluluk Bulunamadı</Text>
-                <Text style={styles.emptyText}>
-                  Arama kriterlerinize uygun topluluk bulunamadı veya henüz topluluk yok.
-                </Text>
-                <Button 
-                  mode="contained" 
-                  onPress={() => navigation.navigate('CreateCommunity')}
-                >
-                  Topluluk Oluştur
-                </Button>
-              </View>
-            )}
+            ListEmptyComponent={renderEmptyCommunities}
+            showsVerticalScrollIndicator={false}
           />
-          
+        )}
 
-        </>
-      )}
-      
-      {activeTab === TabName.MESSAGES && (
-        <>
-          <View style={styles.searchContainer}>
-            <Searchbar
-              placeholder="Mesajlarda ara..."
-              onChangeText={setSearchQuery}
-              value={searchQuery}
-              style={styles.searchbar}
-            />
-          </View>
-          
+        {activeTab === TabName.MESSAGES && (
           <FlatList
             data={conversations.filter(c => 
               searchQuery === '' || 
@@ -1306,185 +1084,207 @@ export default function VolunteersScreen() {
             )}
             renderItem={renderConversationCard}
             keyExtractor={item => item.id}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyTitle}>Mesaj Bulunamadı</Text>
-                <Text style={styles.emptyText}>
-                  Henüz hiç mesajınız yok. Gönüllüler veya topluluklar ile iletişime geçebilirsiniz.
-                </Text>
-              </View>
-            )}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={renderEmptyMessages}
+            showsVerticalScrollIndicator={false}
           />
-        </>
-      )}
+        )}
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   header: {
+    backgroundColor: colors.background,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+    ...shadows.medium,
+  },
+  headerGradient: {
+    paddingTop: Platform.OS === 'android' ? spacing.xl : spacing.md,
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.screenPadding,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  joinByCodeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceVariant,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.medium,
-    marginRight: spacing.sm,
-  },
-  createCommunityButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceVariant,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.medium,
-  },
-  joinByCodeText: {
-    color: colors.primary,
-    marginLeft: spacing.xs,
-    fontSize: 14,
-    fontWeight: '500',
+    marginBottom: spacing.sm,
   },
   title: {
     fontSize: typography.h2.fontSize,
-    color: colors.text,
     fontWeight: '700',
+    color: colors.text,
   },
-  tabBarContainer: {
+  headerActions: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  headerButton: {
     borderRadius: borderRadius.medium,
     overflow: 'hidden',
-    ...shadows.small,
   },
-  tab: {
-    flex: 1,
-    paddingVertical: spacing.sm,
+  headerButtonGradient: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
-  activeTab: {
-    backgroundColor: colors.primaryLight + '20',
-  },
-  tabText: {
-    fontSize: typography.body2.fontSize,
-    color: colors.textSecondary,
-    marginLeft: spacing.xxs,
-  },
-  activeTabText: {
-    color: colors.primary,
+  headerButtonText: {
+    fontSize: 14,
     fontWeight: '600',
+    color: colors.primary,
   },
   searchContainer: {
-    paddingHorizontal: spacing.screenPadding,
+    borderRadius: borderRadius.medium,
+    overflow: 'hidden',
     marginBottom: spacing.sm,
   },
   searchbar: {
     borderRadius: borderRadius.medium,
+    elevation: 0,
+    backgroundColor: colors.surfaceVariant + '40',
     height: 45,
   },
-  filtersContainer: {
-    marginBottom: spacing.md,
-    paddingLeft: spacing.screenPadding,
+  searchInput: {
+    fontSize: 15,
+    color: colors.text,
   },
-  filtersScroll: {
-    paddingRight: spacing.screenPadding,
+  tabContainer: {
+    marginBottom: spacing.sm,
   },
-  filterChip: {
-    marginRight: spacing.sm,
-    backgroundColor: colors.background,
+  tabBackground: {
+    marginHorizontal: spacing.screenPadding,
+    borderRadius: borderRadius.large,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceVariant + '20',
   },
-  filterChipText: {
+  tabGradient: {
+    flexDirection: 'row',
+    height: 48,
+  },
+  mainTab: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  activeMainTab: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.medium,
+    margin: 4,
+    ...shadows.small,
+  },
+  tabContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  mainTabText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: colors.textSecondary,
   },
-  activeFilterChip: {
-    backgroundColor: colors.primary + '15',
-    borderColor: colors.primary,
+  activeMainTabText: {
+    color: colors.primary,
   },
-  activeFilterText: {
+  tabBadge: {
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  unreadBadge: {
+    backgroundColor: colors.error,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    minWidth: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'white',
+  },
+  filterContainer: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  filterChip: {
+    backgroundColor: colors.surfaceVariant + '40',
+    borderRadius: borderRadius.medium,
+  },
+  selectedFilterChip: {
+    backgroundColor: colors.primary + '15',
+  },
+  filterChipText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  selectedFilterChipText: {
     color: colors.primary,
     fontWeight: '600',
   },
+  content: {
+    flex: 1,
+  },
   list: {
-    paddingHorizontal: spacing.screenPadding,
-    paddingBottom: 80,
+    padding: spacing.screenPadding,
+  },
+  separator: {
+    height: spacing.sm,
+  },
+  cardWrapper: {
+    marginBottom: spacing.md,
+    borderRadius: borderRadius.large,
+    overflow: 'hidden',
+    ...shadows.medium,
   },
   card: {
-    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.large,
     overflow: 'hidden',
-  },
-  cardContent: {
-    overflow: 'hidden',
-    borderRadius: borderRadius.medium,
   },
   cardHeader: {
-    flexDirection: 'row',
     padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  avatarSection: {
+    flexDirection: 'row',
+    flex: 1,
   },
   avatarContainer: {
-    position: 'relative',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: spacing.md,
   },
   avatar: {
-    borderWidth: 2,
-    borderColor: colors.surface,
-    backgroundColor: colors.primaryLight + '30',
+    backgroundColor: 'transparent',
   },
   avatarIcon: {
-    borderWidth: 2,
-    borderColor: colors.surface,
-    backgroundColor: colors.primary,
-  },
-  headerInfo: {
-    flex: 1,
-  },
-  volunteerName: {
-    fontSize: typography.subtitle1.fontSize,
-    fontWeight: '600',
-  },
-  badgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xxs,
-  },
-  badgeText: {
-    fontSize: typography.caption.fontSize,
-    fontWeight: '600',
-    marginLeft: spacing.xxs,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  locationText: {
-    ...typography.caption,
-    marginLeft: spacing.xxs,
-    color: colors.textSecondary,
+    backgroundColor: 'transparent',
   },
   levelBadge: {
     position: 'absolute',
@@ -1493,7 +1293,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -1504,52 +1303,130 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
-  divider: {
-    marginVertical: spacing.sm,
+  roleBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.surface,
   },
-  bio: {
-    ...typography.body2,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
+  roleText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    marginBottom: spacing.md,
+  userInfo: {
+    flex: 1,
   },
-  statItem: {
+  userName: {
+    fontSize: typography.subtitle1.fontSize,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  roleContainer: {
+    marginBottom: 2,
+  },
+  roleLabel: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: '600',
+  },
+  locationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: spacing.lg,
   },
-  statText: {
-    ...typography.body2,
-    color: colors.text,
-    fontWeight: '500',
+  locationText: {
+    fontSize: typography.caption.fontSize,
+    color: colors.textSecondary,
     marginLeft: spacing.xxs,
   },
-  skillContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  messageButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardContent: {
+    padding: spacing.md,
+  },
+  bio: {
+    fontSize: typography.body2.fontSize,
+    color: colors.text,
+    marginBottom: spacing.md,
+    lineHeight: 20,
+  },
+  statsContainer: {
     marginBottom: spacing.md,
   },
-  skillChip: {
-    marginRight: spacing.xs,
+  statsGradient: {
+    flexDirection: 'row',
+    borderRadius: borderRadius.medium,
+    padding: spacing.sm,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: colors.border + '30',
+    marginHorizontal: spacing.md,
+  },
+  progressContainer: {
+    marginBottom: spacing.md,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.xs,
+  },
+  progressTitle: {
+    fontSize: typography.body2.fontSize,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  progressXP: {
+    fontSize: typography.caption.fontSize,
+    color: colors.textSecondary,
+  },
+  progressBarBackground: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  skillsContainer: {
+    marginTop: spacing.sm,
+  },
+  skillsScroll: {
+    gap: spacing.xs,
+  },
+  skillChip: {
     backgroundColor: colors.primaryLight + '15',
   },
   skillChipText: {
-    ...typography.caption,
+    fontSize: typography.caption.fontSize,
     color: colors.primary,
-  },
-  selectedSkillChip: {
-    backgroundColor: colors.primary + '30',
-  },
-  selectedSkillText: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  connectButton: {
-    margin: spacing.md,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -1566,13 +1443,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: spacing.md, 
+    marginBottom: spacing.md,
     color: colors.text,
   },
   emptyText: {
     fontSize: typography.body1.fontSize,
     textAlign: 'center',
-    marginBottom: spacing.lg,
     color: colors.textSecondary,
   },
   resetButton: {
@@ -1610,26 +1486,15 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   conversationTime: {
-    ...typography.caption,
+    fontSize: typography.caption.fontSize,
     color: colors.textSecondary,
   },
   messagePreview: {
     marginBottom: spacing.xs,
   },
   messageText: {
-    ...typography.body2,
+    fontSize: typography.body2.fontSize,
     color: colors.text,
-  },
-  unreadBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   unreadText: {
     color: 'white',
@@ -1655,182 +1520,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
-  communityName: {
-    fontSize: typography.subtitle1.fontSize,
-    fontWeight: '600',
-  },
-  categoryContainer: {
-    marginBottom: spacing.xxs,
-  },
-  categoryChip: {
-    backgroundColor: colors.primaryLight + '15',
-  },
-  categoryChipText: {
-    color: colors.primary,
-  },
-  communityContent: {
-    padding: spacing.md,
-  },
-  communityDescription: {
-    ...typography.body2,
-    color: colors.textSecondary,
-    marginBottom: spacing.md,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: spacing.md,
-  },
-  tagChip: {
-    backgroundColor: colors.primary + '15',
-    marginRight: spacing.xs,
-    marginBottom: spacing.xs,
-    height: 26,
-  },
-  tagChipText: {
-    ...typography.caption,
-    color: colors.primary,
-  },
-  moreTags: {
-    ...typography.caption,
-    color: colors.textSecondary,
-    marginLeft: spacing.xs,
-  },
-  communityStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  createdText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  leaveButton: {
-    borderColor: colors.border,
-    flex: 1,
-    marginRight: spacing.xs,
-  },
-  joinButton: {
-    backgroundColor: colors.primary,
-    flex: 1,
-    marginRight: spacing.xs,
-  },
-  chatButton: {
-    backgroundColor: colors.primary,
-    flex: 1,
-    marginLeft: spacing.xs,
-  },
-  buttonLabel: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  conversationItem: {
-    flexDirection: 'row',
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 20,
-    right: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 28,
-    width: 56,
-    height: 56,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...shadows.medium
-  },
-  messageBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -8,
-    backgroundColor: colors.error,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  messageBadgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 50,
-  },
-  loadingText: {
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-  },
-  communityBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  noMessagesCard: {
-    backgroundColor: colors.surfaceVariant + '40',
-    borderStyle: 'dashed',
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
-  },
-  noMessagesText: {
-    color: colors.textSecondary,
-    fontSize: typography.caption.fontSize,
-    fontStyle: 'italic',
-  },
-  cardWrapper: {
-    marginBottom: spacing.md,
-    paddingHorizontal: 2,
-    paddingVertical: 2,
-  },
   conversationAvatarImage: {
     backgroundColor: colors.primaryLight + '30',
   },
   conversationAvatarIcon: {
     backgroundColor: colors.primary,
   },
-  levelProgressContainer: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
-  },
-  levelProgressText: {
-    ...typography.body2,
-    fontWeight: '600',
-    marginBottom: spacing.xxs,
-  },
-  levelProgressBarBackground: {
-    height: 8,
+  noMessagesCard: {
     backgroundColor: colors.surfaceVariant,
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: spacing.xxs,
   },
-  levelProgressBar: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  levelProgressTextXP: {
-    ...typography.caption,
+  noMessagesText: {
+    ...typography.body2,
     color: colors.textSecondary,
-    textAlign: 'right',
+    textAlign: 'center',
   },
+  communityBadge: {
+    backgroundColor: colors.primary + '20',
+  },
+  headerInfo: undefined,
+  communityName: undefined,
+  categoryContainer: undefined,
+  categoryChip: undefined,
+  categoryChipText: undefined,
+  communityContent: undefined,
+  communityDescription: undefined,
+  tagsContainer: undefined,
+  tagChip: undefined,
+  tagChipText: undefined,
+  moreTags: undefined,
+  communityStats: undefined,
+  statText: undefined,
+  createdText: undefined,
+  buttonContainer: undefined,
+  leaveButton: undefined,
+  joinButton: undefined,
+  chatButton: undefined,
 });
+

@@ -1631,7 +1631,7 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - react-native-safe-area-context (4.12.0):
+  - react-native-safe-area-context (4.14.1):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1644,8 +1644,8 @@ PODS:
     - React-featureflags
     - React-graphics
     - React-ImageManager
-    - react-native-safe-area-context/common (= 4.12.0)
-    - react-native-safe-area-context/fabric (= 4.12.0)
+    - react-native-safe-area-context/common (= 4.14.1)
+    - react-native-safe-area-context/fabric (= 4.14.1)
     - React-NativeModulesApple
     - React-RCTFabric
     - React-rendererdebug
@@ -1654,7 +1654,7 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - react-native-safe-area-context/common (4.12.0):
+  - react-native-safe-area-context/common (4.14.1):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1675,7 +1675,7 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - react-native-safe-area-context/fabric (4.12.0):
+  - react-native-safe-area-context/fabric (4.14.1):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1971,7 +1971,7 @@ PODS:
     - React-logger
     - React-perflogger
     - React-utils (= 0.76.9)
-  - RNCAsyncStorage (1.23.1):
+  - RNCAsyncStorage (1.24.0):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -2566,7 +2566,7 @@ SPEC CHECKSUMS:
   react-native-blur: 535f5810fceb751b25db90c925ffa42ed007def7
   react-native-maps: 3b0c8378ff774053bdd8954c820e987fdd7b4d72
   react-native-pager-view: 9517b214fb7321493339fbcf53a30abd54fea07b
-  react-native-safe-area-context: cd916088cac5300c3266876218377518987b995e
+  react-native-safe-area-context: 7952193294b10a6a99a9546de0db0c8496210ffa
   react-native-viewpager: ddaf7a06b1864faed597e6742306a8d24c3e0785
   React-nativeconfig: 8efdb1ef1e9158c77098a93085438f7e7b463678
   React-NativeModulesApple: cebca2e5320a3d66e123cade23bd90a167ffce5e
@@ -2595,7 +2595,7 @@ SPEC CHECKSUMS:
   React-utils: ed818f19ab445000d6b5c4efa9d462449326cc9f
   ReactCodegen: f853a20cc9125c5521c8766b4b49375fec20648b
   ReactCommon: 300d8d9c5cb1a6cd79a67cf5d8f91e4d477195f9
-  RNCAsyncStorage: 66991bb6672ed988a8c56289a08bf4fc3a29d4b3
+  RNCAsyncStorage: 9b86b860b6253f5eacf34af7d740037091358dab
   RNGestureHandler: fffddeb8af59709c6d8de11b6461a6af63cad532
   RNReanimated: 2e5069649cbab2c946652d3b97589b2ae0526220
   RNScreens: 362f4c861dd155f898908d5035d97b07a3f1a9d1

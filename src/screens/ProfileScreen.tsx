@@ -66,7 +66,7 @@ const ProfileScreen = () => {
   const taskService = TaskService.getInstance();
   const badgeService = BadgeService.getInstance();
 
-  const tabs = ['Bilgilerim', 'Rozetlerim', 'Etkinliklerim'];
+  const tabs = ['Bilgilerim', 'Rozetlerim'];
 
   const formatDateWithSlashes = (text: string) => {
     // Sadece sayıları al
@@ -860,37 +860,13 @@ const ProfileScreen = () => {
           </View>
         )}
 
-        {activeTab === 'Etkinliklerim' && (
-          <View style={styles.activityContainer}>
-            <Surface style={styles.activityCard} elevation={0}>
-              <Text variant="titleMedium" style={styles.activityTitle}>
-                Son Etkinlikler
-              </Text>
-              
-              <View style={styles.emptyActivityContainer}>
-                <Text style={styles.emptyActivityText}>
-                  Yakında burada etkinlik geçmişinizi görebileceksiniz.
-                </Text>
-              </View>
-            </Surface>
-          </View>
-        )}
+        
       </ScrollView>
 
       {renderEditModal()}
       {renderLevelUpModal()}
 
-      {__DEV__ && (
-        <View style={styles.testButtonContainer}>
-          <Button 
-            mode="outlined" 
-            onPress={handleTestXPTasksSync}
-            style={[styles.testButton, { marginTop: 8 }]}
-          >
-            XP-Görev Senkronizasyonu
-          </Button>
-        </View>
-      )}
+      
     </SafeAreaView>
   );
 };

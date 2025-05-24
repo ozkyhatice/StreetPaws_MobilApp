@@ -34,6 +34,10 @@ import { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
 import { useAuthNavigation } from '../hooks/useAuthNavigation';
+import { getDoc, doc } from 'firebase/firestore';
+import { db, auth } from '../config/firebase';
+import { UserService } from '../services/userService';
+import { sendEmailVerification } from 'firebase/auth';
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -72,23 +76,102 @@ const LoginScreen = () => {
     }
   })
 
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Hata', 'E-posta ve şifre alanları boş bırakılamaz.');
-      return;
-    }
-    
     try {
+      // Email format validation
+      if (!validateEmail(email)) {
+        Alert.alert('Hata', 'Lütfen geçerli bir e-posta adresi girin.');
+        return;
+      }
+
+      if (!email.trim() || !password.trim()) {
+        Alert.alert('Hata', 'E-posta ve şifre alanları boş bırakılamaz.');
+        return;
+      }
+      
       setIsLoading(true);
-      await signIn(email, password);
-      // If login is successful, navigate to MainApp
+      await signIn(email.trim().toLowerCase(), password);
+
+      // E-posta doğrulama kontrolü
+      if (!auth.currentUser?.emailVerified) {
+        await auth.signOut();
+        Alert.alert(
+          'E-posta Doğrulanmamış',
+          'Lütfen e-posta adresinize gönderilen doğrulama bağlantısını kullanarak hesabınızı doğrulayın.',
+          [
+            {
+              text: 'Doğrulama E-postasını Tekrar Gönder',
+              onPress: async () => {
+                try {
+                  if (auth.currentUser) {
+                    await sendEmailVerification(auth.currentUser);
+                    Alert.alert('Başarılı', 'Doğrulama e-postası tekrar gönderildi.');
+                  }
+                } catch (error: any) {
+                  console.error('Email verification error:', error);
+                  Alert.alert('Hata', 'Doğrulama e-postası gönderilemedi. Lütfen daha sonra tekrar deneyin.');
+                }
+              },
+            },
+            { text: 'Tamam' }
+          ]
+        );
+        return;
+      }
+
+      // Kullanıcı tipini ve onay durumunu kontrol et
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser!.uid));
+      const userData = userDoc.data();
+
+      if (userData?.userType === 'business' && !userData?.isApproved) {
+        await auth.signOut();
+        Alert.alert(
+          'Hesap Onay Bekliyor',
+          'İşletme/sağlık kurumu hesabınız henüz onaylanmamıştır. Onaylandıktan sonra giriş yapabilirsiniz.',
+          [{ text: 'Tamam' }]
+        );
+        return;
+      }
+
+      // Tüm kontroller başarılı, ana uygulamaya yönlendir
       navigation.reset({
         index: 0,
         routes: [{ name: 'MainApp' }],
       });
     } catch (error: any) {
-      // Handle login errors
-      Alert.alert('Giriş Hatası', error.message);
+      console.error('Login error:', error);
+      let errorMessage = 'Giriş yapılırken bir hata oluştu.';
+      
+      // Firebase hata mesajlarını daha anlaşılır hale getir
+      switch (error.code) {
+        case 'auth/invalid-email':
+          errorMessage = 'Geçerli bir e-posta adresi girin.';
+          break;
+        case 'auth/invalid-credential':
+          errorMessage = 'E-posta adresi veya şifre hatalı.';
+          break;
+        case 'auth/user-disabled':
+          errorMessage = 'Bu hesap devre dışı bırakılmış.';
+          break;
+        case 'auth/user-not-found':
+          errorMessage = 'Bu e-posta adresiyle kayıtlı bir hesap bulunamadı.';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Hatalı şifre.';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Çok fazla başarısız giriş denemesi. Lütfen daha sonra tekrar deneyin.';
+          break;
+        default:
+          errorMessage = `Giriş hatası: ${error.message}`;
+      }
+      
+      Alert.alert('Giriş Hatası', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -110,7 +193,7 @@ const LoginScreen = () => {
       const adminPassword = "admin123";
       
       // UserService'i başlangıçta yükle
-      const userService = (await import('../services/userService')).UserService.getInstance();
+      const userService = UserService.getInstance();
       
       try {
         // Önce normal giriş deneyin
@@ -232,7 +315,7 @@ const LoginScreen = () => {
                   style={styles.logo}
                 />
               </LinearGradient>
-              <Text style={styles.title}>Sokak Dostları</Text>
+              <Text style={styles.title}>StreetPaws</Text>
               <Text style={styles.subtitle}>Yardım Ağına Hoş Geldiniz</Text>
             </View>
             

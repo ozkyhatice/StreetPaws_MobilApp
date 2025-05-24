@@ -1,5 +1,5 @@
 import { db } from '../config/firebase';
-import { collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, limit, Timestamp, increment, or, onSnapshot, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, limit, Timestamp, increment, or, onSnapshot, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore';
 import { Message, DirectConversation } from '../types/community';
 
 /**
@@ -22,12 +22,14 @@ import { Message, DirectConversation } from '../types/community';
 
 export class MessagingService {
   private static instance: MessagingService;
+  private messageObservers: Map<string, (() => void)[]>;
   private readonly messagesCollection = 'messages';
   private readonly conversationsCollection = 'conversations';
   private readonly userPresenceCollection = 'userPresence';
-  private messageObservers: Map<string, (() => void)[]> = new Map();
 
-  private constructor() {}
+  private constructor() {
+    this.messageObservers = new Map();
+  }
 
   public static getInstance(): MessagingService {
     if (!MessagingService.instance) {
@@ -86,162 +88,151 @@ export class MessagingService {
     }
   }
 
-  async sendDirectMessage(senderId: string, recipientId: string, content: string, attachments?: string[], messageType: 'TEXT' | 'IMAGE' | 'FILE' | 'LINK' = 'TEXT', linkPreview?: {
-    title?: string;
-    description?: string;
-    imageUrl?: string;
-  }): Promise<Message> {
+  async sendDirectMessage(
+    senderId: string, 
+    recipientId: string, 
+    content: string, 
+    attachments?: string[], 
+    messageType: 'TEXT' | 'IMAGE' | 'FILE' | 'LINK' = 'TEXT',
+    linkPreview?: {
+      title?: string;
+      description?: string;
+      imageUrl?: string;
+    }
+  ): Promise<Message> {
     try {
-      console.log(`Sending direct message from ${senderId} to ${recipientId}`);
-      
-      // Get or create conversation
-      const conversation = await this.getOrCreateConversation(senderId, recipientId);
-      
-      // Generate a conversation ID for the message if it doesn't exist
-      const conversationId = conversation.id;
-      console.log(`Using conversation ID: ${conversationId}`);
-      
-      // Create a message
+      // Create or get conversation
+      const participants = [senderId, recipientId].sort();
+      const conversationId = `${participants[0]}_${participants[1]}`;
+
+      // Create message data
       const messageData: any = {
-        conversationId,
         senderId,
         recipientId,
+        conversationId,
         content,
         type: 'DIRECT',
         messageType,
         status: 'SENT',
+        isRead: false,
+        isDelivered: false,
         createdAt: serverTimestamp()
       };
-      
-      // Add optional fields
+
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-      
+
       if (messageType === 'LINK' && linkPreview) {
         messageData.linkPreview = linkPreview;
       }
-      
-      // Add to messages collection
+
+      // Add message to messages collection
       const messageRef = await addDoc(collection(db, this.messagesCollection), messageData);
-      
-      // Update conversation with last message info
-      await updateDoc(doc(db, this.conversationsCollection, conversationId), {
-        lastMessage: {
-          content,
-          senderId,
-          createdAt: serverTimestamp()
-        },
-        lastActivity: serverTimestamp(),
-        [`unreadCount.${recipientId}`]: increment(1)
-      });
-      
-      console.log(`Direct message sent successfully, ID: ${messageRef.id}`);
-      
-      const message: Message = {
+
+      // Update or create conversation
+      const conversationRef = doc(db, this.conversationsCollection, conversationId);
+      const conversationDoc = await getDoc(conversationRef);
+
+      if (conversationDoc.exists()) {
+        // Update existing conversation
+        await updateDoc(conversationRef, {
+          lastMessage: {
+            content,
+            senderId,
+            createdAt: serverTimestamp()
+          },
+          lastActivity: serverTimestamp(),
+          [`unreadCount.${recipientId}`]: increment(1)
+        });
+      } else {
+        // Create new conversation
+        await setDoc(conversationRef, {
+          participants,
+          lastMessage: {
+            content,
+            senderId,
+            createdAt: serverTimestamp()
+          },
+          lastActivity: serverTimestamp(),
+          unreadCount: {
+            [recipientId]: 1,
+            [senderId]: 0
+          }
+        });
+      }
+
+      return {
         id: messageRef.id,
         ...messageData,
-        createdAt: new Date().toISOString(), // For immediate UI display before server timestamp resolves
-        status: 'SENT'
+        createdAt: new Date().toISOString()
       };
-      
-      return message;
     } catch (error) {
       console.error('Error sending direct message:', error);
       throw error;
     }
   }
 
-  async sendGroupMessage(senderId: string, communityId: string, content: string, attachments?: string[], messageType: 'TEXT' | 'IMAGE' | 'FILE' | 'LINK' = 'TEXT', linkPreview?: {
-    title?: string;
-    description?: string;
-    imageUrl?: string;
-  }): Promise<Message> {
+  async sendGroupMessage(
+    senderId: string, 
+    communityId: string, 
+    content: string, 
+    attachments?: string[],
+    messageType: 'TEXT' | 'IMAGE' | 'FILE' | 'LINK' = 'TEXT',
+    linkPreview?: {
+      title?: string;
+      description?: string;
+      imageUrl?: string;
+    }
+  ): Promise<Message> {
     try {
-      console.log(`Sending group message from ${senderId} to community ${communityId}`);
-      
-      // Mock user data for sender name
-      const userNames = {
-        '1': 'Ahmet Yılmaz',
-        '2': 'Ayşe Kaya',
-        '3': 'Mehmet Demir',
-        '4': 'Zeynep Çelik',
-        '5': 'Can Aydın'
-      };
-      
-      // Get sender name (using mock data)
-      const senderName = userNames[senderId] || `User-${senderId.substr(0, 5)}`;
-      
-      // Create a message
+      // Get sender data
+      const userDoc = await getDoc(doc(db, 'users', senderId));
+      const userData = userDoc.data();
+      const senderName = userData?.displayName || userData?.username || `User-${senderId.substr(0, 5)}`;
+
+      // Create message data
       const messageData: any = {
         senderId,
         communityId,
-        recipientId: communityId, // Add recipientId for compatibility
-        conversationId: `community_${communityId}`, // Add proper conversationId format
+        recipientId: communityId,
+        conversationId: `community_${communityId}`,
         content,
         type: 'GROUP',
         messageType,
         status: 'SENT',
         createdAt: serverTimestamp(),
-        senderName: senderName // Add sender name to message
+        senderName
       };
-      
-      // Add optional fields
+
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-      
+
       if (messageType === 'LINK' && linkPreview) {
         messageData.linkPreview = linkPreview;
       }
-      
-      // Add to messages collection
+
+      // Add message
       const messageRef = await addDoc(collection(db, this.messagesCollection), messageData);
-      
-      // Update community with last message
-      const communityService = await import('./communityService').then(m => m.CommunityService.getInstance());
-      
-      // Get the community to find all members
-      const community = await communityService.getCommunityById(communityId);
-      
-      if (community) {
-        // Create or update unreadMessages count for all members except sender
-        const unreadMessages = community.unreadMessages || {};
-        
-        // Increment unread count for all members except the sender
-        community.members.forEach(memberId => {
-          if (memberId !== senderId) {
-            unreadMessages[memberId] = (unreadMessages[memberId] || 0) + 1;
-          }
-        });
-        
-        // Update community with last message and unread counts
-        await communityService.updateCommunityLastMessage(communityId, {
+
+      // Update community last message
+      const communityRef = doc(db, 'communities', communityId);
+      await updateDoc(communityRef, {
+        lastMessage: {
           content,
           senderId,
-          senderName: senderName, // Add sender name to last message
+          senderName,
           createdAt: serverTimestamp()
-        }, unreadMessages);
-      } else {
-        // If community not found, just update the last message
-        await communityService.updateCommunityLastMessage(communityId, {
-          content,
-          senderId,
-          senderName: senderName, // Add sender name to last message
-          createdAt: serverTimestamp()
-        });
-      }
-      
-      console.log(`Group message sent successfully, ID: ${messageRef.id}`);
-      
-      const message: Message = {
+        },
+        lastActivity: serverTimestamp()
+      });
+
+      return {
         id: messageRef.id,
         ...messageData,
-        createdAt: new Date().toISOString(), // For immediate UI display before server timestamp resolves
-        status: 'SENT'
+        createdAt: new Date().toISOString()
       };
-      
-      return message;
     } catch (error) {
       console.error('Error sending group message:', error);
       throw error;

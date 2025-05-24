@@ -4,230 +4,232 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  ScrollView,
   SafeAreaView,
   StatusBar,
   Image,
-  ActivityIndicator
 } from 'react-native';
-import { Text, Card, Avatar, Button, Chip, Divider, SegmentedButtons } from 'react-native-paper';
+import { Text, Card, Avatar, Chip, ActivityIndicator } from 'react-native-paper';
+import { Trophy, Medal, Star, Award, Users, Home, Plus } from 'lucide-react-native';
 import { colors, spacing, shadows, borderRadius, typography } from '../config/theme';
-import { UserService } from '../services/userService';
-import { XPService } from '../services/xpService';
-import { User } from '../types/user';
-import { Award, MapPin, Star, Trophy } from 'lucide-react-native';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../hooks/useAuth';
-import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateLevelProgress } from '../utils/levelUtils';
+import { User } from '../types/user';
+import { UserService } from '../services/userService';
 
-type RankingsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+// Tabs for different rankings
+enum RankingTab {
+  VOLUNTEERS = 'volunteers',
+  BUSINESSES = 'businesses',
+  VETERINARIANS = 'veterinarians',
+}
 
-type SortBy = 'xp' | 'level' | 'tasksCompleted';
-
-// Extend User type with centralized data
-interface UserWithXP extends User {
-  centralizedXP: number;
-  centralizedLevel: number;
+interface RankingUser extends User {
+  rank: number;
+  score: number;
 }
 
 export default function RankingsScreen() {
-  const { user: currentUser } = useAuth();
-  const navigation = useNavigation<RankingsScreenNavigationProp>();
-  const [users, setUsers] = useState<UserWithXP[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<UserWithXP[]>([]);
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<RankingTab>(RankingTab.VOLUNTEERS);
+  const [volunteers, setVolunteers] = useState<RankingUser[]>([]);
+  const [businesses, setBusinesses] = useState<RankingUser[]>([]);
+  const [veterinarians, setVeterinarians] = useState<RankingUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [sortBy, setSortBy] = useState<SortBy>('xp');
 
   const userService = UserService.getInstance();
-  const xpService = XPService.getInstance();
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    const fetchRankings = async () => {
+      if (!user) return;
+      
       try {
         setIsLoading(true);
         const allUsers = await userService.getAllUsers();
         
-        // Filter out users without proper stats
-        const validUsers = allUsers.filter(user => 
-          user && user.uid
-        );
+        // Process volunteers
+        const volunteerUsers = allUsers
+          .filter(u => !u.isBusinessAccount)
+          .map((u, index) => ({
+            ...u,
+            rank: index + 1,
+            score: u.stats?.xpPoints || 0,
+          }))
+          .sort((a, b) => b.score - a.score);
         
-        // Get centralized XP data for each user
-        const usersWithXPPromises = validUsers.map(async (user) => {
-          const xpData = await xpService.getCentralizedXP(user.uid);
-          return {
-            ...user,
-            centralizedXP: xpData.xp,
-            centralizedLevel: xpData.level
-          } as UserWithXP;
-        });
+        // Process businesses
+        const businessUsers = allUsers
+          .filter(u => u.isBusinessAccount && u.businessType === 'business' && u.isApproved)
+          .map((u, index) => ({
+            ...u,
+            rank: index + 1,
+            score: u.rating || 0,
+          }))
+          .sort((a, b) => b.score - a.score);
         
-        const usersWithXP = await Promise.all(usersWithXPPromises);
-        
-        // Only include users who have some XP
-        const usersWithNonZeroXP = usersWithXP.filter(user => user.centralizedXP > 0);
-        
-        setUsers(usersWithNonZeroXP);
-        sortUsers(usersWithNonZeroXP, sortBy);
+        // Process veterinarians
+        const veterinarianUsers = allUsers
+          .filter(u => u.isBusinessAccount && u.businessType === 'healthcare' && u.isApproved)
+          .map((u, index) => ({
+            ...u,
+            rank: index + 1,
+            score: u.rating || 0,
+          }))
+          .sort((a, b) => b.score - a.score);
+
+        setVolunteers(volunteerUsers);
+        setBusinesses(businessUsers);
+        setVeterinarians(veterinarianUsers);
+        setIsLoading(false);
       } catch (error) {
-        console.error('Error fetching users:', error);
-      } finally {
+        console.error('Error fetching rankings:', error);
         setIsLoading(false);
       }
     };
 
-    fetchUsers();
-  }, []);
+    fetchRankings();
+  }, [user]);
 
-  useEffect(() => {
-    sortUsers(users, sortBy);
-  }, [sortBy]);
-
-  const sortUsers = (userList: UserWithXP[], sortType: SortBy) => {
-    const sorted = [...userList];
-    
-    switch (sortType) {
-      case 'xp':
-        sorted.sort((a, b) => {
-          const aXP = a.centralizedXP;
-          const bXP = b.centralizedXP;
-          return bXP - aXP;
-        });
-        break;
-      case 'level':
-        sorted.sort((a, b) => {
-          const aLevel = a.centralizedLevel;
-          const bLevel = b.centralizedLevel;
-          return bLevel - aLevel;
-        });
-        break;
-      case 'tasksCompleted':
-        sorted.sort((a, b) => {
-          const aTasks = a.stats?.tasksCompleted || (a.completedTasks ? a.completedTasks.length : 0);
-          const bTasks = b.stats?.tasksCompleted || (b.completedTasks ? b.completedTasks.length : 0);
-          return bTasks - aTasks;
-        });
-        break;
-    }
-    
-    setFilteredUsers(sorted);
-  };
-
-  const getBadgeColor = (index: number) => {
-    if (index === 0) return colors.gold;
-    if (index === 1) return colors.silver;
-    if (index === 2) return colors.bronze;
-    return colors.textSecondary;
-  };
-
-  const getValueForSort = (user: UserWithXP) => {
-    switch (sortBy) {
-      case 'xp':
-        return user.centralizedXP;
-      case 'level':
-        return user.centralizedLevel;
-      case 'tasksCompleted':
-        return user.stats?.tasksCompleted || (user.completedTasks ? user.completedTasks.length : 0);
-      default:
-        return 0;
-    }
-  };
-
-  const getLabelForSort = () => {
-    switch (sortBy) {
-      case 'xp':
-        return 'XP';
-      case 'level':
-        return 'Seviye';
-      case 'tasksCompleted':
-        return 'Görev';
-      default:
-        return '';
-    }
-  };
-
-  const renderUserCard = ({ item, index }: { item: UserWithXP; index: number }) => {
-    const isCurrentUser = currentUser && item.uid === currentUser.uid;
-    const xp = item.centralizedXP;
-    const level = item.centralizedLevel;
-    
-    return (
-      <Card 
-        style={[
-          styles.card, 
-          isCurrentUser && styles.currentUserCard,
-          index < 3 && styles.topRankedCard
-        ]}
-        mode="elevated"
+  const renderTabBar = () => (
+    <View style={styles.tabBarWrapper}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabBarScrollContent}
+        style={styles.tabBarContainer}
       >
-        <View style={styles.rankBadge}>
-          <View style={[styles.rankCircle, { backgroundColor: getBadgeColor(index) }]}>
-            <Text style={styles.rankText}>{index + 1}</Text>
-          </View>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === RankingTab.VOLUNTEERS && styles.activeTab]}
+          onPress={() => setActiveTab(RankingTab.VOLUNTEERS)}
+        >
+          <Users size={22} color={activeTab === RankingTab.VOLUNTEERS ? colors.primary : colors.textSecondary} />
+          <Text style={[styles.tabText, activeTab === RankingTab.VOLUNTEERS && styles.activeTabText]}>
+            Gönüllüler
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === RankingTab.BUSINESSES && styles.activeTab]}
+          onPress={() => setActiveTab(RankingTab.BUSINESSES)}
+        >
+          <Home size={22} color={activeTab === RankingTab.BUSINESSES ? colors.warning : colors.textSecondary} />
+          <Text style={[styles.tabText, activeTab === RankingTab.BUSINESSES && styles.activeTabText, activeTab === RankingTab.BUSINESSES && styles.businessTabText]}>
+            İşletmeler
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === RankingTab.VETERINARIANS && styles.activeTab]}
+          onPress={() => setActiveTab(RankingTab.VETERINARIANS)}
+        >
+          <Plus size={22} color={activeTab === RankingTab.VETERINARIANS ? colors.success : colors.textSecondary} />
+          <Text style={[styles.tabText, activeTab === RankingTab.VETERINARIANS && styles.activeTabText, activeTab === RankingTab.VETERINARIANS && styles.veterinarianTabText]}>
+            Veterinerler
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+
+  const getCurrentData = () => {
+    switch (activeTab) {
+      case RankingTab.VOLUNTEERS:
+        return volunteers;
+      case RankingTab.BUSINESSES:
+        return businesses;
+      case RankingTab.VETERINARIANS:
+        return veterinarians;
+      default:
+        return [];
+    }
+  };
+
+  const getScoreText = (user: RankingUser) => {
+    if (activeTab === RankingTab.VOLUNTEERS) {
+      return `${Math.round(user.score)} XP`;
+    }
+    return `${user.score.toFixed(1)} Puan`;
+  };
+
+  const getRankingColor = (rank: number) => {
+    switch (rank) {
+      case 1: return colors.gold;
+      case 2: return colors.silver;
+      case 3: return colors.bronze;
+      default: return colors.textSecondary;
+    }
+  };
+
+  const getRankingIcon = (rank: number) => {
+    switch (rank) {
+      case 1: return <Trophy size={24} color={colors.gold} />;
+      case 2: return <Trophy size={24} color={colors.silver} />;
+      case 3: return <Trophy size={24} color={colors.bronze} />;
+      default: return <Text style={[styles.rankText, { color: colors.textSecondary }]}>{rank}</Text>;
+    }
+  };
+
+  const renderRankingCard = ({ item }: { item: RankingUser }) => (
+    <Card 
+      style={[
+        styles.rankingCard,
+        item.rank <= 3 && styles.topRankCard,
+        activeTab === RankingTab.BUSINESSES && styles.businessCard,
+        activeTab === RankingTab.VETERINARIANS && styles.veterinarianCard,
+      ]}
+      mode="elevated"
+    >
+      <View style={styles.rankingContent}>
+        <View style={styles.rankContainer}>
+          {getRankingIcon(item.rank)}
         </View>
-        
-        <View style={styles.cardContent}>
-          <View style={styles.userInfoRow}>
-            <Avatar.Image 
-              source={{ uri: item.photoURL || 'https://picsum.photos/200' }} 
-              size={60} 
-              style={styles.avatar}
-            />
-            
-            <View style={styles.userInfo}>
-              <Text style={styles.userName} numberOfLines={1}>
-                {item.displayName || item.username || 'İsimsiz Gönüllü'}
-                {isCurrentUser && ' (Sen)'}
-              </Text>
-              
-              {item.bio && (
-                <Text style={styles.userBio} numberOfLines={1}>
-                  {item.bio}
-                </Text>
-              )}
-              
-              {item.city && (
-                <View style={styles.locationContainer}>
-                  <MapPin size={12} color={colors.textSecondary} />
-                  <Text style={styles.locationText} numberOfLines={1}>{item.city}</Text>
-                </View>
-              )}
-            </View>
+
+        <View style={styles.userInfo}>
+          <View style={styles.avatarContainer}>
+            {item.photoURL ? (
+              <Avatar.Image 
+                source={{ uri: item.photoURL }} 
+                size={50}
+                style={styles.avatar}
+              />
+            ) : (
+              <Avatar.Icon 
+                icon={activeTab === RankingTab.VOLUNTEERS ? "account" : "domain"}
+                size={50}
+                style={[
+                  styles.avatarIcon,
+                  activeTab === RankingTab.BUSINESSES && styles.businessAvatar,
+                  activeTab === RankingTab.VETERINARIANS && styles.veterinarianAvatar,
+                ]}
+              />
+            )}
           </View>
-          
-          <View style={styles.statsSection}>
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Star size={16} color={colors.warning} />
-                <Text style={styles.statText}>{Math.round(xp)} XP</Text>
-              </View>
-              
-              <View style={styles.statItem}>
-                <Award size={16} color={colors.primary} />
-                <Text style={styles.statText}>Seviye {level}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <Trophy size={16} color={colors.secondary} />
-                <Text style={styles.statText}>
-                  {item.stats?.tasksCompleted || (item.completedTasks ? item.completedTasks.length : 0)} Görev
-                </Text>
-              </View>
-            </View>
-          </View>
-          
-          <View style={styles.rankValueContainer}>
-            <Text style={styles.rankValueText}>
-              {getValueForSort(item)} {getLabelForSort()}
+
+          <View style={styles.nameContainer}>
+            <Text style={styles.userName}>{item.displayName}</Text>
+            <Text style={styles.userRole}>
+              {activeTab === RankingTab.VOLUNTEERS ? 'Gönüllü' : 
+               activeTab === RankingTab.BUSINESSES ? 'İşletme' : 
+               'Veteriner'}
             </Text>
           </View>
         </View>
-      </Card>
-    );
-  };
+
+        <View style={styles.scoreContainer}>
+          {activeTab === RankingTab.VOLUNTEERS ? (
+            <>
+              <Star size={16} color={colors.warning} />
+              <Text style={styles.scoreText}>{Math.round(item.score)} XP</Text>
+            </>
+          ) : (
+            <>
+              <Star size={16} color={colors.warning} />
+              <Text style={styles.scoreText}>{item.score.toFixed(1)} Puan</Text>
+            </>
+          )}
+        </View>
+      </View>
+    </Card>
+  );
 
   const renderEmptyList = () => (
     <View style={styles.emptyContainer}>
@@ -236,9 +238,13 @@ export default function RankingsScreen() {
         style={styles.emptyImage}
         resizeMode="contain"
       />
-      <Text style={styles.emptyTitle}>Gönüllü Bulunamadı</Text>
+      <Text style={styles.emptyTitle}>Sıralama Bulunamadı</Text>
       <Text style={styles.emptyText}>
-        Henüz sıralamada gösterilecek gönüllü yok.
+        {activeTab === RankingTab.VOLUNTEERS ? 
+          'Henüz gönüllü sıralaması oluşturulmamış.' :
+          activeTab === RankingTab.BUSINESSES ?
+          'Henüz işletme sıralaması oluşturulmamış.' :
+          'Henüz veteriner sıralaması oluşturulmamış.'}
       </Text>
     </View>
   );
@@ -247,36 +253,131 @@ export default function RankingsScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Gönüllüler yükleniyor...</Text>
+        <Text style={styles.loadingText}>Sıralama yükleniyor...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
       
       <View style={styles.header}>
-        <Text style={styles.title}>Gönüllü Sıralaması</Text>
+        <Text style={styles.title}>
+          {activeTab === RankingTab.VOLUNTEERS ? 'Gönüllü Sıralaması' :
+           activeTab === RankingTab.BUSINESSES ? 'İşletme Sıralaması' :
+           'Veteriner Sıralaması'}
+        </Text>
       </View>
-      
-      <View style={styles.sortContainer}>
-        <SegmentedButtons
-          value={sortBy}
-          onValueChange={(value) => setSortBy(value as SortBy)}
-          buttons={[
-            { value: 'xp', label: 'XP' },
-            { value: 'level', label: 'Seviye' },
-            { value: 'tasksCompleted', label: 'Görevler' },
-          ]}
-          style={styles.segmentedButtons}
-        />
-      </View>
-      
+
+      {renderTabBar()}
+
+      {/* Top 3 Section */}
+      {getCurrentData().length > 0 && (
+        <View style={styles.topThreeContainer}>
+          {/* Second Place */}
+          {getCurrentData()[1] && (
+            <View style={[styles.topThreeItem, styles.secondPlace]}>
+              <View style={styles.topThreeAvatarContainer}>
+                {getCurrentData()[1].photoURL ? (
+                  <Avatar.Image 
+                    source={{ uri: getCurrentData()[1].photoURL }} 
+                    size={60}
+                    style={styles.topThreeAvatar}
+                  />
+                ) : (
+                  <Avatar.Icon 
+                    icon={activeTab === RankingTab.VOLUNTEERS ? "account" : "domain"}
+                    size={60}
+                    style={[
+                      styles.topThreeAvatarIcon,
+                      activeTab === RankingTab.BUSINESSES && styles.businessAvatar,
+                      activeTab === RankingTab.VETERINARIANS && styles.veterinarianAvatar,
+                    ]}
+                  />
+                )}
+                <Trophy size={24} color={colors.silver} style={styles.medalIcon} />
+              </View>
+              <Text style={styles.topThreeName} numberOfLines={1}>
+                {getCurrentData()[1].displayName}
+              </Text>
+              <Text style={styles.topThreeScore}>
+                {getScoreText(getCurrentData()[1])}
+              </Text>
+            </View>
+          )}
+
+          {/* First Place */}
+          {getCurrentData()[0] && (
+            <View style={[styles.topThreeItem, styles.firstPlace]}>
+              <View style={styles.topThreeAvatarContainer}>
+                {getCurrentData()[0].photoURL ? (
+                  <Avatar.Image 
+                    source={{ uri: getCurrentData()[0].photoURL }} 
+                    size={80}
+                    style={styles.topThreeAvatar}
+                  />
+                ) : (
+                  <Avatar.Icon 
+                    icon={activeTab === RankingTab.VOLUNTEERS ? "account" : "domain"}
+                    size={80}
+                    style={[
+                      styles.topThreeAvatarIcon,
+                      activeTab === RankingTab.BUSINESSES && styles.businessAvatar,
+                      activeTab === RankingTab.VETERINARIANS && styles.veterinarianAvatar,
+                    ]}
+                  />
+                )}
+                <Trophy size={32} color={colors.gold} style={styles.medalIcon} />
+              </View>
+              <Text style={[styles.topThreeName, styles.firstPlaceName]} numberOfLines={1}>
+                {getCurrentData()[0].displayName}
+              </Text>
+              <Text style={[styles.topThreeScore, styles.firstPlaceScore]}>
+                {getScoreText(getCurrentData()[0])}
+              </Text>
+            </View>
+          )}
+
+          {/* Third Place */}
+          {getCurrentData()[2] && (
+            <View style={[styles.topThreeItem, styles.thirdPlace]}>
+              <View style={styles.topThreeAvatarContainer}>
+                {getCurrentData()[2].photoURL ? (
+                  <Avatar.Image 
+                    source={{ uri: getCurrentData()[2].photoURL }} 
+                    size={60}
+                    style={styles.topThreeAvatar}
+                  />
+                ) : (
+                  <Avatar.Icon 
+                    icon={activeTab === RankingTab.VOLUNTEERS ? "account" : "domain"}
+                    size={60}
+                    style={[
+                      styles.topThreeAvatarIcon,
+                      activeTab === RankingTab.BUSINESSES && styles.businessAvatar,
+                      activeTab === RankingTab.VETERINARIANS && styles.veterinarianAvatar,
+                    ]}
+                  />
+                )}
+                <Trophy size={24} color={colors.bronze} style={styles.medalIcon} />
+              </View>
+              <Text style={styles.topThreeName} numberOfLines={1}>
+                {getCurrentData()[2].displayName}
+              </Text>
+              <Text style={styles.topThreeScore}>
+                {getScoreText(getCurrentData()[2])}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Rest of the list */}
       <FlatList
-        data={filteredUsers}
-        renderItem={renderUserCard}
-        keyExtractor={(item) => item.uid}
+        data={getCurrentData().slice(3)}
+        renderItem={renderRankingCard}
+        keyExtractor={item => item.uid}
         contentContainerStyle={styles.list}
         ListEmptyComponent={renderEmptyList}
       />
@@ -285,7 +386,7 @@ export default function RankingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: colors.background,
   },
@@ -296,130 +397,134 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: typography.h2.fontSize,
-    color: colors.text,
     fontWeight: '700',
+    color: colors.text,
   },
-  sortContainer: {
-    paddingHorizontal: spacing.screenPadding,
-    marginBottom: spacing.md,
-  },
-  segmentedButtons: {
+  tabBarWrapper: {
     backgroundColor: colors.surface,
+    marginBottom: spacing.md,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  tabBarContainer: {
+    flexGrow: 0,
+  },
+  tabBarScrollContent: {
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.large,
+    backgroundColor: colors.surfaceVariant + '20',
+    marginRight: spacing.sm,
+    gap: spacing.xs,
+  },
+  activeTab: {
+    backgroundColor: colors.primaryLight + '30',
+  },
+  tabText: {
+    fontSize: typography.body2.fontSize,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  businessTabText: {
+    color: colors.warning,
+  },
+  veterinarianTabText: {
+    color: colors.success,
   },
   list: {
     paddingHorizontal: spacing.screenPadding,
-    paddingBottom: 80,
+    paddingBottom: spacing.xxl,
   },
-  card: {
-    marginBottom: spacing.md,
-    overflow: 'hidden',
-    flexDirection: 'row',
+  rankingCard: {
+    marginBottom: spacing.sm,
     backgroundColor: colors.surface,
   },
-  currentUserCard: {
-    borderWidth: 2,
-    borderColor: colors.primary,
+  topRankCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
   },
-  topRankedCard: {
-    ...shadows.medium,
+  businessCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.warning,
   },
-  cardContent: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    paddingRight: spacing.md,
-    paddingBottom: spacing.xl,
-    position: 'relative',
+  veterinarianCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: colors.success,
   },
-  userInfoRow: {
+  rankingContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    padding: spacing.md,
   },
-  avatar: {
-    borderWidth: 2,
-    borderColor: colors.surface,
-    backgroundColor: colors.primaryLight + '30',
+  rankContainer: {
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankText: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   userInfo: {
     flex: 1,
-    marginLeft: spacing.sm,
-    paddingRight: 70,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.md,
+  },
+  avatarContainer: {
+    marginRight: spacing.sm,
+  },
+  avatar: {
+    backgroundColor: colors.primaryLight + '30',
+  },
+  avatarIcon: {
+    backgroundColor: colors.primary,
+  },
+  businessAvatar: {
+    backgroundColor: colors.warning,
+  },
+  veterinarianAvatar: {
+    backgroundColor: colors.success,
+  },
+  nameContainer: {
+    flex: 1,
   },
   userName: {
     fontSize: typography.subtitle1.fontSize,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 2,
   },
-  userBio: {
+  userRole: {
     fontSize: typography.caption.fontSize,
     color: colors.textSecondary,
-    marginTop: 2,
   },
-  locationContainer: {
+  scoreContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    marginLeft: spacing.md,
   },
-  locationText: {
-    fontSize: typography.caption.fontSize,
-    color: colors.textSecondary,
-    marginLeft: 4,
-  },
-  statsSection: {
-    marginTop: spacing.sm,
-    paddingRight: 70,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: spacing.xs,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  statText: {
-    fontSize: typography.caption.fontSize,
+  scoreText: {
+    marginLeft: spacing.xs,
+    fontSize: typography.subtitle2.fontSize,
+    fontWeight: '600',
     color: colors.text,
-    marginLeft: 4,
-  },
-  rankBadge: {
-    padding: spacing.md,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  rankCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.textSecondary,
-  },
-  rankText: {
-    color: 'white',
-    fontSize: typography.subtitle2.fontSize,
-    fontWeight: 'bold',
-  },
-  rankValueContainer: {
-    position: 'absolute',
-    bottom: spacing.sm,
-    right: spacing.sm,
-    backgroundColor: colors.primaryLight + '20',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: borderRadius.small,
-    borderWidth: 1,
-    borderColor: colors.primaryLight,
-    minWidth: 60,
-    alignItems: 'center',
-  },
-  rankValueText: {
-    color: colors.primary,
-    fontWeight: 'bold',
-    fontSize: typography.subtitle2.fontSize,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -436,13 +541,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: spacing.md, 
+    marginBottom: spacing.md,
     color: colors.text,
   },
   emptyText: {
     fontSize: typography.body1.fontSize,
     textAlign: 'center',
-    marginBottom: spacing.lg,
     color: colors.textSecondary,
   },
   loadingContainer: {
@@ -453,5 +557,71 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: spacing.md,
     color: colors.textSecondary,
+  },
+  topThreeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingHorizontal: spacing.screenPadding,
+    paddingVertical: spacing.lg,
+    backgroundColor: colors.surface,
+    marginBottom: spacing.md,
+  },
+  topThreeItem: {
+    alignItems: 'center',
+    marginHorizontal: spacing.sm,
+  },
+  firstPlace: {
+    marginTop: -20,
+  },
+  secondPlace: {
+    marginBottom: 10,
+  },
+  thirdPlace: {
+    marginBottom: 10,
+  },
+  topThreeAvatarContainer: {
+    position: 'relative',
+    marginBottom: spacing.xs,
+  },
+  topThreeAvatar: {
+    backgroundColor: colors.primaryLight + '30',
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  topThreeAvatarIcon: {
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.surface,
+  },
+  medalIcon: {
+    position: 'absolute',
+    bottom: -8,
+    right: -8,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 2,
+  },
+  topThreeName: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: spacing.xs,
+    maxWidth: 80,
+    textAlign: 'center',
+  },
+  firstPlaceName: {
+    fontSize: typography.body2.fontSize,
+    maxWidth: 100,
+  },
+  topThreeScore: {
+    fontSize: typography.caption.fontSize,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  firstPlaceScore: {
+    fontSize: typography.body2.fontSize,
+    fontWeight: '600',
+    color: colors.warning,
   },
 }); 
