@@ -242,27 +242,30 @@ export default function VolunteersScreen() {
   }, [conversations]);
 
   // Update filteredVolunteers
-  const filteredUsers = useMemo(() => {
-    let users = [];
-    switch (selectedUserType) {
-      case 'volunteer':
-        users = volunteers;
-        break;
-      case 'business':
-        users = businesses;
-        break;
-      case 'veterinarian':
-        users = veterinarians;
-        break;
-    }
-    
-    return users.filter(user => 
-      searchQuery === '' || 
-      user.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.bio?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.location?.address?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [selectedUserType, searchQuery, volunteers, businesses, veterinarians]);
+  // GÜNCELLENDİ: Filtreleme kullanıcı tipi ile eşleşecek şekilde düzeltildi
+
+const filteredUsers = useMemo(() => {
+  let users = [];
+  switch (selectedUserType) {
+    case 'volunteer':
+      users = volunteers;
+      break;
+    case 'business':
+      users = businesses.filter(u => u.userType === 'business');
+      break;
+    case 'veterinarian':
+      users = businesses.filter(u => u.userType === 'veteriner');
+      break;
+  }
+
+  return users.filter(user =>
+    searchQuery === '' ||
+    user.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.bio?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    user.location?.address?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+}, [selectedUserType, searchQuery, volunteers, businesses]);
+
   
   const handleSearch = (query: string) => {
     setSearchQuery(query);

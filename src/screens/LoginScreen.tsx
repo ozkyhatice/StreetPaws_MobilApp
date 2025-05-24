@@ -282,6 +282,36 @@ const LoginScreen = () => {
       setIsLoading(false);
     }
   };
+  const handleTestVet = async () => {
+    try {
+      setIsLoading(true);
+      await signIn('haticeozky28@gmail.com', '123456');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'MainApp' }],
+      });
+    } catch (error: any) {
+      // If user doesn't exist, create it
+      if (error.message.includes('auth/invalid-credential') || 
+          error.message.includes('auth/user-not-found')) {
+        try {
+          // Try login again
+          await signIn('haticeozky28@gmail.com', '123456');
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'MainApp' }],
+          });
+        } catch (signUpError: any) {
+          Alert.alert('Hata', signUpError.message);
+        }
+      } else {
+        Alert.alert('Giriş Hatası', error.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   // Oturum kontrolü - Login sayfası için oturum gerekMEZ, oturum varsa MainApp'e yönlendir
   useAuthNavigation(false, 'MainApp');
@@ -407,6 +437,12 @@ const LoginScreen = () => {
                   onPress={handleAdminLogin}
                 >
                   <Text style={styles.testButtonText}>Test Admin</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={handleTestVet}
+                >
+                  <Text style={styles.testButtonText}>Test Veteriner</Text>
                 </TouchableOpacity>
               </View>
             </View>

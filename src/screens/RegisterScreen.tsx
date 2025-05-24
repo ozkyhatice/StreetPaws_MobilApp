@@ -121,17 +121,47 @@ const RegisterScreen = () => {
     return true;
   };
 
-  const handleRegister = async () => {
-    if (!validateForm()) return;
+  /*
+  GÜNCELLENMİŞ: handleRegister fonksiyonu (RegisterScreen.tsx)
+  - 4 kullanıcı tipi (user, veteriner, business, healthcare) destekleniyor.
+  - signUp dönüş tipi düzeltildi.
+*/
 
-    try {
-      setIsLoading(true);
-      const email = userType === 'individual' ? formData.email.trim().toLowerCase() : formData.businessEmail.trim().toLowerCase();
-      
-      // Test veteriner hesabı için e-posta kontrolünü atlıyoruz
-      // Create user account with additional profile data
-      const displayName = userType === 'individual' ? formData.username : formData.businessName;
-      const additionalData = userType === 'individual' ? {
+const handleRegister = async () => {
+  if (!validateForm()) return;
+
+  try {
+    setIsLoading(true);
+
+    const email =
+      userType === 'user' || userType === 'veteriner'
+        ? formData.email.trim().toLowerCase()
+        : formData.businessEmail.trim().toLowerCase();
+
+    const displayName =
+      userType === 'user'
+        ? formData.username
+        : formData.businessName || formData.username;
+
+    const createdUser = await signUp(email, formData.password, displayName);
+
+    if (!createdUser) {
+      throw new Error('Kullanıcı oluşturulamadı');
+    }
+
+    const additionalData: any = {
+      uid: createdUser.uid,
+      email,
+      displayName,
+      userType,
+      role: 'user',
+      emailVerified: userType === 'business' || userType === 'healthcare',
+      isApproved: userType === 'business' || userType === 'healthcare',
+      status: userType === 'business' || userType === 'healthcare' ? 'approved' : 'pending',
+    };
+
+    if (userType === 'user') {
+      Object.assign(additionalData, {
         username: formData.username,
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -139,11 +169,18 @@ const RegisterScreen = () => {
         dateOfBirth: formData.dateOfBirth || null,
         city: formData.city || null,
         bio: formData.bio || null,
-        userType: 'individual',
-        role: 'user' as const
-      } : {
+      });
+    } else if (userType === 'veteriner') {
+      Object.assign(additionalData, {
+        clinicName: formData.businessName,
+        phoneNumber: formData.businessPhoneNumber,
+        address: formData.address,
+        licenseNumber: formData.registrationNumber,
+      });
+    } else if (userType === 'business' || userType === 'healthcare') {
+      Object.assign(additionalData, {
         businessName: formData.businessName,
-        businessType: formData.businessType,
+        businessType: userType,
         taxNumber: formData.taxNumber,
         registrationNumber: formData.registrationNumber,
         address: formData.address,
@@ -151,64 +188,51 @@ const RegisterScreen = () => {
         website: formData.businessWebsite || null,
         description: formData.businessDescription || null,
         documents: formData.documents,
-        userType: 'business',
-        role: 'user' as const,
-        status: 'approved', // Test için direkt onaylı
-        isApproved: true, // Test için direkt onaylı
-        emailVerified: true // Test için direkt doğrulanmış
-      };
-
-      const { user } = await signUp(email, formData.password, displayName);
-      
-      if (!user) {
-        throw new Error('Kullanıcı oluşturulamadı');
-      }
-
-      // Update user profile with additional data
-      try {
-        const userService = UserService.getInstance();
-        await userService.updateUser(user.uid, additionalData);
-        
-        // Test için kullanıcıyı direkt onaylı ve doğrulanmış olarak işaretliyoruz
-        if (userType === 'business') {
-          await setDoc(doc(db, 'users', user.uid), { emailVerified: true }, { merge: true });
-        }
-      } catch (error) {
-        console.error('Error updating user profile:', error);
-      }
-      
-      // Test hesabı için doğrulama modalını göstermiyoruz
-      if (userType === 'business') {
-        navigation.navigate('Login');
-      } else {
-        setShowVerificationModal(true);
-      }
-    } catch (error: any) {
-      console.error('Registration error:', error);
-      let errorMessage = 'Kayıt sırasında bir hata oluştu.';
-      
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'Bu e-posta adresi zaten kullanımda. Lütfen farklı bir e-posta adresi deneyin.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Geçerli bir e-posta adresi girin.';
-          break;
-        case 'auth/operation-not-allowed':
-          errorMessage = 'E-posta/şifre girişi etkin değil.';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'Şifre çok zayıf. En az 6 karakter kullanın.';
-          break;
-        default:
-          errorMessage = error.message || 'Kayıt işlemi başarısız oldu. Lütfen daha sonra tekrar deneyin.';
-      }
-      
-      Alert.alert('Kayıt Hatası', errorMessage);
-    } finally {
-      setIsLoading(false);
+      });
     }
-  };
+
+    try {
+      const userService = UserService.getInstance();
+      await userService.updateUser(createdUser.uid, additionalData);
+
+      if (userType === 'business' || userType === 'healthcare') {
+        await setDoc(doc(db, 'users', createdUser.uid), { emailVerified: true }, { merge: true });
+      }
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+    }
+
+    if (userType === 'business' || userType === 'healthcare') {
+      navigation.navigate('Login');
+    } else {
+      setShowVerificationModal(true);
+    }
+  } catch (error: any) {
+    console.error('Registration error:', error);
+    let errorMessage = 'Kayıt sırasında bir hata oluştu.';
+
+    switch (error.code) {
+      case 'auth/email-already-in-use':
+        errorMessage = 'Bu e-posta adresi zaten kullanımda. Lütfen farklı bir e-posta adresi deneyin.';
+        break;
+      case 'auth/invalid-email':
+        errorMessage = 'Geçerli bir e-posta adresi girin.';
+        break;
+      case 'auth/operation-not-allowed':
+        errorMessage = 'E-posta/şifre girişi etkin değil.';
+        break;
+      case 'auth/weak-password':
+        errorMessage = 'Şifre çok zayıf. En az 6 karakter kullanın.';
+        break;
+      default:
+        errorMessage = error.message || 'Kayıt işlemi başarısız oldu. Lütfen daha sonra tekrar deneyin.';
+    }
+
+    Alert.alert('Kayıt Hatası', errorMessage);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleResendVerification = async () => {
     try {

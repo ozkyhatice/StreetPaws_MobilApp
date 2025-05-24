@@ -1,4 +1,6 @@
 import React, { useContext, useState, useEffect, useCallback } from 'react';
+import { Building2, Globe, Info, BriefcaseMedical, ShieldCheck } from 'lucide-react-native';
+
 import {
   View,
   StyleSheet,
@@ -718,7 +720,54 @@ const ProfileScreen = () => {
       </View>
     </Modal>
   );
-  
+
+const renderUserTypeInfo = () => {
+  if (!userData?.userType) return null;
+
+  const commonInfo = (label, value, IconComponent) => (
+    <View style={styles.infoItemModern}>
+      <IconComponent size={20} color={'#3B82F6'} style={styles.infoIconModern} />
+      <View style={styles.infoLabelContainer}>
+        <Text style={styles.infoLabelModern}>{label}</Text>
+        <Text style={styles.infoValueModern}>{value || 'Belirtilmemiş'}</Text>
+      </View>
+    </View>
+  );
+
+  const cardTitle = {
+    veteriner: 'Veteriner Bilgileri',
+    business: 'İşletme Bilgileri',
+    healthcare: 'Sağlık Kurumu Bilgileri',
+  };
+
+  const userType = userData.userType;
+
+  return (
+    <Surface style={styles.infoCardModern} elevation={2}>
+      <Text style={styles.sectionTitle}>{cardTitle[userType] || 'Kullanıcı Bilgileri'}</Text>
+      {userType === 'veteriner' && (
+        <>
+          {commonInfo('Klinik Adı', userData.clinicName, Building2)}
+          {commonInfo('Telefon', userData.phoneNumber, Phone)}
+          {commonInfo('Adres', userData.address, MapPin)}
+          {commonInfo('Sicil Numarası', userData.licenseNumber, ShieldCheck)}
+        </>
+      )}
+      {(userType === 'business' || userType === 'healthcare') && (
+        <>
+          {commonInfo('İşletme Adı', userData.businessName, Building2)}
+          {commonInfo('Telefon', userData.phoneNumber, Phone)}
+          {commonInfo('Adres', userData.address, MapPin)}
+          {commonInfo('Vergi Numarası', userData.taxNumber, FileText)}
+          {commonInfo('Sicil Numarası', userData.registrationNumber, ShieldCheck)}
+          {commonInfo('Web Sitesi', userData.website, Globe)}
+          {commonInfo('Açıklama', userData.description, Info)}
+        </>
+      )}
+    </Surface>
+  );
+};
+
   // Add a helper function to get badge color based on level
   const getBadgeColor = (level: string) => {
     switch (level) {
@@ -768,6 +817,7 @@ const ProfileScreen = () => {
           <>
             {renderProfileInfo()}
             {renderPersonalInfo()}
+            {renderUserTypeInfo()}
             <Surface style={styles.settingsCard} elevation={0}>
               <Text variant="titleMedium" style={styles.settingsTitle}>
                 Hesap Ayarları
@@ -796,12 +846,7 @@ const ProfileScreen = () => {
                   </TouchableOpacity>
                 )}
                 
-                {userData?.role !== 'admin' && (
-                  <TouchableOpacity style={styles.settingItem} onPress={handleMakeAdmin}>
-                    <FileText size={24} color={colors.primary} />
-                    <Text style={styles.settingText}>Admin Ol</Text>
-                  </TouchableOpacity>
-                )}
+       
                 
                 <TouchableOpacity style={styles.settingItem} onPress={handleSignOut}>
                   <LogOut size={24} color={colors.error} />
@@ -902,6 +947,33 @@ const styles = StyleSheet.create({
   activeTabText: {
     color: colors.primary,
     fontWeight: '600',
+  },
+  infoItemModern: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  infoIconModern: {
+    marginRight: 12,
+  },
+  infoLabelContainer: {
+    flexDirection: 'column',
+    flex: 1,
+  },
+  infoLabelModern: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  infoValueModern: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
   },
   content: {
     flex: 1,
