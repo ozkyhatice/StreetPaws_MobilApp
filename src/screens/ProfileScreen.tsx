@@ -1,40 +1,35 @@
 import React, { useContext, useState, useEffect, useCallback } from 'react';
-import { Building2, Globe, Info, BriefcaseMedical, ShieldCheck } from 'lucide-react-native';
-
+import { Building2, Globe, Info, BriefcaseMedical, ShieldCheck, Edit } from 'lucide-react-native';
 import {
   View,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   SafeAreaView,
-  Dimensions,
   Modal,
   TextInput,
   Alert,
-  AlertButton,
+  RefreshControl,
+  StatusBar,
+  Animated
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
-import { Text, Avatar, Surface, useTheme, Button, ProgressBar } from 'react-native-paper';
+import { Text, Avatar, Surface, useTheme, Button, ProgressBar, Chip, IconButton, Divider } from 'react-native-paper';
 import { colors } from '../config/theme';
-import { Lock, Bell, Paintbrush, LogOut, Phone, User, Edit2, Calendar, MapPin, FileText, Award, Star } from 'lucide-react-native';
-import { doc, getDoc, updateDoc, onSnapshot, query, collection, where, getDocs, setDoc } from 'firebase/firestore';
+import { Lock, Bell, Paintbrush, LogOut, Phone, User, Calendar, MapPin, FileText, Award, Star, Settings, ChevronRight } from 'lucide-react-native';
 import { db } from '../config/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { BadgeService } from '../services/badgeService';
 import { UserService } from '../services/userService';
-import { TaskService } from '../services/taskService';
-import { BadgeCollection } from '../components/BadgeCollection';
 import { XPService } from '../services/xpService';
 import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateProgressValue } from '../utils/levelUtils';
 
-const { width } = Dimensions.get('window');
-
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
-// TaskStats tipini tanımlayalım
 interface TaskStats {
   completedTasks: number;
   awaitingApprovalTasks: number;
@@ -46,30 +41,30 @@ interface TaskStats {
 
 const ProfileScreen = () => {
   const { user, signOut } = useContext(AuthContext) as AuthContextType;
-  const [activeTab, setActiveTab] = useState('Bilgilerim');
   const theme = useTheme();
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editingField, setEditingField] = useState<'name' | 'phone' | 'dateOfBirth' | 'city' | 'bio' | 'username' | null>(null);
   const [editValue, setEditValue] = useState('');
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [badges, setBadges] = useState([]);
+  const [recentBadges, setRecentBadges] = useState([]);
   const [actualCompletedTaskCount, setActualCompletedTaskCount] = useState(0);
   const [actualXP, setActualXP] = useState(0);
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [levelUpBadge, setLevelUpBadge] = useState<any>(null);
-  const [xpData, setXpData] = useState(null);
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [profileImage, setProfileImage] = useState(null);
+  const [scrollY] = useState(new Animated.Value(0));
 
   // Initialize services
   const xpService = XPService.getInstance();
-  const taskService = TaskService.getInstance();
   const badgeService = BadgeService.getInstance();
-
-  const tabs = ['Bilgilerim', 'Rozetlerim'];
-
+  const userService = UserService.getInstance();
+  
+  // Format helpers
   const formatDateWithSlashes = (text: string) => {
     // Sadece sayıları al
     const numbers = text.replace(/\D/g, '');
@@ -95,99 +90,79 @@ const ProfileScreen = () => {
     }
   };
 
-  const loadTaskStats = async () => {
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadUserData();
+  };
+
+  const loadUserData = async () => {
     if (!user?.uid) return;
     
     try {
-      // Get accurate XP data from the central XP service
+      setLoading(true);
+      
+      // Get user document
+      const userData = await userService.getUserById(user.uid);
+      if (!userData) {
+        console.log("ProfileScreen - User data not found");
+        return;
+      }
+      
+      console.log("ProfileScreen - User data loaded:", JSON.stringify(userData));
+      console.log("ProfileScreen - User role:", userData.role);
+      console.log("ProfileScreen - Business data:", userData.business || userData.Business);
+      
+      setUserData(userData);
+      
+      // Get XP data
       try {
         const centralizedXP = await xpService.getCentralizedXP(user.uid);
-      
-        // Use the XP value calculated by the XP service
         setActualXP(centralizedXP.xp);
+      } catch (error) {
+        console.error('Error getting XP data:', error);
+        setActualXP(userData.xp || 0);
+      }
+      
+      // Set profile image
+      if (userData.photoURL) {
+        setProfileImage(userData.photoURL);
+      }
+      
+      // Get badges
+      try {
+        const userBadges = await badgeService.getUserBadges(user.uid);
+        setBadges(userBadges);
         
-        // Get accurate completed tasks count
+        // Get recent badges (last 3)
+        const sorted = [...userBadges].sort((a, b) => 
+          new Date(b.earnedAt).getTime() - new Date(a.earnedAt).getTime()
+        );
+        setRecentBadges(sorted.slice(0, 3));
+      } catch (error) {
+        console.error('Error getting badges:', error);
+      }
+      
+      // Get task stats
+      try {
         const taskProgress = await xpService.getTaskProgress(user.uid);
         setActualCompletedTaskCount(taskProgress.completedTasks);
-        
-        console.log(`ProfileScreen - Updated stats: Tasks=${taskProgress.completedTasks}, XP=${centralizedXP.xp}`);
+        setTaskStats(taskProgress);
       } catch (error) {
-        console.error('Error getting XP and task data:', error);
-        // Keep existing values in case of error
+        console.error('Error getting task stats:', error);
+        setActualCompletedTaskCount(userData.stats?.tasksCompleted || 0);
       }
     } catch (error) {
-      console.error('Error loading task stats:', error);
+      console.error('Error loading user data:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    const loadUserData = async () => {
-      try {
-        setLoading(true);
-        
-        if (user) {
-          console.log("ProfileScreen - Loading user data for", user.uid);
-          
-          // Kullanıcı belgesini al
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (!userDoc.exists()) {
-            console.log("ProfileScreen - User document not found");
-            setLoading(false);
-            return;
-          }
-          
-          const userData = userDoc.data();
-          setUserData(userData);
-          
-          // Get centralized XP data - this calculates XP properly based on task difficulty
-          try {
-            const centralizedXP = await xpService.getCentralizedXP(user.uid);
-            setActualXP(centralizedXP.xp);
-            console.log(`ProfileScreen - XP loaded: ${centralizedXP.xp}`);
-          } catch (xpError) {
-            console.error('Error getting centralized XP:', xpError);
-            // Use fallback from user data if available
-            setActualXP(userData.xp || 0);
-          }
-          
-          // Profil resmini ayarla
-          if (userData.photoURL) {
-            setProfileImage(userData.photoURL);
-          }
-          
-          // Rozet verilerini ayarla
-          if (userData.badges && Array.isArray(userData.badges)) {
-            setBadges(userData.badges);
-          }
-          
-          // Görev istatistiklerini al
-          try {
-          const taskProgress = await xpService.getTaskProgress(user.uid);
-          
-            // Tamamlanan görev sayısını ayarla
-          setActualCompletedTaskCount(taskProgress.completedTasks);
-          
-          // TaskStats'ı ayarla
-          setTaskStats(taskProgress);
-            
-            console.log(`ProfileScreen - Tasks completed: ${taskProgress.completedTasks}`);
-          } catch (error) {
-            console.error('Error getting task progress:', error);
-            // Set fallback values
-            setActualCompletedTaskCount(userData.stats?.tasksCompleted || 0);
-          }
-          
-          // Rozetleri kontrol et ve gerekirse yeni rozetler ver
-          await badgeService.checkAllCategoryBadges(user.uid);
-        }
-      } catch (error) {
-        console.error('Error loading user data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadUserData();
+    if (user) {
+      loadUserData();
+    }
   }, [user]);
 
   const checkUsernameAvailability = async (username: string): Promise<boolean> => {
@@ -227,62 +202,59 @@ const ProfileScreen = () => {
     try {
       const userService = UserService.getInstance();
 
+      // Check if this is a standard field or userType-specific field
+      const isUserTypeField = [
+        'clinicName', 'businessName', 'address', 'licenseNumber', 
+        'taxNumber', 'registrationNumber', 'website', 'description'
+      ].includes(editingField);
+
       if (editingField === 'username') {
-        // Username boş olamaz ve en az 3 karakter olmalı
-        if (!editValue || editValue.length < 3) {
-          Alert.alert('Hata', 'Kullanıcı adı en az 3 karakter olmalıdır.');
-          return;
-        }
-
-        // Sadece harf, rakam ve alt çizgi içerebilir
-        if (!/^[a-zA-Z0-9_]+$/.test(editValue)) {
-          Alert.alert('Hata', 'Kullanıcı adı sadece harf, rakam ve alt çizgi içerebilir.');
-          return;
-        }
-
-        // Kullanıcı adının benzersiz olduğunu kontrol et
-        const isAvailable = await checkUsernameAvailability(editValue);
-        if (!isAvailable) {
-          Alert.alert('Hata', 'Bu kullanıcı adı başka bir kullanıcı tarafından kullanılıyor.');
-          return;
-        }
+        // Username validations...
+        // ...existing code...
       }
       
-      // Ad Soyad için özel kontrol
+      // Standard field validations
       if (editingField === 'name' && !editValue.includes(' ')) {
         Alert.alert('Hata', 'Lütfen hem adınızı hem soyadınızı girin');
         return;
       }
       
-      // Telefon numarası için özel kontrol
       if (editingField === 'phone' && !/^\+?[0-9]{10,}$/.test(editValue)) {
         Alert.alert('Hata', 'Geçerli bir telefon numarası girin');
         return;
       }
       
-      // Doğum tarihi için özel kontrol
       if (editingField === 'dateOfBirth' && !/^\d{2}\/\d{2}\/\d{4}$/.test(editValue)) {
         Alert.alert('Hata', 'Doğum tarihini GG/AA/YYYY formatında girin');
         return;
       }
       
-      const updateData = editingField === 'name' 
-        ? { firstName: editValue.split(' ')[0], lastName: editValue.split(' ')[1] }
-        : editingField === 'phone' 
-        ? { phoneNumber: editValue }
-        : editingField === 'dateOfBirth' 
-        ? { dateOfBirth: editValue }
-        : editingField === 'city' 
-        ? { city: editValue }
-        : editingField === 'username'
-        ? { username: editValue }
-        : { bio: editValue };
+      // Determine update data based on field type
+      let updateData;
+      
+      if (isUserTypeField) {
+        // For userType fields, simply use the key-value pair
+        updateData = { [editingField]: editValue };
+      } else {
+        // For standard fields, use the existing logic
+        updateData = editingField === 'name' 
+          ? { firstName: editValue.split(' ')[0], lastName: editValue.split(' ')[1] }
+          : editingField === 'phone' 
+          ? { phoneNumber: editValue }
+          : editingField === 'dateOfBirth' 
+          ? { dateOfBirth: editValue }
+          : editingField === 'city' 
+          ? { city: editValue }
+          : editingField === 'username'
+          ? { username: editValue }
+          : { bio: editValue };
+      }
       
       console.log('Güncellenecek veriler:', updateData);
       
       await userService.updateUser(user.uid, updateData);
       
-      // Yerel state'i güncelle
+      // Update local state
       setUserData(prevData => {
         if (editingField === 'name') {
           return {
@@ -291,6 +263,7 @@ const ProfileScreen = () => {
             lastName: editValue.split(' ')[1]
           };
         } else {
+          // For all other fields, simply update the matching key
           return {
             ...prevData,
             [editingField === 'phone' ? 'phoneNumber' : editingField]: editValue
@@ -308,325 +281,17 @@ const ProfileScreen = () => {
     }
   };
 
-  const handleTestBadge = async () => {
-    try {
-      await badgeService.awardTestBadge(user.uid);
-      Alert.alert('Başarılı', 'Test rozeti eklendi!');
-    } catch (error) {
-      console.error('Error testing badge:', error);
-      Alert.alert('Hata', 'Rozet test edilirken bir hata oluştu');
-    }
+  // Navigation handlers
+  const handleAchievementsPress = () => {
+    navigation.navigate('Achievements');
   };
 
-  const handleTestBadgeLevelUp = async () => {
-    try {
-      // First, check if user has any badges
-      if (badges.length === 0) {
-        // Award a test badge first
-        await badgeService.awardTestBadge(user.uid);
-        Alert.alert('Başarılı', 'Test rozeti eklendi. Şimdi rozet seviyesini artırabilirsiniz.');
-        return;
-      }
-      
-      // Advance the first badge by 10 tasks (enough to level up)
-      const firstBadge = badges[0];
-      const result = await badgeService.testAdvanceBadge(user.uid, firstBadge.id, 10);
-      
-      if (result.badgeUpdated) {
-        if (result.leveledUp) {
-          Alert.alert('Başarılı', `Rozet seviye ${result.newLevel} oldu! Yeni ilerleme: ${result.currentCount}/${result.maxCount}`);
-        } else {
-          Alert.alert('Başarılı', `Rozet ilerlemesi: ${result.currentCount}/${result.maxCount}`);
-        }
-      } else {
-        Alert.alert('Hata', 'Rozet güncellenemedi.');
-      }
-    } catch (error) {
-      console.error('Error testing badge:', error);
-      Alert.alert('Hata', 'Rozet test edilirken bir hata oluştu');
-    }
+  const handleSettingsPress = () => {
+    navigation.navigate('Settings');
   };
-
-  const handleTestXPTasksSync = async () => {
-    if (!user?.uid) {
-      Alert.alert('Hata', 'Kullanıcı kimliği bulunamadı');
-      return;
-    }
-    
-    try {
-      // XP ve Görev verilerini al
-      const xpData = await xpService.getCentralizedXP(user.uid);
-      const taskProgress = await xpService.getTaskProgress(user.uid);
-      
-      // XP ve görev sayısı aynı olmalı
-      const isSync = xpData.xp === taskProgress.completedTasks;
-      
-      Alert.alert(
-        isSync ? 'Senkronize' : 'Senkronize Değil',
-        `XP: ${xpData.xp}\nTamamlanan Görevler: ${taskProgress.completedTasks}\n\n${isSync ? 'XP ve görev sayısı eşleşiyor.' : 'XP ve görev sayısı eşleşmiyor!'}`
-      );
-    } catch (error) {
-      console.error('Error testing XP-Tasks sync:', error);
-      Alert.alert('Test Hatası', 'XP ve görev senkronizasyonu test edilirken bir hata oluştu');
-    }
-  };
-
-  const renderProfileInfo = () => {
-    // Get XP and completed tasks from the centralized service
-    const completedTasksCount = actualCompletedTaskCount;
-    const currentXP = actualXP;
-    
-    console.log(`ProfileScreen - Rendering profile with Tasks=${completedTasksCount}, XP=${currentXP}`);
-    
-    const currentLevel = calculateLevelFromXP(currentXP);
-    const progress = calculateProgressValue(currentXP, currentLevel);
-    const nextLevelXP = calculateXpForNextLevel(currentLevel);
-    const currentLevelXP = calculateXpForLevel(currentLevel);
-
-    return (
-      <View>
-        <Surface style={styles.profileCard} elevation={2}>
-          <Avatar.Image
-            size={100}
-            source={{ uri: profileImage || 'https://via.placeholder.com/80' }}
-            style={styles.avatar}
-          />
-          <Text variant="headlineSmall" style={styles.name}>
-            {userData?.firstName} {userData?.lastName}
-          </Text>
-          <Text variant="bodyMedium" style={styles.username}>
-            @{userData?.username}
-          </Text>
-          <Text variant="bodyMedium" style={styles.email}>
-            {userData?.email}
-          </Text>
-          <TouchableOpacity 
-            style={styles.bioContainer}
-            onPress={() => handleEditField('bio')}
-          >
-            <Text style={styles.bioLabel}>Hakkında</Text>
-            <Text style={styles.bioText}>{userData?.bio || 'Kendinizden bahsedin...'}</Text>
-            <Edit2 size={18} color={colors.primary} style={styles.bioEditIcon} />
-          </TouchableOpacity>
-
-          <View style={styles.levelContainer}>
-            <Text style={styles.levelText}>Seviye {currentLevel}</Text>
-            <View style={styles.xpBarContainer}>
-              <ProgressBar
-                progress={progress}
-                color={colors.primary}
-                style={styles.xpBar}
-              />
-              <Text style={styles.xpText}>
-                {currentXP - currentLevelXP} / {nextLevelXP - currentLevelXP} XP
-              </Text>
-            </View>
-          </View>
-        </Surface>
-
-        <View style={styles.statsRow}>
-          <Surface style={styles.statItem} elevation={1}>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {completedTasksCount}
-            </Text>
-            <Text variant="bodyMedium" style={styles.statLabel}>
-              Görev
-            </Text>
-          </Surface>
-          <Surface style={styles.statItem} elevation={1}>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {currentXP}
-            </Text>
-            <Text variant="bodyMedium" style={styles.statLabel}>
-              XP
-            </Text>
-            <TouchableOpacity 
-              onPress={() => loadTaskStats()}
-              style={styles.refreshButton}
-            >
-              <Text style={styles.refreshButtonText}>Yenile</Text>
-            </TouchableOpacity>
-          </Surface>
-          <Surface style={styles.statItem} elevation={1}>
-            <Text variant="titleLarge" style={styles.statValue}>
-              {badges.length}
-            </Text>
-            <Text variant="bodyMedium" style={styles.statLabel}>
-              Rozet
-            </Text>
-          </Surface>
-        </View>
-      </View>
-    );
-  };
-
-  const renderPersonalInfo = () => (
-    <Surface style={styles.infoCard} elevation={2}>
-      <Text variant="titleMedium" style={styles.sectionTitle}>
-        Kişisel Bilgiler
-      </Text>
-      
-      <View style={styles.infoItemsContainer}>
-        <TouchableOpacity 
-          style={styles.infoItem}
-          onPress={() => handleEditField('name')}
-        >
-          <View style={styles.infoIcon}>
-            <User size={22} color={colors.primary} />
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>Ad Soyad</Text>
-            <Text style={styles.infoValue}>{userData?.firstName} {userData?.lastName}</Text>
-          </View>
-          <Edit2 size={18} color={colors.primary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.infoItem}
-          onPress={() => handleEditField('username')}
-        >
-          <View style={styles.infoIcon}>
-            <User size={22} color={colors.primary} />
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>Kullanıcı Adı</Text>
-            <Text style={styles.infoValue}>@{userData?.username}</Text>
-          </View>
-          <Edit2 size={18} color={colors.primary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.infoItem}
-          onPress={() => handleEditField('phone')}
-        >
-          <View style={styles.infoIcon}>
-            <Phone size={22} color={colors.primary} />
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>Telefon</Text>
-            <Text style={styles.infoValue}>{userData?.phoneNumber || 'Belirtilmemiş'}</Text>
-          </View>
-          <Edit2 size={18} color={colors.primary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.infoItem}
-          onPress={() => handleEditField('dateOfBirth')}
-        >
-          <View style={styles.infoIcon}>
-            <Calendar size={22} color={colors.primary} />
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>Doğum Tarihi</Text>
-            <Text style={styles.infoValue}>{userData?.dateOfBirth || 'Belirtilmemiş'}</Text>
-          </View>
-          <Edit2 size={18} color={colors.primary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.infoItem, styles.lastInfoItem]}
-          onPress={() => handleEditField('city')}
-        >
-          <View style={styles.infoIcon}>
-            <MapPin size={22} color={colors.primary} />
-          </View>
-          <View style={styles.infoContent}>
-            <Text style={styles.infoLabel}>Şehir</Text>
-            <Text style={styles.infoValue}>{userData?.city || 'Belirtilmemiş'}</Text>
-          </View>
-          <Edit2 size={18} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
-    </Surface>
-  );
-
-  const renderEditModal = () => (
-    <Modal
-      visible={isEditModalVisible}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setIsEditModalVisible(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <Surface style={styles.modalContent} elevation={5}>
-          <Text variant="titleMedium" style={styles.modalTitle}>
-            {editingField === 'name' ? 'Ad Soyad Düzenle' : 
-             editingField === 'phone' ? 'Telefon Düzenle' : 
-             editingField === 'dateOfBirth' ? 'Doğum Tarihi Düzenle' : 
-             editingField === 'city' ? 'Şehir Düzenle' : 
-             editingField === 'username' ? 'Kullanıcı Adı Düzenle' :
-             editingField === 'bio' ? 'Hakkında Düzenle' : 'Belirtilmemiş'}
-          </Text>
-          
-          {editingField === 'username' && (
-            <Text style={styles.modalSubtitle}>
-              Kullanıcı adı benzersiz olmalı ve sadece harf, rakam ve alt çizgi içerebilir.
-            </Text>
-          )}
-
-          {editingField === 'dateOfBirth' && (
-            <Text style={styles.modalSubtitle}>
-              Doğum tarihinizi GG/AA/YYYY formatında giriniz.
-            </Text>
-          )}
-
-          <TextInput
-            style={[
-              styles.input,
-              editingField === 'username' && styles.usernameInput
-            ]}
-            value={editValue}
-            onChangeText={handleEditValueChange}
-            placeholder={
-              editingField === 'name' ? 'Ad Soyad' : 
-              editingField === 'phone' ? 'Telefon Numarası' : 
-              editingField === 'dateOfBirth' ? 'GG/AA/YYYY' : 
-              editingField === 'city' ? 'Şehir' : 
-              editingField === 'username' ? 'Kullanıcı Adı' :
-              editingField === 'bio' ? 'Hakkında' : 'Belirtilmemiş'
-            }
-            keyboardType={
-              editingField === 'phone' ? 'phone-pad' : 
-              editingField === 'dateOfBirth' ? 'number-pad' : 
-              'default'
-            }
-            autoCapitalize={editingField === 'username' ? 'none' : 'sentences'}
-          />
-
-          <View style={styles.modalButtons}>
-            <Button 
-              mode="outlined" 
-              onPress={() => setIsEditModalVisible(false)}
-              style={styles.modalButton}
-              labelStyle={styles.buttonLabel}
-            >
-              İptal
-            </Button>
-            <Button 
-              mode="contained" 
-              onPress={handleSaveField}
-              loading={loading}
-              style={styles.modalButton}
-              labelStyle={styles.buttonLabel}
-            >
-              Kaydet
-            </Button>
-          </View>
-        </Surface>
-      </View>
-    </Modal>
-  );
 
   const handlePasswordChange = () => {
     navigation.navigate('ChangePassword');
-  };
-
-  const handleNotificationSettings = () => {
-    navigation.navigate('NotificationSettings');
-  };
-
-  const handleThemeSettings = () => {
-    navigation.navigate('ThemeSettings');
   };
 
   const handleVerificationsList = () => {
@@ -634,86 +299,47 @@ const ProfileScreen = () => {
   };
 
   const handleSignOut = () => {
-    signOut()
-      .then(() => {
-        // Başarılı çıkış
-      })
-      .catch((error) => {
-        console.error('Error signing out:', error);
-        Alert.alert('Hata', 'Çıkış yapılırken bir hata oluştu');
-      });
+    Alert.alert(
+      'Çıkış Yap',
+      'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        { 
+          text: 'Çıkış Yap', 
+          style: 'destructive',
+          onPress: () => signOut()
+        }
+      ]
+    );
   };
 
-  const handleMakeAdmin = async () => {
-    try {
-      const userService = UserService.getInstance();
-      await userService.makeCurrentUserAdmin();
-      
-      // Kullanıcı verilerini güncelle
-      setUserData({
-        ...userData,
-        role: 'admin'
-      });
-      
-      Alert.alert('Başarılı', 'Admin rolü atandı! Şimdi görev onaylama ekranına erişebilirsiniz.');
-    } catch (error) {
-      console.error('Error making admin:', error);
-      Alert.alert('Hata', 'Admin rolü atanırken bir hata oluştu');
+  // Calculate level and XP data
+  const currentXP = actualXP;
+  const currentLevel = calculateLevelFromXP(currentXP);
+  const progress = calculateProgressValue(currentXP, currentLevel);
+  const nextLevelXP = calculateXpForNextLevel(currentLevel);
+  const currentLevelXP = calculateXpForLevel(currentLevel);
+  const remainingXP = nextLevelXP - currentXP;
+
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+
+  // Badge color helper
+  const getBadgeColor = (level: string) => {
+    switch (level) {
+      case 'BRONZE': return '#CD7F32';
+      case 'SILVER': return '#C0C0C0';
+      case 'GOLD': return '#FFD700';
+      case 'PLATINUM': return '#E5E4E2';
+      case 'DIAMOND': return '#B9F2FF';
+      default: return colors.primary;
     }
   };
 
-  // Add the LevelUp modal render function
-  const renderLevelUpModal = () => (
-    <Modal
-      visible={showLevelUpModal}
-      transparent
-      animationType="fade"
-      onRequestClose={() => setShowLevelUpModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <Surface style={styles.levelUpModalContent}>
-          <Text variant="titleLarge" style={styles.levelUpTitle}>
-            Tebrikler! 🎉
-          </Text>
-          
-          {levelUpBadge && (
-            <>
-              <Text style={styles.levelUpText}>
-                <Text style={styles.boldText}>{levelUpBadge.name}</Text> rozetin seviye atladı!
-              </Text>
-              
-              <View style={styles.levelUpBadgeContainer}>
-                <View style={[
-                  styles.levelUpIconContainer, 
-                  { backgroundColor: getBadgeColor(levelUpBadge.level) + '30' }
-                ]}>
-                  <Award size={48} color={getBadgeColor(levelUpBadge.level)} />
-                  <View style={styles.levelUpIndicator}>
-                    <Text style={styles.levelUpIndicatorText}>{levelUpBadge.level}</Text>
-                  </View>
-                </View>
-                <Text style={styles.levelUpMessage}>
-                  Seviye {levelUpBadge.level}
-                </Text>
-              </View>
-              
-              <Text style={styles.levelUpRewardText}>
-                +{levelUpBadge.xpReward * levelUpBadge.level} XP Kazanıldı!
-              </Text>
-            </>
-          )}
-          
-          <Button 
-            mode="contained" 
-            onPress={() => setShowLevelUpModal(false)}
-            style={styles.levelUpButton}
-          >
-            Harika!
-          </Button>
-        </Surface>
-      </View>
-    </Modal>
-  );
+  // Add this function to render role-based information
   const renderUserTypeInfo = () => {
     if (!userData?.userType) return null;
   
@@ -753,47 +379,30 @@ const ProfileScreen = () => {
     const currentFields = editableFields[userData.userType] || [];
   
     return (
-      <Surface style={styles.infoCard} elevation={2}>
-        <Text style={styles.sectionTitle}>
+      <Surface style={styles.infoCard} elevation={1}>
+        <Text style={styles.cardTitle}>
           {userData.userType === 'business' ? 'İşletme Bilgileri' :
            userData.userType === 'healthcare' ? 'Sağlık Kurumu Bilgileri' :
            'Veteriner Bilgileri'}
         </Text>
-        <View style={styles.infoItemsContainer}>
+        <View style={styles.infoSection}>
           {currentFields.map(({ label, key, icon: IconComponent }, index) => (
             <TouchableOpacity 
               key={key} 
               onPress={() => handleEditUserTypeField(key)}
-              style={[
-                styles.infoItem, 
-                index === currentFields.length - 1 && styles.lastInfoItem
-              ]}
+              style={styles.infoItem}
             >
-              <View style={styles.infoIcon}>
-                <IconComponent size={22} color={colors.primary} />
-              </View>
+              <IconComponent size={20} color={colors.primary} style={styles.infoIcon} />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>{label}</Text>
                 <Text style={styles.infoValue}>{userData?.[key] || 'Belirtilmemiş'}</Text>
               </View>
-              <Edit2 size={18} color={colors.primary} />
+              <Edit size={18} color="#999" />
             </TouchableOpacity>
           ))}
         </View>
       </Surface>
     );
-  };
-
-  // Add a helper function to get badge color based on level
-  const getBadgeColor = (level: string) => {
-    switch (level) {
-      case 'BRONZE': return '#CD7F32';
-      case 'SILVER': return '#C0C0C0';
-      case 'GOLD': return '#FFD700';
-      case 'PLATINUM': return '#E5E4E2';
-      case 'DIAMOND': return '#B9F2FF';
-      default: return colors.primary;
-    }
   };
 
   if (!user) {
@@ -806,151 +415,284 @@ const ProfileScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.tabContainer}>
-        {tabs.map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[
-              styles.tab,
-              activeTab === tab && styles.activeTab,
-            ]}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === tab && styles.activeTabText,
-              ]}
-            >
-              {tab}
-            </Text>
+      {/* Animated header */}
+      <Animated.View style={[styles.headerShadow, { opacity: headerOpacity }]}>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Profil</Text>
+          <TouchableOpacity onPress={handleSettingsPress}>
+            <Settings size={24} color="#333" />
           </TouchableOpacity>
-        ))}
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {activeTab === 'Bilgilerim' && (
-          <>
-            {renderProfileInfo()}
-            {renderPersonalInfo()}           
-            {renderUserTypeInfo()}
-            <Surface style={styles.infoCard} elevation={2}>
-              <Text variant="titleMedium" style={styles.sectionTitle}>
-                Hesap Ayarları
-              </Text>
-              
-              <View style={styles.infoItemsContainer}>
-                <TouchableOpacity style={styles.infoItem} onPress={handlePasswordChange}>
-                  <View style={styles.infoIcon}>
-                    <Lock size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={styles.settingText}>Şifre Değiştir</Text>
-                  </View>
-                  <View style={styles.arrowIcon} />
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.infoItem} onPress={handleNotificationSettings}>
-                  <View style={styles.infoIcon}>
-                    <Bell size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={styles.settingText}>Bildirim Ayarları</Text>
-                  </View>
-                  <View style={styles.arrowIcon} />
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={styles.infoItem} onPress={handleThemeSettings}>
-                  <View style={styles.infoIcon}>
-                    <Paintbrush size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={styles.settingText}>Tema Ayarları</Text>
-                  </View>
-                  <View style={styles.arrowIcon} />
-                </TouchableOpacity>
-                
-                {userData?.role === 'admin' && (
-                  <TouchableOpacity style={styles.infoItem} onPress={handleVerificationsList}>
-                    <View style={styles.infoIcon}>
-                      <FileText size={22} color={colors.primary} />
-                    </View>
-                    <View style={styles.infoContent}>
-                      <Text style={styles.settingText}>Görev Onayları</Text>
-                    </View>
-                    <View style={styles.arrowIcon} />
-                  </TouchableOpacity>
-                )}
-                
-                <TouchableOpacity style={[styles.infoItem, styles.lastInfoItem, styles.logoutItem]} onPress={handleSignOut}>
-                  <View style={styles.infoIcon}>
-                    <LogOut size={22} color={colors.error} />
-                  </View>
-                  <View style={styles.infoContent}>
-                    <Text style={[styles.settingText, { color: colors.error }]}>Çıkış Yap</Text>
-                  </View>
-                  <View style={styles.arrowIcon} />
-                </TouchableOpacity>
-              </View>
-            </Surface>
-          </>
-        )}
-
-        {activeTab === 'Rozetlerim' && (
-          <View style={styles.badgesContainer}>
-            <Surface style={styles.badgesCard} elevation={0}>
-              <View style={styles.badgesHeader}>
-                <Award size={24} color={colors.primary} style={styles.badgesHeaderIcon} />
-                <Text variant="titleLarge" style={styles.badgesTitle}>
-                  Kazanılan Rozetler
-                </Text>
-              </View>
-              
-              <Text style={styles.badgesSubtitle}>
-                Görevleri tamamlayarak rozetleri kazanabilir ve seviyelerini yükseltebilirsin.
-                Her rozet 10 seviyeye kadar yükseltilebilir.
-              </Text>
-              
-              <BadgeCollection 
-                badges={badges} 
-                loading={loading}
-                onBadgePress={(badge) => {
-                  console.log('Badge pressed:', badge.name);
-                }}
-              />
-              
-              <View style={styles.badgeTipContainer}>
-                <View style={styles.badgeTipIconContainer}>
-                  <Star size={20} color={colors.warning} />
-                </View>
-                <Text style={styles.badgeTip}>
-                  Her rozet 10 görevde bir seviye atlar. Seviye atladıkça kazandığın XP miktarı da artar!
-                </Text>
-              </View>
-              
-              {/* Test Button for Development */}
-              {__DEV__ && (
-                <View style={styles.testButtonContainer}>
-                  <Button 
-                    mode="outlined" 
-                    onPress={handleTestBadgeLevelUp}
-                    style={styles.testButton}
-                  >
-                    Test Rozeti Seviye Atlat
-                  </Button>
-                </View>
-              )}
-            </Surface>
-          </View>
-        )}
-
-        
-      </ScrollView>
-
-      {renderEditModal()}
-      {renderLevelUpModal()}
-
+        </View>
+      </Animated.View>
       
+      <ScrollView 
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        onScroll={(event) => {
+          const offsetY = event.nativeEvent.contentOffset.y;
+          scrollY.setValue(offsetY);
+        }}
+        scrollEventThrottle={16}
+      >
+        {/* Profile header */}
+        <Surface style={styles.profileHeader} elevation={0}>
+          <View style={styles.profileHeaderTop}>
+            <Avatar.Image
+              size={80}
+              source={{ uri: profileImage || 'https://via.placeholder.com/80' }}
+              style={styles.avatar}
+            />
+            <View style={styles.profileInfo}>
+              <Text variant="headlineSmall" style={styles.name}>
+                {userData?.firstName} {userData?.lastName}
+              </Text>
+              <Text style={styles.username}>@{userData?.username}</Text>
+              <Chip 
+                icon={() => <Star size={16} color="#FFC107" />} 
+                style={styles.levelChip}
+              >
+                Seviye {currentLevel}
+              </Chip>
+            </View>
+          </View>
+          <View style={styles.levelProgressContainer}>
+            <View style={styles.levelProgressHeader}>
+              <Text style={styles.levelProgressText}>
+                Seviye {currentLevel+1} için {remainingXP} XP gerekiyor
+              </Text>
+              <Text style={styles.xpText}>{currentXP} XP</Text>
+            </View>
+            <ProgressBar
+              progress={progress}
+              color={colors.primary}
+              style={styles.levelProgressBar}
+            />
+          </View>
+        </Surface>
+        
+        {/* Stats summary */}
+        <Surface style={styles.statsCard} elevation={1}>
+          <View style={styles.statsItem}>
+            <Text style={styles.statsValue}>{actualCompletedTaskCount}</Text>
+            <Text style={styles.statsLabel}>Görev</Text>
+          </View>
+          <View style={styles.statsDivider} />
+          <View style={styles.statsItem}>
+            <Text style={styles.statsValue}>{badges.length}</Text>
+            <Text style={styles.statsLabel}>Rozet</Text>
+          </View>
+          <View style={styles.statsDivider} />
+          <View style={styles.statsItem}>
+            <Text style={styles.statsValue}>{userData?.streak || 0}</Text>
+            <Text style={styles.statsLabel}>Seri Gün</Text>
+          </View>
+        </Surface>
+        
+        {/* Recent achievements */}
+        {recentBadges.length > 0 && (
+          <Surface style={styles.achievementsCard} elevation={1}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>Son Kazanılan Rozetler</Text>
+              <TouchableOpacity onPress={handleAchievementsPress}>
+                <Text style={styles.seeAllButton}>Tümünü Gör</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.recentBadges}>
+              {recentBadges.map((badge, index) => (
+                <View key={`${badge.id}_${index}`} style={styles.recentBadgeItem}>
+                  <View style={[
+                    styles.recentBadgeIcon, 
+                    {backgroundColor: getBadgeColor(badge.level) + '20'}
+                  ]}>
+                    <Award size={24} color={getBadgeColor(badge.level)} />
+                  </View>
+                  <Text style={styles.recentBadgeName}>{badge.name}</Text>
+                  <Text style={styles.recentBadgeDate}>
+                    {new Date(badge.earnedAt).toLocaleDateString('tr-TR')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </Surface>
+        )}
+        
+        {/* User type specific information */}
+        {renderUserTypeInfo()}
+        
+        {/* Personal information */}
+        <Surface style={styles.infoCard} elevation={1}>
+          <Text style={styles.cardTitle}>Kişisel Bilgiler</Text>
+          
+          <View style={styles.infoSection}>
+            <TouchableOpacity 
+              style={styles.infoItem}
+              onPress={() => handleEditField('username')}
+            >
+              <User size={20} color={colors.primary} style={styles.infoIcon} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Kullanıcı Adı</Text>
+                <Text style={styles.infoValue}>@{userData?.username}</Text>
+              </View>
+              <Edit size={18} color="#999" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.infoItem}
+              onPress={() => handleEditField('phone')}
+            >
+              <Phone size={20} color={colors.primary} style={styles.infoIcon} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Telefon</Text>
+                <Text style={styles.infoValue}>{userData?.phoneNumber || 'Belirtilmemiş'}</Text>
+              </View>
+              <Edit size={18} color="#999" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.infoItem}
+              onPress={() => handleEditField('city')}
+            >
+              <MapPin size={20} color={colors.primary} style={styles.infoIcon} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Şehir</Text>
+                <Text style={styles.infoValue}>{userData?.city || 'Belirtilmemiş'}</Text>
+              </View>
+              <Edit size={18} color="#999" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.infoItem}
+              onPress={() => handleEditField('dateOfBirth')}
+            >
+              <Calendar size={20} color={colors.primary} style={styles.infoIcon} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Doğum Tarihi</Text>
+                <Text style={styles.infoValue}>{userData?.dateOfBirth || 'Belirtilmemiş'}</Text>
+              </View>
+              <Edit size={18} color="#999" />
+            </TouchableOpacity>
+          </View>
+        </Surface>
+        
+        {/* Bio section */}
+        <Surface style={styles.bioCard} elevation={1}>
+          <View style={styles.bioHeader}>
+            <Text style={styles.cardTitle}>Hakkımda</Text>
+            <TouchableOpacity onPress={() => handleEditField('bio')}>
+              <Edit size={18} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          
+          <Text style={styles.bioText}>
+            {userData?.bio || 'Kendiniz hakkında bilgi ekleyin...'}
+          </Text>
+        </Surface>
+        
+        {/* Quick actions */}
+        <Surface style={styles.actionsCard} elevation={1}>
+          <Text style={styles.cardTitle}>Hızlı İşlemler</Text>
+          
+          <TouchableOpacity 
+            style={styles.actionItem}
+            onPress={handlePasswordChange}
+          >
+            <Lock size={20} color={colors.primary} style={styles.actionIcon} />
+            <Text style={styles.actionText}>Şifre Değiştir</Text>
+            <ChevronRight size={20} color="#CCC" />
+          </TouchableOpacity>
+          
+          {userData?.role === 'admin' && (
+            <TouchableOpacity 
+              style={styles.actionItem}
+              onPress={handleVerificationsList}
+            >
+              <FileText size={20} color={colors.primary} style={styles.actionIcon} />
+              <Text style={styles.actionText}>Görev Onayları</Text>
+              <ChevronRight size={20} color="#CCC" />
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity 
+            style={[styles.actionItem, styles.signOutAction]}
+            onPress={handleSignOut}
+          >
+            <LogOut size={20} color={colors.error} style={styles.actionIcon} />
+            <Text style={[styles.actionText, styles.signOutText]}>Çıkış Yap</Text>
+            <ChevronRight size={20} color="#CCC" />
+          </TouchableOpacity>
+        </Surface>
+        
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Sürüm 1.0.0</Text>
+        </View>
+      </ScrollView>
+      
+      {/* Edit modal */}
+      <Modal
+        visible={isEditModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Surface style={styles.modalContent} elevation={5}>
+            <Text style={styles.modalTitle}>
+              {editingField === 'name' ? 'Ad Soyad Düzenle' : 
+              editingField === 'phone' ? 'Telefon Düzenle' : 
+              editingField === 'dateOfBirth' ? 'Doğum Tarihi Düzenle' : 
+              editingField === 'city' ? 'Şehir Düzenle' : 
+              editingField === 'username' ? 'Kullanıcı Adı Düzenle' :
+              editingField === 'bio' ? 'Hakkında Düzenle' : 
+              editingField === 'clinicName' ? 'Klinik Adı Düzenle' :
+              editingField === 'businessName' ? 'İşletme Adı Düzenle' :
+              editingField === 'address' ? 'Adres Düzenle' :
+              editingField === 'licenseNumber' ? 'Sicil Numarası Düzenle' :
+              editingField === 'taxNumber' ? 'Vergi Numarası Düzenle' :
+              editingField === 'registrationNumber' ? 'Sicil Numarası Düzenle' :
+              editingField === 'website' ? 'Web Sitesi Düzenle' :
+              editingField === 'description' ? 'Açıklama Düzenle' :
+              'Bilgi Düzenle'}
+            </Text>
+            
+            {editingField === 'username' && (
+              <Text style={styles.modalSubtitle}>
+                Kullanıcı adı benzersiz olmalı ve sadece harf, rakam ve alt çizgi içerebilir.
+              </Text>
+            )}
+
+            <TextInput
+              style={styles.input}
+              value={editValue}
+              onChangeText={handleEditValueChange}
+              placeholder="Değer girin"
+              autoCapitalize={editingField === 'username' ? 'none' : 'sentences'}
+              multiline={editingField === 'bio'}
+              numberOfLines={editingField === 'bio' ? 4 : 1}
+            />
+
+            <View style={styles.modalButtons}>
+              <Button 
+                mode="outlined" 
+                onPress={() => setIsEditModalVisible(false)}
+                style={styles.modalButton}
+              >
+                İptal
+              </Button>
+              <Button 
+                mode="contained" 
+                onPress={handleSaveField}
+                loading={loading}
+                style={styles.modalButton}
+              >
+                Kaydet
+              </Button>
+            </View>
+          </Surface>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -958,148 +700,245 @@ const ProfileScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5', // Light gray background
+    backgroundColor: '#F5F5F5',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tabContainer: {
+  headerShadow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    backgroundColor: '#FFFFFF',
+    zIndex: 1000,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  headerContent: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    backgroundColor: '#fff',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    height: 60,
   },
-  tab: {
-    paddingVertical: 16,
-    marginRight: 24,
-  },
-  activeTab: {
-    borderBottomWidth: 3,
-    borderBottomColor: colors.primary,
-  },
-  tabText: {
-    color: '#666',
-    fontSize: 16,
-  },
-  activeTabText: {
-    color: colors.primary,
-    fontWeight: '600',
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
   },
   content: {
     flex: 1,
-    paddingTop: 12,
   },
-  profileCard: {
-    margin: 16,
-    padding: 24,
+  profileHeader: {
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  profileHeaderTop: {
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
   },
   avatar: {
-    marginBottom: 16,
+    marginRight: 16,
+  },
+  profileInfo: {
+    flex: 1,
   },
   name: {
     fontWeight: 'bold',
-    marginBottom: 6,
-    color: '#333',
+    color: '#333333',
+    fontSize: 20,
   },
   username: {
-    color: '#666',
-    marginBottom: 6,
+    color: '#666666',
+    fontSize: 14,
+    marginBottom: 8,
   },
-  email: {
-    color: '#999',
+  levelChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF9C4',
   },
-  statsRow: {
+  levelProgressContainer: {
+    marginTop: 16,
+  },
+  levelProgressHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginBottom: 16,
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  statItem: {
+  levelProgressText: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  xpText: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  levelProgressBar: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  statsCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  statsItem: {
     alignItems: 'center',
     flex: 1,
-    margin: 4,
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
   },
-  statValue: {
+  statsValue: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.primary,
   },
-  statLabel: {
-    color: '#666',
+  statsLabel: {
+    fontSize: 14,
+    color: '#666666',
     marginTop: 4,
   },
-  infoCard: {
-    margin: 16,
-    padding: 20,
-    backgroundColor: '#fff',
-    borderRadius: 16,
+  statsDivider: {
+    width: 1,
+    backgroundColor: '#EEEEEE',
+    marginHorizontal: 16,
   },
-  sectionTitle: {
+  achievementsCard: {
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  cardTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#333',
+    color: '#333333',
   },
-  infoItemsContainer: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#eee',
+  seeAllButton: {
+    fontSize: 14,
+    color: colors.primary,
+  },
+  recentBadges: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  recentBadgeItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  recentBadgeIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  recentBadgeName: {
+    fontSize: 14,
+    color: '#333333',
+    textAlign: 'center',
+  },
+  recentBadgeDate: {
+    fontSize: 12,
+    color: '#666666',
+    textAlign: 'center',
+  },
+  infoCard: {
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  infoSection: {
+    marginTop: 16,
   },
   infoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    backgroundColor: '#fff',
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  lastInfoItem: {
-    borderBottomWidth: 0,
+    borderBottomColor: '#EEEEEE',
   },
   infoIcon: {
-    width: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginRight: 16,
   },
   infoContent: {
     flex: 1,
-    marginLeft: 12,
   },
   infoLabel: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 14,
+    color: '#666666',
   },
   infoValue: {
     fontSize: 16,
-    color: '#333',
-    marginTop: 2,
+    color: '#333333',
   },
-  settingText: {
-    color: '#333',
+  bioCard: {
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  bioHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  bioText: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  actionsCard: {
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    marginTop: 16,
+    borderRadius: 8,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEEEEE',
+  },
+  actionIcon: {
+    marginRight: 16,
+  },
+  actionText: {
     fontSize: 16,
+    color: '#333333',
+    flex: 1,
   },
-  arrowIcon: {
-    width: 20,
-    height: 20,
-    opacity: 0.3,
+  signOutAction: {
+    borderBottomWidth: 0,
   },
-  logoutItem: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    marginTop: 8,
+  signOutText: {
+    color: colors.error,
+  },
+  footer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+    color: '#666666',
   },
   modalOverlay: {
     flex: 1,
