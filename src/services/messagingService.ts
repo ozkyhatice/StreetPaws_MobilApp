@@ -1,6 +1,8 @@
 import { db } from '../config/firebase';
-import { collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, limit, Timestamp, increment, or, onSnapshot, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore';
-import { Message, DirectConversation } from '../types/community';
+import { collection, doc, getDoc, getDocs, addDoc, updateDoc, query, where, orderBy, limit, increment, or, onSnapshot, writeBatch, serverTimestamp, setDoc } from 'firebase/firestore';
+import { Message, DirectConversation, Conversation } from '../types/community';
+import { CommunityService } from './communityService';
+import { UserService } from './userService';
 
 /**
  * FIREBASE INDEXES
@@ -72,7 +74,7 @@ export class MessagingService {
           [user1Id]: 0,
           [user2Id]: 0
         },
-        lastActivity: Timestamp.now()
+        lastActivity: new Date().toISOString() // Convert Timestamp to string
       };
       
       const docRef = await addDoc(collection(db, this.conversationsCollection), newConversation);
@@ -101,72 +103,64 @@ export class MessagingService {
     }
   ): Promise<Message> {
     try {
-      // Create or get conversation
-      const participants = [senderId, recipientId].sort();
-      const conversationId = `${participants[0]}_${participants[1]}`;
-
-      // Create message data
+      console.log(`Sending direct message from ${senderId} to ${recipientId}`);
+      
+      // Get or create conversation
+      const conversation = await this.getOrCreateConversation(senderId, recipientId);
+      
+      // Generate a conversation ID for the message if it doesn't exist
+      const conversationId = conversation.id;
+      console.log(`Using conversation ID: ${conversationId}`);
+      
+      // Create a message
       const messageData: any = {
+        conversationId,
         senderId,
         recipientId,
-        conversationId,
         content,
         type: 'DIRECT',
         messageType,
         status: 'SENT',
-        isRead: false,
-        isDelivered: false,
         createdAt: serverTimestamp()
       };
-
+      
+      // Add optional fields
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-
+      
       if (messageType === 'LINK' && linkPreview) {
         messageData.linkPreview = linkPreview;
       }
-
-      // Add message to messages collection
+      
+      // Add to messages collection
       const messageRef = await addDoc(collection(db, this.messagesCollection), messageData);
-
-      // Update or create conversation
+      
+      // Update conversation with last message info
       const conversationRef = doc(db, this.conversationsCollection, conversationId);
       const conversationDoc = await getDoc(conversationRef);
-
-      if (conversationDoc.exists()) {
-        // Update existing conversation
-        await updateDoc(conversationRef, {
-          lastMessage: {
-            content,
-            senderId,
-            createdAt: serverTimestamp()
-          },
-          lastActivity: serverTimestamp(),
-          [`unreadCount.${recipientId}`]: increment(1)
-        });
-      } else {
-        // Create new conversation
-        await setDoc(conversationRef, {
-          participants,
-          lastMessage: {
-            content,
-            senderId,
-            createdAt: serverTimestamp()
-          },
-          lastActivity: serverTimestamp(),
-          unreadCount: {
-            [recipientId]: 1,
-            [senderId]: 0
-          }
-        });
-      }
-
-      return {
+      const currentUnreadCount = conversationDoc.data()?.unreadCount?.[recipientId] || 0;
+      
+      await updateDoc(conversationRef, {
+        lastMessage: {
+          content,
+          senderId,
+          createdAt: serverTimestamp()
+        },
+        lastActivity: serverTimestamp(),
+        [`unreadCount.${recipientId}`]: currentUnreadCount + 1
+      });
+      
+      console.log(`Direct message sent successfully, ID: ${messageRef.id}`);
+      
+      const message: Message = {
         id: messageRef.id,
         ...messageData,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(), // For immediate UI display before server timestamp resolves
+        status: 'SENT'
       };
+      
+      return message;
     } catch (error) {
       console.error('Error sending direct message:', error);
       throw error;
@@ -177,6 +171,7 @@ export class MessagingService {
     senderId: string, 
     communityId: string, 
     content: string, 
+    senderName: string,
     attachments?: string[],
     messageType: 'TEXT' | 'IMAGE' | 'FILE' | 'LINK' = 'TEXT',
     linkPreview?: {
@@ -186,12 +181,9 @@ export class MessagingService {
     }
   ): Promise<Message> {
     try {
-      // Get sender data
-      const userDoc = await getDoc(doc(db, 'users', senderId));
-      const userData = userDoc.data();
-      const senderName = userData?.displayName || userData?.username || `User-${senderId.substr(0, 5)}`;
-
-      // Create message data
+      console.log(`Sending group message from ${senderId} to community ${communityId}`);
+      
+      // Create a message
       const messageData: any = {
         senderId,
         communityId,
@@ -204,63 +196,85 @@ export class MessagingService {
         createdAt: serverTimestamp(),
         senderName
       };
-
+      
+      // Add optional fields
       if (attachments && attachments.length > 0) {
         messageData.attachments = attachments;
       }
-
+      
       if (messageType === 'LINK' && linkPreview) {
         messageData.linkPreview = linkPreview;
       }
-
-      // Add message
+      
+      // Add to messages collection
       const messageRef = await addDoc(collection(db, this.messagesCollection), messageData);
-
-      // Update community last message
-      const communityRef = doc(db, 'communities', communityId);
-      await updateDoc(communityRef, {
-        lastMessage: {
+      
+      // Update community with last message
+      const communityService = CommunityService.getInstance();
+      
+      // Get the community to find all members
+      const community = await communityService.getCommunityById(communityId);
+      
+      if (community) {
+        // Create or update unreadMessages count for all members except sender
+        const unreadMessages = community.unreadMessages || {};
+        
+        // Increment unread count for all members except the sender
+        community.members.forEach(memberId => {
+          if (memberId !== senderId) {
+            unreadMessages[memberId] = (unreadMessages[memberId] || 0) + 1;
+          }
+        });
+        
+        // Update community with last message and unread counts
+        await communityService.updateCommunityLastMessage(communityId, {
           content,
           senderId,
           senderName,
           createdAt: serverTimestamp()
-        },
-        lastActivity: serverTimestamp()
-      });
-
-      return {
+        }, unreadMessages);
+      } else {
+        // If community not found, just update the last message
+        await communityService.updateCommunityLastMessage(communityId, {
+          content,
+          senderId,
+          senderName,
+          createdAt: serverTimestamp()
+        });
+      }
+      
+      console.log(`Group message sent successfully, ID: ${messageRef.id}`);
+      
+      const message: Message = {
         id: messageRef.id,
         ...messageData,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(), // For immediate UI display before server timestamp resolves
+        status: 'SENT'
       };
+      
+      return message;
     } catch (error) {
       console.error('Error sending group message:', error);
       throw error;
     }
   }
 
-  async getDirectMessages(conversationId: string, limit = 50): Promise<Message[]> {
+  async getDirectMessages(conversationId: string, limitCount = 50): Promise<Message[]> {
     try {
       const conversationDoc = await getDoc(doc(db, this.conversationsCollection, conversationId));
-      
       if (!conversationDoc.exists()) {
         throw new Error('Conversation not found');
       }
-      
       const { participants } = conversationDoc.data() as DirectConversation;
-      
-      // Get messages between these participants
       const q = query(
         collection(db, this.messagesCollection),
         where('type', '==', 'DIRECT'),
         where('senderId', 'in', participants),
         where('recipientId', 'in', participants),
         orderBy('createdAt', 'desc'),
-        limit(limit)
+        limit(limitCount)
       );
-      
       const querySnapshot = await getDocs(q);
-      
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -276,18 +290,16 @@ export class MessagingService {
     }
   }
 
-  async getGroupMessages(communityId: string, limit = 50): Promise<Message[]> {
+  async getGroupMessages(communityId: string, limitCount = 50): Promise<Message[]> {
     try {
       const q = query(
         collection(db, this.messagesCollection),
         where('type', '==', 'GROUP'),
         where('communityId', '==', communityId),
         orderBy('createdAt', 'desc'),
-        limit(limit)
+        limit(limitCount)
       );
-      
       const querySnapshot = await getDocs(q);
-      
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
@@ -310,7 +322,6 @@ export class MessagingService {
       // Update query to use array-contains for participants field correctly
       const q = query(
         collection(db, this.conversationsCollection),
-        // Use array-contains if participants is array, otherwise use equality
         where('participants', 'array-contains', userId)
       );
       
@@ -341,10 +352,10 @@ export class MessagingService {
         
         try {
           // Get user info for the other participant
-          const userService = await import('./userService').then(m => m.UserService.getInstance());
+          const userService = UserService.getInstance();
           const otherUserData = await userService.getUserById(otherUserId);
           
-          return {
+          const conversation: DirectConversation = {
             id: conversationId,
             participants: data.participants,
             lastMessage: data.lastMessage ? {
@@ -368,12 +379,14 @@ export class MessagingService {
             recipientId: otherUserId,
             recipientName: otherUserData?.displayName || `User-${otherUserId.substr(0, 5)}`,
             recipientAvatar: otherUserData?.photoURL || 'https://picsum.photos/200'
-          } as DirectConversation;
+          };
+          
+          return conversation;
         } catch (userError) {
           console.error(`Error fetching data for user ${otherUserId}:`, userError);
           
           // Return conversation with basic info even if we can't get user details
-          return {
+          const conversation: DirectConversation = {
             id: conversationId,
             participants: data.participants,
             lastMessage: data.lastMessage ? {
@@ -397,7 +410,9 @@ export class MessagingService {
             recipientId: otherUserId,
             recipientName: `User-${otherUserId.substr(0, 5)}`,
             recipientAvatar: 'https://picsum.photos/200'
-          } as DirectConversation;
+          };
+          
+          return conversation;
         }
       }));
       
@@ -411,46 +426,25 @@ export class MessagingService {
 
   async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
     try {
-      // Update unread count for this user in the conversation
+      // Sıfırla: unreadCount
       await updateDoc(doc(db, this.conversationsCollection, conversationId), {
         [`unreadCount.${userId}`]: 0
       });
-      
-      // Get the conversation to find the other participant
-      const conversationDoc = await getDoc(doc(db, this.conversationsCollection, conversationId));
-      
-      if (!conversationDoc.exists()) {
-        throw new Error('Conversation not found');
-      }
-      
-      const { participants } = conversationDoc.data() as DirectConversation;
-      const otherUserId = participants.find(id => id !== userId);
-      
-      if (!otherUserId) {
-        throw new Error('Other participant not found');
-      }
-      
-      // Mark messages from the other user to this user as read
+      // Karşıdan gelen ve okunmamış mesajları bul
       const messagesQuery = query(
         collection(db, this.messagesCollection),
         where('conversationId', '==', conversationId),
-        where('senderId', '==', otherUserId),
         where('recipientId', '==', userId),
         where('isRead', '==', false)
       );
-      
       const querySnapshot = await getDocs(messagesQuery);
-      
-      // Use batch update for better performance
       const batch = writeBatch(db);
-      
       querySnapshot.docs.forEach(docSnapshot => {
         batch.update(doc(db, this.messagesCollection, docSnapshot.id), {
           isRead: true,
           status: 'READ'
         });
       });
-      
       await batch.commit();
     } catch (error) {
       console.error('Error marking messages as read:', error);
@@ -675,7 +669,7 @@ export class MessagingService {
     try {
       await updateDoc(doc(db, this.userPresenceCollection, userId), {
         online: isOnline,
-        lastSeen: Timestamp.now()
+        lastSeen: serverTimestamp()
       });
     } catch (error) {
       // If document doesn't exist, create it
@@ -683,7 +677,7 @@ export class MessagingService {
         await addDoc(collection(db, this.userPresenceCollection), {
           userId,
           online: isOnline,
-          lastSeen: Timestamp.now()
+          lastSeen: serverTimestamp()
         });
       } catch (innerError) {
         console.error('Error updating user presence:', innerError);
@@ -783,7 +777,7 @@ export class MessagingService {
           communityId: recipientId
         });
         
-        return this.sendGroupMessage(senderId, recipientId, url, undefined, 'LINK', linkPreview);
+        return this.sendGroupMessage(senderId, recipientId, url, '', [], 'LINK', linkPreview);
       } else {
         // Direct message to a user
         Object.assign(messageData, {
@@ -800,28 +794,165 @@ export class MessagingService {
 
   async markCommunityMessagesAsRead(communityId: string, userId: string): Promise<void> {
     try {
-      // Get community reference
-      const communityService = await import('./communityService').then(m => m.CommunityService.getInstance());
+      // Sıfırla: unreadMessages
+      const communityService = CommunityService.getInstance();
       const community = await communityService.getCommunityById(communityId);
-      
-      if (!community) {
-        throw new Error('Community not found');
-      }
-      
-      // Reset unread count for this user
+      if (!community) throw new Error('Community not found');
       const unreadMessages = community.unreadMessages || {};
       unreadMessages[userId] = 0;
-      
-      // Update the community document
       const communityRef = doc(db, communityService['communitiesCollection'], communityId);
       await updateDoc(communityRef, {
         [`unreadMessages.${userId}`]: 0
       });
-      
-      console.log(`Marked community messages as read for user ${userId} in community ${communityId}`);
+      // Okunmamış topluluk mesajlarını bul ve güncelle
+      const messagesQuery = query(
+        collection(db, this.messagesCollection),
+        where('conversationId', '==', `community_${communityId}`),
+        where('isRead', '==', false)
+      );
+      const querySnapshot = await getDocs(messagesQuery);
+      const batch = writeBatch(db);
+      querySnapshot.docs.forEach(docSnapshot => {
+        batch.update(doc(db, this.messagesCollection, docSnapshot.id), {
+          isRead: true,
+          status: 'READ'
+        });
+      });
+      await batch.commit();
     } catch (error) {
       console.error('Error marking community messages as read:', error);
       throw error;
     }
   }
-} 
+
+  /**
+   * Mark specific messages as read
+   */
+  public markSpecificMessagesAsRead(conversationId: string, messageIds: string[]): Promise<void> {
+    // Fix the database reference
+    const batch = writeBatch(db);
+    
+    messageIds.forEach(messageId => {
+      const messageRef = doc(db, this.messagesCollection, messageId);
+      batch.update(messageRef, { 
+        isRead: true,
+        updatedAt: serverTimestamp(),
+        status: 'READ'
+      });
+    });
+    
+    return batch.commit();
+  }
+
+  /**
+   * Mark specific community messages as read
+   */
+  public markSpecificCommunityMessagesAsRead(communityId: string, messageIds: string[]): Promise<void> {
+    // Fix the database reference
+    const batch = writeBatch(db);
+    
+    messageIds.forEach(messageId => {
+      const messageRef = doc(db, this.messagesCollection, messageId);
+      batch.update(messageRef, { 
+        isRead: true,
+        updatedAt: serverTimestamp(),
+        status: 'READ'
+      });
+    });
+    
+    return batch.commit();
+  }
+
+  // Update the method that gets all conversations for a user
+  async getAllConversations(userId: string): Promise<Conversation[]> {
+    try {
+      // Fetch direct conversations
+      const directQuery = query(
+        collection(db, 'conversations'),
+        where('participants', 'array-contains', userId),
+        orderBy('lastMessageAt', 'desc')
+      );
+      const directSnap = await getDocs(directQuery);
+      const directConversations = directSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        type: 'DIRECT'
+      } as Conversation));
+
+      // Fetch community conversations with proper grouping
+      const userCommunitiesQuery = query(
+        collection(db, 'communityMembers'),
+        where('userId', '==', userId)
+      );
+      const userCommunitiesSnap = await getDocs(userCommunitiesQuery);
+      
+      const communityIds = userCommunitiesSnap.docs.map(doc => doc.data().communityId);
+      
+      // Process each community only once
+      const communityConversations: Conversation[] = [];
+      
+      // Use a Set to track processed communities
+      const processedCommunities = new Set<string>();
+      
+      for (const communityId of communityIds) {
+        // Skip if we've already processed this community
+        if (processedCommunities.has(communityId)) continue;
+        
+        processedCommunities.add(communityId);
+        
+        // Get community details
+        const communityDoc = await getDoc(doc(db, 'communities', communityId));
+        if (!communityDoc.exists()) continue;
+        
+        const communityData = communityDoc.data();
+        
+        // Get the most recent message
+        const messagesQuery = query(
+          collection(db, 'communityMessages', communityId, 'messages'),
+          orderBy('createdAt', 'desc'),
+          limit(1)
+        );
+        const messagesSnap = await getDocs(messagesQuery);
+        
+        let lastMessage = null;
+        if (!messagesSnap.empty) {
+          const messageData = messagesSnap.docs[0].data();
+          lastMessage = {
+            id: messagesSnap.docs[0].id,
+            ...messageData
+          };
+        }
+        
+        // Create the conversation object
+        communityConversations.push({
+          id: communityId,
+          name: communityData.name,
+          photoURL: communityData.photoURL,
+          lastMessage: lastMessage ? {
+            content: lastMessage.content,
+            senderId: lastMessage.senderId,
+            senderName: lastMessage.senderName || '',
+            createdAt: lastMessage.createdAt,
+          } : null,
+          lastMessageAt: lastMessage?.createdAt || communityData.createdAt,
+          unreadCount: {}, // Calculate unread count if needed
+          type: 'GROUP',
+          communityId: communityId
+        } as Conversation);
+      }
+
+      // Combine and sort all conversations by most recent message
+      const allConversations = [...directConversations, ...communityConversations]
+        .sort((a, b) => {
+          const dateA = new Date(a.lastMessageAt || 0).getTime();
+          const dateB = new Date(b.lastMessageAt || 0).getTime();
+          return dateB - dateA; // Descending order
+        });
+
+      return allConversations;
+    } catch (error) {
+      console.error('Error getting conversations:', error);
+      throw error;
+    }
+  }
+}

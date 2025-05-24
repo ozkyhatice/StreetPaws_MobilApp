@@ -5,6 +5,7 @@ export type RootStackParamList = {
   TaskDetail: { taskId: string; action?: string };
   Map: undefined;
   Donate: { campaignId: string };
+  UserProfile: { userId: string };
 };
 
 declare global {

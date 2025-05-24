@@ -844,7 +844,7 @@ const filteredUsers = useMemo(() => {
     }
     
     navigation.navigate('Chat', {
-      conversationId: '',
+      conversationId: communityId,
       recipientId: communityId,
       recipientName: communityName,
       isCommunityChat: true

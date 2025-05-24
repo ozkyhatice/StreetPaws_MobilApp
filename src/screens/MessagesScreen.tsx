@@ -7,6 +7,7 @@ import {
   StatusBar,
   Platform,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
 import {
   Text,
@@ -16,6 +17,7 @@ import {
   Surface,
   TouchableRipple,
   Divider,
+  Badge,
 } from 'react-native-paper';
 import { colors, spacing, typography, borderRadius } from '../config/theme';
 import { useNavigation } from '@react-navigation/native';
@@ -27,7 +29,6 @@ import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { Users, MessageCircle, Search } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 
 type MessagesScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -37,62 +38,160 @@ interface Message {
   senderId: string;
   senderName: string;
   content: string;
-  createdAt: string;
+  createdAt: string | any; // Allow firebase Timestamp
   isRead: boolean;
+  isDelivered: boolean;
+  attachments?: string[];
+  type?: string;
+  status?: string;
+  messageType?: string;
+  linkPreview?: {
+    title?: string;
+    description?: string;
+    imageUrl?: string;
+  };
 }
 
 interface Conversation {
   id: string;
-  otherUser: {
+  // otherUser is only present for direct messages fetched via getUserConversations
+  otherUser?: { 
     id: string;
     name: string;
     avatar?: string;
     role?: string;
   };
-  lastMessage?: Message;
-  unreadCount: number;
-  isCommunityChat: boolean;
+  lastMessage?: { // Simplified last message based on getAllConversations return
+    content: string;
+    senderId: string;
+    senderName?: string;
+    createdAt: string | any; // Allow firebase Timestamp
+  } | null;
+  unreadCount: { [userId: string]: number }; // Unread count per user
+  isCommunityChat?: boolean; // Make optional as it might be derived
   members?: string[];
+  type: 'DIRECT' | 'GROUP'; // Explicit type
+  participants: string[]; // Array of user IDs
+  name?: string; // Group name
+  photoURL?: string; // Group photo
+  lastMessageAt?: string | any; // Timestamp of last message/activity
+  communityId?: string; // For GROUP type
+}
+
+interface ProcessedConversation extends Conversation {
+  displayName: string;
+  photoURL: string;
+  messagePreview: string;
+  unreadCount: number; // Flatten unread count for current user
 }
 
 export default function MessagesScreen() {
   const navigation = useNavigation<MessagesScreenNavigationProp>();
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<ProcessedConversation[]>([]);
   const [selectedTab, setSelectedTab] = useState<'all' | 'direct' | 'community'>('all');
   const [isLoading, setIsLoading] = useState(true);
 
   const messagingService = MessagingService.getInstance();
 
+  // Helper to process raw conversation data
+  const processConversation = (conversation: Conversation, currentUserId: string): ProcessedConversation => {
+    const isCommunity = conversation.type === 'GROUP';
+    
+    // Determine display name and photo
+    let displayName = 'Unknown';
+    let photoURL = '';
+
+    if (isCommunity) {
+      displayName = conversation.name || 'Unknown Community';
+      photoURL = conversation.photoURL || '';
+    } else if (conversation.otherUser) { // Use otherUser if available (from getUserConversations type)
+       displayName = conversation.otherUser.name || 'Unknown User';
+       photoURL = conversation.otherUser.avatar || '';
+    } else if (conversation.participants) { // Fallback using participants if otherUser not directly available
+       const otherParticipantId = conversation.participants.find(id => id !== currentUserId);
+       // Note: This won't give displayName/photoURL directly, might need a separate fetch or update Conversation type
+       displayName = `User: ${otherParticipantId?.substring(0, 6)}...`
+    }
+
+    // Determine message preview
+    let messagePreview = '';
+    if (conversation.lastMessage) {
+      if (isCommunity && conversation.lastMessage.senderId !== currentUserId) {
+        messagePreview = `${conversation.lastMessage.senderName || 'Someone'}: ${conversation.lastMessage.content}`;
+      } else {
+        messagePreview = conversation.lastMessage.content || '';
+      }
+    } else {
+      messagePreview = isCommunity 
+        ? 'Topluluk sohbeti başlat' 
+        : 'Mesajlaşma başlat';
+    }
+
+    // Get unread count for the current user
+    const unreadCount = conversation.unreadCount?.[currentUserId] || 0;
+    
+    return {
+      ...conversation,
+      isCommunityChat: isCommunity,
+      displayName,
+      photoURL,
+      messagePreview,
+      unreadCount,
+    };
+  };
+
   useEffect(() => {
     const fetchConversations = async () => {
-      if (!user) return;
-      
       try {
-        const allConversations = await messagingService.getUserConversations(user.uid);
-        setConversations(allConversations);
-        setIsLoading(false);
+        setIsLoading(true);
+        if (!user) return;
+        
+        // Use the corrected getAllConversations from MessagingService
+        const conversationsList = await messagingService.getAllConversations(user.uid);
+        
+        const processedConversations = conversationsList.map(conv => processConversation(conv, user.uid));
+        
+        // Sorting is already done in getAllConversations, but re-sort here for safety
+        processedConversations.sort((a, b) => {
+          const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+          const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+          return timeB - timeA;
+        });
+        
+        setConversations(processedConversations);
       } catch (error) {
         console.error('Error fetching conversations:', error);
+      } finally {
         setIsLoading(false);
       }
     };
 
     fetchConversations();
-
-    const unsubscribe = messagingService.subscribeToNewMessages(user?.uid, () => {
-      fetchConversations();
-    });
-
-    return () => {
-      unsubscribe?.();
-    };
+    
+    // Subscribe to conversation list updates
+    const unsubscribe = messagingService.subscribeToConversationUpdates(
+      user?.uid || '',
+      (updatedConversations) => {
+        const processedAndSorted = updatedConversations
+          .map(conv => processConversation(conv, user?.uid || ''))
+          .sort((a, b) => {
+            const timeA = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+            const timeB = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+            return timeB - timeA;
+          });
+        
+        setConversations(processedAndSorted);
+      }
+    );
+    
+    return () => unsubscribe?.();
   }, [user]);
 
   const filteredConversations = conversations.filter(conv => {
-    const matchesSearch = conv.otherUser.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         conv.lastMessage?.content?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = conv.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         conv.messagePreview.toLowerCase().includes(searchQuery.toLowerCase());
     
     if (selectedTab === 'direct') {
       return matchesSearch && !conv.isCommunityChat;
@@ -134,116 +233,39 @@ export default function MessagesScreen() {
     return format(date, 'd MMM', { locale: tr });
   };
 
-  const renderConversation = ({ item, index }: { item: Conversation; index: number }) => {
-    const hasUnread = item.unreadCount > 0;
-    const hasMessages = item.lastMessage && item.lastMessage.content !== 'Henüz mesaj yok';
-    const isFirst = index === 0;
-
+  const renderConversationItem = ({ item }: { item: ProcessedConversation }) => {
     return (
-      <TouchableRipple
+      <TouchableOpacity
+        style={styles.conversationItem}
         onPress={() => navigation.navigate('Chat', {
-          conversationId: item.id,
-          recipientId: item.otherUser.id,
-          recipientName: item.otherUser.name,
+          conversationId: item.isCommunityChat ? item.id : item.id,
+          recipientId: item.isCommunityChat ? item.id : item.otherUser?.id,
+          recipientName: item.displayName,
           isCommunityChat: item.isCommunityChat
         })}
-        style={[
-          styles.conversationContainer,
-          isFirst && styles.firstConversation
-        ]}
       >
-        <LinearGradient
-          colors={[
-            hasUnread ? colors.primary + '10' : colors.background,
-            colors.background
-          ]}
-          style={styles.conversationGradient}
-        >
-          <View style={styles.conversationContent}>
-            <View style={styles.avatarContainer}>
-              {item.otherUser.avatar ? (
-                <Avatar.Image
-                  source={{ uri: item.otherUser.avatar }}
-                  size={60}
-                  style={[
-                    styles.avatar,
-                    hasUnread && styles.unreadAvatar
-                  ]}
-                />
-              ) : (
-                <LinearGradient
-                  colors={[
-                    item.isCommunityChat ? colors.success : colors.primary,
-                    item.isCommunityChat ? colors.success + '80' : colors.primary + '80'
-                  ]}
-                  style={styles.avatarGradient}
-                >
-                  <Avatar.Icon
-                    icon={item.isCommunityChat ? "account-group" : "account"}
-                    size={60}
-                    style={styles.avatarIcon}
-                    color="white"
-                  />
-                </LinearGradient>
-              )}
-              {hasUnread && (
-                <View style={styles.unreadBadge}>
-                  <Text style={styles.unreadBadgeText}>{item.unreadCount}</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.messageContent}>
-              <View style={styles.messageHeader}>
-                <Text 
-                  style={[
-                    styles.userName,
-                    hasUnread && styles.unreadText
-                  ]} 
-                  numberOfLines={1}
-                >
-                  {item.otherUser.name}
-                </Text>
-                {item.isCommunityChat && (
-                  <Chip 
-                    style={styles.communityChip}
-                    textStyle={styles.communityChipText}
-                  >
-                    Topluluk
-                  </Chip>
-                )}
-              </View>
-
-              <View style={styles.messagePreview}>
-                {hasMessages ? (
-                  <>
-                    <Text 
-                      style={[
-                        styles.previewText,
-                        hasUnread && styles.unreadText
-                      ]} 
-                      numberOfLines={1}
-                    >
-                      {item.isCommunityChat && item.lastMessage?.senderId !== user?.uid 
-                        ? `${item.lastMessage?.senderName}: ${item.lastMessage?.content}`
-                        : item.lastMessage?.senderId === user?.uid 
-                          ? `Sen: ${item.lastMessage?.content}`
-                          : item.lastMessage?.content}
-                    </Text>
-                    <Text style={styles.messageTime}>
-                      {formatMessageTime(item.lastMessage!.createdAt)}
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.emptyText}>
-                    {item.isCommunityChat ? 'Topluluk sohbeti başlat' : 'Yeni sohbet başlat'}
-                  </Text>
-                )}
-              </View>
-            </View>
-          </View>
-        </LinearGradient>
-      </TouchableRipple>
+        <Avatar.Image
+          source={{ uri: item.photoURL || 'https://picsum.photos/200' }}
+          size={50}
+        />
+        {item.unreadCount > 0 && (
+          <Badge
+            style={styles.badge}
+            size={22}
+          >
+            {item.unreadCount}
+          </Badge>
+        )}
+        <View style={styles.conversationDetails}>
+          <Text style={styles.conversationTitle}>{item.displayName}</Text>
+          <Text numberOfLines={1} style={styles.conversationPreview}>
+            {item.messagePreview}
+          </Text>
+        </View>
+        <Text style={styles.timeText}>
+          {item.lastMessage?.createdAt ? formatMessageTime(item.lastMessage.createdAt) : 'Invalid Date'}
+        </Text>
+      </TouchableOpacity>
     );
   };
 
@@ -276,15 +298,13 @@ export default function MessagesScreen() {
           </View>
 
           <View style={styles.searchContainer}>
-            <BlurView intensity={30} style={styles.searchBlur}>
-              <Searchbar
-                placeholder="Mesajlarda ara..."
-                onChangeText={setSearchQuery}
-                value={searchQuery}
-                style={styles.searchbar}
-                icon={({size, color}) => <Search size={20} color={colors.textSecondary} />}
-              />
-            </BlurView>
+            <Searchbar
+              placeholder="Mesajlarda ara..."
+              onChangeText={setSearchQuery}
+              value={searchQuery}
+              style={styles.searchbar}
+              icon={({size, color}) => <Search size={20} color={colors.textSecondary} />}
+            />
           </View>
         </View>
 
@@ -362,7 +382,7 @@ export default function MessagesScreen() {
 
       <FlatList
         data={filteredConversations}
-        renderItem={renderConversation}
+        renderItem={renderConversationItem}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.list}
         ListEmptyComponent={renderEmptyList}
@@ -408,10 +428,6 @@ const styles = StyleSheet.create({
   searchContainer: {
     marginBottom: spacing.sm,
   },
-  searchBlur: {
-    borderRadius: borderRadius.medium,
-    overflow: 'hidden',
-  },
   searchbar: {
     borderRadius: borderRadius.medium,
     elevation: 0,
@@ -447,101 +463,33 @@ const styles = StyleSheet.create({
   list: {
     paddingTop: spacing.xs,
   },
-  conversationContainer: {
+  conversationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
     backgroundColor: colors.background,
   },
-  firstConversation: {
-    marginTop: spacing.xs,
-  },
-  conversationGradient: {
-    paddingVertical: spacing.sm,
-  },
-  conversationContent: {
-    flexDirection: 'row',
-    paddingHorizontal: spacing.screenPadding,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: spacing.md,
-  },
-  avatar: {
-    backgroundColor: colors.primaryLight + '30',
-  },
-  unreadAvatar: {
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  avatarGradient: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarIcon: {
-    backgroundColor: 'transparent',
-  },
-  unreadBadge: {
+  badge: {
     position: 'absolute',
     top: -4,
     right: -4,
-    backgroundColor: colors.error,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
   },
-  unreadBadgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  messageContent: {
+  conversationDetails: {
     flex: 1,
+    marginLeft: spacing.md,
   },
-  messageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-    gap: spacing.xs,
-  },
-  userName: {
-    fontSize: typography.subtitle1.fontSize,
+  conversationTitle: {
+    ...typography.subtitle1,
+    fontWeight: '600',
     color: colors.text,
-    flex: 1,
   },
-  communityChip: {
-    backgroundColor: colors.success + '20',
-    height: 22,
-  },
-  communityChipText: {
-    fontSize: 11,
-    color: colors.success,
-  },
-  messagePreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  previewText: {
+  conversationPreview: {
     fontSize: typography.body2.fontSize,
     color: colors.textSecondary,
-    flex: 1,
   },
-  unreadText: {
-    color: colors.text,
-    fontWeight: '600',
-  },
-  messageTime: {
+  timeText: {
     fontSize: typography.caption.fontSize,
     color: colors.textSecondary,
-  },
-  emptyText: {
-    fontSize: typography.body2.fontSize,
-    color: colors.textSecondary,
-    fontStyle: 'italic',
   },
   separator: {
     height: 1,
@@ -569,4 +517,4 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-}); 
+});

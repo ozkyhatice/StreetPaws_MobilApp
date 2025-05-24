@@ -98,7 +98,7 @@ export interface Message {
   type: 'DIRECT' | 'GROUP'; // DIRECT for user-to-user, GROUP for community messages
   conversationId: string; // Add this field for properly tracking conversations
   senderName?: string; // Optional sender name for display in group chats
-  status?: 'SENT' | 'DELIVERED' | 'READ'; // Message status for UI indicators
+  status?: 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'PENDING'; // Message status for UI indicators
   messageType?: 'TEXT' | 'IMAGE' | 'FILE' | 'LINK'; // Type of message content
   linkPreview?: {
     title?: string;
@@ -121,6 +121,31 @@ export interface DirectConversation {
   lastActivity?: string; // Timestamp of the last activity in the conversation
   
   // Additional properties for UI convenience
+  otherUser?: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
+  recipientId?: string;
+  recipientName?: string;
+  recipientAvatar?: string;
+}
+
+export interface Conversation {
+  id: string;
+  type: 'DIRECT' | 'GROUP';
+  participants?: string[]; // For direct
+  communityId?: string; // For group
+  name?: string; // For group
+  photoURL?: string; // For group
+  lastMessage?: {
+    content: string;
+    senderId: string;
+    senderName?: string;
+    createdAt: string;
+  };
+  lastMessageAt?: string;
+  unreadCount?: { [userId: string]: number };
   otherUser?: {
     id: string;
     name: string;

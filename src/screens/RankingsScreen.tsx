@@ -15,6 +15,7 @@ import { colors, spacing, shadows, borderRadius, typography } from '../config/th
 import { useAuth } from '../hooks/useAuth';
 import { User } from '../types/user';
 import { UserService } from '../services/userService';
+import { useNavigation } from '@react-navigation/native';
 
 // Tabs for different rankings
 enum RankingTab {
@@ -30,6 +31,7 @@ interface RankingUser extends User {
 
 export default function RankingsScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<RankingTab>(RankingTab.VOLUNTEERS);
   const [volunteers, setVolunteers] = useState<RankingUser[]>([]);
   const [businesses, setBusinesses] = useState<RankingUser[]>([]);
@@ -48,7 +50,7 @@ export default function RankingsScreen() {
         
         // Process volunteers
         const volunteerUsers = allUsers
-          .filter(u => !u.isBusinessAccount)
+          .filter(u => !u.isBusinessAccount && (u.role === 'user' || u.role === 'volunteer'))
           .map((u, index) => ({
             ...u,
             rank: index + 1,
@@ -168,67 +170,73 @@ export default function RankingsScreen() {
     }
   };
 
-  const renderRankingCard = ({ item }: { item: RankingUser }) => (
-    <Card 
-      style={[
-        styles.rankingCard,
-        item.rank <= 3 && styles.topRankCard,
-        activeTab === RankingTab.BUSINESSES && styles.businessCard,
-        activeTab === RankingTab.VETERINARIANS && styles.veterinarianCard,
-      ]}
-      mode="elevated"
-    >
-      <View style={styles.rankingContent}>
-        <View style={styles.rankContainer}>
-          {getRankingIcon(item.rank)}
-        </View>
+  const handleUserPress = (userId: string) => {
+    navigation.navigate('UserProfile', { userId });
+  };
 
-        <View style={styles.userInfo}>
-          <View style={styles.avatarContainer}>
-            {item.photoURL ? (
-              <Avatar.Image 
-                source={{ uri: item.photoURL }} 
-                size={50}
-                style={styles.avatar}
-              />
+  const renderRankingCard = ({ item }: { item: RankingUser }) => (
+    <TouchableOpacity onPress={() => handleUserPress(item.uid)}>
+      <Card 
+        style={[
+          styles.rankingCard,
+          item.rank <= 3 && styles.topRankCard,
+          activeTab === RankingTab.BUSINESSES && styles.businessCard,
+          activeTab === RankingTab.VETERINARIANS && styles.veterinarianCard,
+        ]}
+        mode="elevated"
+      >
+        <View style={styles.rankingContent}>
+          <View style={styles.rankContainer}>
+            {getRankingIcon(item.rank)}
+          </View>
+
+          <View style={styles.userInfo}>
+            <View style={styles.avatarContainer}>
+              {item.photoURL ? (
+                <Avatar.Image 
+                  source={{ uri: item.photoURL }} 
+                  size={50}
+                  style={styles.avatar}
+                />
+              ) : (
+                <Avatar.Icon 
+                  icon={activeTab === RankingTab.VOLUNTEERS ? "account" : "domain"}
+                  size={50}
+                  style={[
+                    styles.avatarIcon,
+                    activeTab === RankingTab.BUSINESSES && styles.businessAvatar,
+                    activeTab === RankingTab.VETERINARIANS && styles.veterinarianAvatar,
+                  ]}
+                />
+              )}
+            </View>
+
+            <View style={styles.nameContainer}>
+              <Text style={styles.userName}>{item.displayName}</Text>
+              <Text style={styles.userRole}>
+                {activeTab === RankingTab.VOLUNTEERS ? 'Gönüllü' : 
+                 activeTab === RankingTab.BUSINESSES ? 'İşletme' : 
+                 'Veteriner'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.scoreContainer}>
+            {activeTab === RankingTab.VOLUNTEERS ? (
+              <>
+                <Star size={16} color={colors.warning} />
+                <Text style={styles.scoreText}>{Math.round(item.score)} XP</Text>
+              </>
             ) : (
-              <Avatar.Icon 
-                icon={activeTab === RankingTab.VOLUNTEERS ? "account" : "domain"}
-                size={50}
-                style={[
-                  styles.avatarIcon,
-                  activeTab === RankingTab.BUSINESSES && styles.businessAvatar,
-                  activeTab === RankingTab.VETERINARIANS && styles.veterinarianAvatar,
-                ]}
-              />
+              <>
+                <Star size={16} color={colors.warning} />
+                <Text style={styles.scoreText}>{item.score.toFixed(1)} Puan</Text>
+              </>
             )}
           </View>
-
-          <View style={styles.nameContainer}>
-            <Text style={styles.userName}>{item.displayName}</Text>
-            <Text style={styles.userRole}>
-              {activeTab === RankingTab.VOLUNTEERS ? 'Gönüllü' : 
-               activeTab === RankingTab.BUSINESSES ? 'İşletme' : 
-               'Veteriner'}
-            </Text>
-          </View>
         </View>
-
-        <View style={styles.scoreContainer}>
-          {activeTab === RankingTab.VOLUNTEERS ? (
-            <>
-              <Star size={16} color={colors.warning} />
-              <Text style={styles.scoreText}>{Math.round(item.score)} XP</Text>
-            </>
-          ) : (
-            <>
-              <Star size={16} color={colors.warning} />
-              <Text style={styles.scoreText}>{item.score.toFixed(1)} Puan</Text>
-            </>
-          )}
-        </View>
-      </View>
-    </Card>
+      </Card>
+    </TouchableOpacity>
   );
 
   const renderEmptyList = () => (

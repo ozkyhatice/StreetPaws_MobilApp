@@ -106,8 +106,12 @@ export class TaskCompletionService {
       ...verificationData
     });
     
-    // Görevin durumunu "COMPLETED" olarak güncelle
-    await this.taskService.verifyAndCompleteTask(taskId, userId, verification);
+    // Kullanıcı adını al
+    const user = await this.userService.getUserById(userId);
+    const userName = user?.displayName || user?.username || 'Bilinmeyen Kullanıcı';
+    
+    // Görevin durumunu "COMPLETED" olarak güncelle (artık isim doğru olacak)
+    await this.taskService.verifyAndCompleteTask(taskId, userId, { ...verification, userName });
     
     // Kullanıcının aktif görevini temizle
     await this.userService.updateUser(userId, { activeTask: undefined });

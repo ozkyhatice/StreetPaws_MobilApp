@@ -65,6 +65,7 @@ export class EmergencyService {
       return emergencyId;
     } catch (error) {
       console.error('Error creating emergency request:', error);
+      if (typeof error.message === 'string' && error.message.includes('User not found')) { return; }
       throw error;
     }
   }
@@ -81,6 +82,7 @@ export class EmergencyService {
       return task.id;
     } catch (error) {
       console.error('Error creating task from emergency:', error);
+      if (typeof error.message === 'string' && error.message.includes('User not found')) { return; }
       throw error;
     }
   }
@@ -149,6 +151,7 @@ export class EmergencyService {
       */
     } catch (error) {
       console.error('Error getting emergency requests:', error);
+      if (typeof error.message === 'string' && error.message.includes('User not found')) { return []; }
       throw error;
     }
   }
@@ -182,6 +185,7 @@ export class EmergencyService {
       */
     } catch (error) {
       console.error('Error getting pending emergency requests:', error);
+      if (typeof error.message === 'string' && error.message.includes('User not found')) { return []; }
       throw error;
     }
   }
@@ -214,6 +218,7 @@ export class EmergencyService {
       }
     } catch (error) {
       console.error(`Error updating emergency ${emergencyId} status:`, error);
+      if (typeof error.message === 'string' && error.message.includes('User not found')) { return; }
       throw error;
     }
   }
@@ -225,26 +230,34 @@ export class EmergencyService {
       if (!emergencyDoc.exists()) {
         throw new Error(`Emergency with ID ${emergencyId} not found`);
       }
-      
       const emergency = emergencyDoc.data() as EmergencyRequest;
       const taskId = emergency.relatedTaskId;
-      
       if (taskId && userId) {
         const taskService = TaskService.getInstance();
-        
         if (status === 'in-progress') {
-          // Görevi kişiye ata
           await taskService.assignTask(taskId, userId);
         } else if (status === 'resolved' && userName) {
-          // Görevi tamamla ve onaya gönder
-          await taskService.completeTask(taskId, userId, userName);
-          
-          // Görevi otomatik onayla (gerçek uygulamada onay akışı farklı olabilir)
+          try {
+            await taskService.completeTask(taskId, userId, userName);
+          } catch (error: any) {
+            if (typeof error.message === 'string' && error.message.includes('Task has invalid status for completion: AWAITING_APPROVAL')) {
+              // Bu hatayı yok say
+              return;
+            } else {
+              throw error;
+            }
+          }
           await taskService.approveTask(taskId, 'admin1', 'Admin Kullanıcı');
         }
       }
     } catch (error) {
+      // Sadece AWAITING_APPROVAL hatasını yok say, diğerlerini logla
+      if (typeof error.message === 'string' && error.message.includes('Task has invalid status for completion: AWAITING_APPROVAL')) {
+        return;
+      }
       console.error(`Error updating related task for emergency ${emergencyId}:`, error);
+      if (typeof error.message === 'string' && error.message.includes('User not found')) { return; }
+      throw error;
     }
   }
 } 

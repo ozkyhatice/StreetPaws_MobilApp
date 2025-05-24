@@ -371,7 +371,7 @@ export default function CommunityDetailScreen() {
     if (!community) return;
     
     navigation.navigate('Chat', {
-      conversationId: '',
+      conversationId: communityId,
       recipientId: communityId,
       recipientName: community.name,
       isCommunityChat: true

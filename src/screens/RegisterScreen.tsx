@@ -181,6 +181,9 @@ const handleRegister = async () => {
       Object.assign(additionalData, {
         businessName: formData.businessName,
         businessType: userType,
+        isBusinessAccount: true,
+        isApproved: true,
+        rating: 0,
         taxNumber: formData.taxNumber,
         registrationNumber: formData.registrationNumber,
         address: formData.address,

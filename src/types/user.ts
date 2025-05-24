@@ -42,4 +42,13 @@ export interface User {
   city?: string;
   dateOfBirth?: string;
   skills?: string[];
+  isBusinessAccount?: boolean;
+  businessType?: string;
+  isApproved?: boolean;
+  rating?: number;
+  userType?: string;
+  businessName?: string;
+  address?: string;
+  website?: string;
+  description?: string;
 } 

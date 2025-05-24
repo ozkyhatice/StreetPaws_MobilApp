@@ -31,6 +31,7 @@ import { RouteProp } from '@react-navigation/native';
 import { XPService } from '../services/xpService';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { UserService } from '../services/userService';
 
 // Yardımcı fonksiyonlar
 const getStatusColor = (status: string) => {
@@ -177,6 +178,8 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   const [showApprovalForm, setShowApprovalForm] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [completerName, setCompleterName] = useState<string | null>(null);
+  const [completerLoading, setCompleterLoading] = useState(false);
 
   const route = useRoute<RouteProp<RootStackParamList, 'TaskDetail'>>();
   const routeParams = route.params as { taskId?: string, action?: string } || {};
@@ -196,6 +199,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   const badgeService = BadgeService.getInstance();
   const emergencyService = EmergencyService.getInstance();
   const xpService = XPService.getInstance();
+  const userService = UserService.getInstance();
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -243,6 +247,24 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       }
     }
   }, [task, loading]); // task ve loading değiştiğinde kontrol et
+
+  useEffect(() => {
+    // Fetch completer's name if needed
+    if (task && task.completedBy && task.completedBy.id) {
+      const currentName = task.completedBy.name;
+      if (!currentName || currentName === 'Unknown User') {
+        setCompleterLoading(true);
+        userService.getUserById(task.completedBy.id)
+          .then(user => {
+            setCompleterName(user?.displayName || user?.username || 'Bilinmeyen Kullanıcı');
+          })
+          .catch(() => setCompleterName('Bilinmeyen Kullanıcı'))
+          .finally(() => setCompleterLoading(false));
+      } else {
+        setCompleterName(currentName);
+      }
+    }
+  }, [task?.completedBy?.id, task?.completedBy?.name]);
 
   const loadTask = async () => {
     try {
@@ -457,14 +479,31 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
   };
   
   const handleApproveTask = async (task: Task, note?: string) => {
-    if (!user || !task) {
+    if (!user) {
       Alert.alert('Hata', 'Giriş yapmanız gerekiyor');
+      return;
+    }
+    
+    if (!task) {
+      Alert.alert('Hata', 'Görev bilgisi bulunamadı');
+      return;
+    }
+
+    if (!task.completedBy?.id) {
+      Alert.alert('Hata', 'Görevi tamamlayan kullanıcı bilgisi bulunamadı');
       return;
     }
     
     try {
       setSubmitting(true);
       
+      // Önce kullanıcının varlığını kontrol et
+      const completedUser = await userService.getUserById(task.completedBy.id);
+      if (!completedUser) {
+        console.warn('Görevi tamamlayan kullanıcı bulunamadı, işlem devam ediyor.');
+        // Devam et, hata fırlatma
+      }
+
       // Call service to approve task - make sure note is never undefined
       await taskService.approveTask(
         actualTaskId, 
@@ -477,50 +516,54 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       if (task.completedBy && task.completedBy.id) {
         const completedUserId = task.completedBy.id;
         
-        // Add task completion XP
-        await xpService.addTaskCompletionXP(
-          completedUserId,
-          task.id,
-          task.title,
-          task.isEmergency,
-          task.emergencyLevel
-        );
-        
-        // Kullanıcının tamamlanan görev sayısını güncelle
-        const userRef = doc(db, 'users', completedUserId);
-        const userDoc = await getDoc(userRef);
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          const currentTaskCount = userData.stats?.tasksCompleted || 0;
+        try {
+          // Add task completion XP
+          await xpService.addTaskCompletionXP(
+            completedUserId,
+            task.id,
+            task.title,
+            task.isEmergency,
+            task.emergencyLevel
+          );
           
-          // Görev sayısını bir artır
-          await updateDoc(userRef, {
-            'stats.tasksCompleted': currentTaskCount + 1
-          });
+          // Kullanıcının tamamlanan görev sayısını güncelle
+          const userRef = doc(db, 'users', completedUserId);
+          const userDoc = await getDoc(userRef);
           
-          console.log(`Updated user ${completedUserId} task count from ${currentTaskCount} to ${currentTaskCount + 1}`);
-        }
-        
-        // Update badge progress
-        const badgeService = BadgeService.getInstance();
-        const result = await badgeService.updateBadgeProgress(completedUserId, task.category);
-        
-        // Check and award all category badges
-        await badgeService.checkAllCategoryBadges(completedUserId);
-        
-        if (result.levelsGained.length > 0) {
-          console.log('Badge levels gained:', result.levelsGained);
-        }
-        
-        // Update task category counts
-        await xpService.updateTaskProgressForCategory(completedUserId, task.category || 'OTHER');
-        
-        // If the task was completed by the current user, update local state
-        if (completedUserId === user.uid) {
-          // Refresh XP data if needed
-          await xpService.getUserXP(user.uid);
-          // Note: We're not setting state here since we're navigating away
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const currentTaskCount = userData.stats?.tasksCompleted || 0;
+            
+            // Görev sayısını bir artır
+            await updateDoc(userRef, {
+              'stats.tasksCompleted': currentTaskCount + 1
+            });
+            
+            console.log(`Updated user ${completedUserId} task count from ${currentTaskCount} to ${currentTaskCount + 1}`);
+          }
+          
+          // Update badge progress
+          const badgeService = BadgeService.getInstance();
+          const result = await badgeService.updateBadgeProgress(completedUserId, task.category);
+          
+          // Check and award all category badges
+          await badgeService.checkAllCategoryBadges(completedUserId);
+          
+          if (result.levelsGained.length > 0) {
+            console.log('Badge levels gained:', result.levelsGained);
+          }
+          
+          // Update task category counts
+          await xpService.updateTaskProgressForCategory(completedUserId, task.category || 'OTHER');
+          
+          // If the task was completed by the current user, update local state
+          if (completedUserId === user.uid) {
+            // Refresh XP data if needed
+            await xpService.getUserXP(user.uid);
+          }
+        } catch (xpError) {
+          console.error('Error updating XP and badges:', xpError);
+          // XP güncelleme hatası olsa bile görev onayı başarılı sayılır
         }
       }
       
@@ -532,7 +575,12 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
       );
     } catch (error) {
       console.error('Error approving task:', error);
-      Alert.alert('Hata', 'Görev onaylanırken bir hata oluştu');
+      Alert.alert(
+        'Hata', 
+        error.message === 'Görevi tamamlayan kullanıcı bulunamadı' 
+          ? error.message 
+          : 'Görev onaylanırken bir hata oluştu'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -644,6 +692,8 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
           onReject={handleRejectTask}
           loading={submitting}
           isAdmin={user?.role === 'admin'}
+          completerName={completerName}
+          completerLoading={completerLoading}
         />
       </SafeAreaView>
     );
@@ -941,7 +991,7 @@ export default function TaskDetailScreen({ taskId }: TaskDetailScreenProps) {
               
               {task.completedBy && (
                 <Text style={styles.completedByText}>
-                  {task.completedBy.name} tarafından tamamlandı
+                  {completerLoading ? 'Yükleniyor...' : (completerName || 'Bilinmeyen Kullanıcı')} tarafından tamamlandı
                 </Text>
               )}
             </Card.Content>

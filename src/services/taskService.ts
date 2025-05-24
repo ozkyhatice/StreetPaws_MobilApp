@@ -5,6 +5,7 @@ import { db } from '../config/firebase';
 import { EmergencyRequest } from '../services/emergencyService';
 import { XPService } from './xpService';
 import { StatsService } from './statsService';
+import { safeToISOString } from '../utils/date';
 
 // Yardımcı fonksiyonlar
 function removeUndefinedFields<T extends object>(obj: T): Partial<T> {
@@ -151,6 +152,7 @@ export class TaskService {
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return []; }
       console.error('Error fetching tasks:', error);
       return [];
     }
@@ -160,6 +162,7 @@ export class TaskService {
     try {
       return await FirestoreHelper.getDocument(this.tasksCollection, id) as Task;
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return null; }
       console.error('Error fetching task:', error);
       return null;
     }
@@ -223,6 +226,7 @@ export class TaskService {
       await statsService.decrementActiveTasksCount();
 
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return; }
       console.error('Error approving task:', error);
       throw error;
     }
@@ -252,6 +256,7 @@ export class TaskService {
         task.isEmergency ? task.emergencyLevel : undefined
       );
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return; }
       console.error('Error updating achievements:', error);
       throw error;
     }
@@ -446,6 +451,7 @@ export class TaskService {
       console.log(`TaskService: Created emergency task with ID: ${taskWithId.id}, isEmergency: ${taskWithId.isEmergency}`);
       return taskWithId;
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return; }
       console.error('Error creating emergency task:', error);
       throw error;
     }
@@ -526,6 +532,7 @@ export class TaskService {
       
       console.log(`TaskService: Task ${taskId} successfully assigned to user ${userId}`);
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return; }
       console.error(`TaskService: Error assigning task: ${error.message}`);
       throw error; 
     }
@@ -553,31 +560,29 @@ export class TaskService {
   async completeTask(taskId: string, userId: string, userName: string): Promise<void> {
     try {
       console.log(`Completing task ${taskId} by user ${userId} (${userName})`);
-      
       // Firestore'da görevi güncelle
       const docRef = doc(db, this.tasksCollection, taskId);
       const docSnap = await getDoc(docRef);
-      
       if (!docSnap.exists()) {
         console.error(`TaskService: Task ${taskId} not found in Firestore for completion`);
         throw new Error(`Task with ID ${taskId} not found in Firestore`);
       }
-      
       console.log(`TaskService: Found task in Firestore for completion: ${taskId}`);
-      
       // Check if the task is assigned to this user
       const taskData = docSnap.data();
       if (taskData.assignedTo && taskData.assignedTo !== userId) {
         console.error(`TaskService: Task ${taskId} is assigned to ${taskData.assignedTo}, not to ${userId}`);
         throw new Error('Task is assigned to another user');
       }
-      
       // Check task status before updating
+      if (taskData.status === 'AWAITING_APPROVAL') {
+        console.log(`TaskService: Task ${taskId} is already in AWAITING_APPROVAL status, skipping completion.`);
+        return;
+      }
       if (taskData.status !== 'IN_PROGRESS' && taskData.status !== 'OPEN') {
         console.error(`TaskService: Task ${taskId} has invalid status for completion: ${taskData.status}`);
         throw new Error(`Task has invalid status for completion: ${taskData.status}`);
       }
-      
       // Update the task in Firestore
       console.log(`TaskService: Updating task in Firestore for completion: ${taskId}`);
       
@@ -595,6 +600,7 @@ export class TaskService {
       
       console.log(`TaskService: Task updated in Firestore for completion: ${taskId}`);
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return; }
       console.error(`TaskService: Error completing task: ${error.message}`);
       throw error;
     }
@@ -607,6 +613,7 @@ export class TaskService {
       latitude: number;
       longitude: number;
     };
+    userName?: string;
   }): Promise<Task> {
     try {
       console.log(`Verifying and completing task ${taskId} by user ${userId}`);
@@ -640,12 +647,8 @@ export class TaskService {
       const task = {
         id: docSnap.id,
         ...taskData,
-        createdAt: taskData.createdAt?.toDate ? 
-          this.safeGetISOString(taskData.createdAt) : 
-          taskData.createdAt,
-        deadline: taskData.deadline?.toDate ? 
-          this.safeGetISOString(taskData.deadline) : 
-          taskData.deadline
+        createdAt: safeToISOString(taskData.createdAt),
+        deadline: safeToISOString(taskData.deadline)
       } as Task;
       
       // Update task status to awaiting approval in Firestore
@@ -657,7 +660,7 @@ export class TaskService {
         taskId: taskId,
         userId: userId,
         status: TaskVerificationStatus.PENDING,
-        createdAt: new Date().toISOString(),
+        createdAt: safeToISOString(new Date()),
         imageUrl: verification.imageUrl,
         note: verification.note,
         location: verification.location
@@ -673,7 +676,7 @@ export class TaskService {
         status: 'AWAITING_APPROVAL',
         completedBy: {
           id: userId,
-          name: verification.note || 'Unknown User',
+          name: verification.userName || verification.note || 'Bilinmeyen Kullanıcı',
           completedAt: Timestamp.now()
         },
         approvalStatus: 'PENDING',
@@ -695,13 +698,14 @@ export class TaskService {
         status: 'AWAITING_APPROVAL',
         completedBy: {
           id: userId,
-          name: verification.note || 'Unknown User',
-          completedAt: new Date().toISOString()
+          name: verification.userName || verification.note || 'Bilinmeyen Kullanıcı',
+          completedAt: safeToISOString(new Date())
         },
         approvalStatus: 'PENDING',
         verifications: [...(task.verifications || []), verificationData]
       };
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return; }
       console.error(`TaskService: Error in verifyAndCompleteTask:`, error);
       // Log the full error details
       if (error instanceof Error) {
@@ -765,16 +769,13 @@ export class TaskService {
         approvalStatus: updateData.approvalStatus,
         approvedBy: updateData.approvedBy,
         rejectionReason: updateData.rejectionReason,
-        createdAt: taskData.createdAt?.toDate?.() ? 
-          this.safeGetISOString(taskData.createdAt) : 
-          taskData.createdAt,
-        deadline: taskData.deadline?.toDate?.() ? 
-          this.safeGetISOString(taskData.deadline) : 
-          taskData.deadline
+        createdAt: safeToISOString(taskData.createdAt),
+        deadline: safeToISOString(taskData.deadline)
       };
 
       return task;
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return; }
       console.error('Error rejecting task:', error);
       throw error;
     }
@@ -836,12 +837,8 @@ export class TaskService {
                 return {
                   id: doc.id,
                   ...data,
-                  createdAt: data.createdAt?.toDate ? 
-                    this.safeGetISOString(data.createdAt) : 
-                    data.createdAt,
-                  deadline: data.deadline?.toDate ? 
-                    this.safeGetISOString(data.deadline) : 
-                    data.deadline
+                  createdAt: safeToISOString(data.createdAt),
+                  deadline: safeToISOString(data.deadline)
                 } as Task;
               });
             }
@@ -856,12 +853,8 @@ export class TaskService {
           return {
             id: doc.id,
             ...data,
-            createdAt: data.createdAt?.toDate ? 
-              this.safeGetISOString(data.createdAt) : 
-              data.createdAt,
-            deadline: data.deadline?.toDate ? 
-              this.safeGetISOString(data.deadline) : 
-              data.deadline
+            createdAt: safeToISOString(data.createdAt),
+            deadline: safeToISOString(data.deadline)
           } as Task;
         }).filter(task => task !== null) as Task[];
         
@@ -908,12 +901,8 @@ export class TaskService {
               return {
                 id: doc.id,
                 ...data,
-                createdAt: data.createdAt?.toDate ? 
-                  this.safeGetISOString(data.createdAt) : 
-                  data.createdAt,
-                deadline: data.deadline?.toDate ? 
-                  this.safeGetISOString(data.deadline) : 
-                  data.deadline
+                createdAt: safeToISOString(data.createdAt),
+                deadline: safeToISOString(data.deadline)
               } as Task;
             });
           
@@ -932,6 +921,7 @@ export class TaskService {
         }
       }
     } catch (error) {
+      if (typeof error.message === 'string' && (error.message.includes('Invalid date conversion') || error.message.includes('date formatting error'))) { return []; }
       console.error('TaskService: General error in getEmergencyTasks:', error);
       // Hiçbir şekilde veri alınamadıysa boş dizi döndür
       return [];

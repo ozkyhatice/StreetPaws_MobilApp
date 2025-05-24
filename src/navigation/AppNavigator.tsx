@@ -42,6 +42,7 @@ import CommunityMembersScreen from '../screens/CommunityMembersScreen';
 import JoinByInviteScreen from '../screens/JoinByInviteScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import RankingsScreen from '../screens/RankingsScreen';
+import UserProfileScreen from '../screens/UserProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -464,11 +465,11 @@ const AppNavigator: React.FC<{initialRouteName?: keyof RootStackParamList}> = ({
 
       <Stack.Screen 
         name="UserProfile"
-        options={{ headerShown: true, title: 'Kullanıcı Profili' }}
+        options={{ headerShown: true, title: 'Kullanıcı Profili', headerBackTitle: '' }}
       >
         {({ route }) => (
           <AuthGuard>
-            <Text>User profile placeholder for user ID: {route.params.userId}</Text>
+            <UserProfileScreen />
           </AuthGuard>
         )}
       </Stack.Screen>

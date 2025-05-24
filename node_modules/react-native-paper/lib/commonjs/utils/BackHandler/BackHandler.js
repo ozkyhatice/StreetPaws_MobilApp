@@ -5,7 +5,7 @@ Object.defineProperty(exports, "__esModule", {
 });
 exports.BackHandler = void 0;
 function emptyFunction() {}
-const BackHandler = exports.BackHandler = {
+const BackHandler = {
   exitApp: emptyFunction,
   addEventListener() {
     return {
@@ -14,4 +14,5 @@ const BackHandler = exports.BackHandler = {
   },
   removeEventListener: emptyFunction
 };
+exports.BackHandler = BackHandler;
 //# sourceMappingURL=BackHandler.js.map

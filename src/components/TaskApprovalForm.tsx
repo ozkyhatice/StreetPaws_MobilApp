@@ -8,13 +8,21 @@ import { formatDistanceToNow } from 'date-fns';
 import { tr } from 'date-fns/locale';
 
 // Güvenli tarih formatlama yardımcı fonksiyonu
-const formatTimeAgo = (dateString: string | Date | undefined | null): string => {
-  if (!dateString) return 'Belirtilmemiş';
-  
+const formatTimeAgo = (dateInput: any): string => {
+  if (!dateInput) return 'Belirtilmemiş';
   try {
-    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+    let date: Date;
+    if (typeof dateInput === 'object' && typeof dateInput.toDate === 'function') {
+      // Firestore Timestamp
+      date = dateInput.toDate();
+    } else if (typeof dateInput === 'string') {
+      date = new Date(dateInput);
+    } else if (dateInput instanceof Date) {
+      date = dateInput;
+    } else {
+      return 'Belirtilmemiş';
+    }
     if (isNaN(date.getTime())) return 'Geçersiz Tarih';
-    
     return formatDistanceToNow(date, {
       addSuffix: true,
       locale: tr,
@@ -31,6 +39,8 @@ interface TaskApprovalFormProps {
   onReject: (task: Task, reason: string) => void;
   loading?: boolean;
   isAdmin: boolean;
+  completerName?: string | null;
+  completerLoading?: boolean;
 }
 
 export function TaskApprovalForm({
@@ -38,7 +48,9 @@ export function TaskApprovalForm({
   onApprove,
   onReject,
   loading = false,
-  isAdmin
+  isAdmin,
+  completerName,
+  completerLoading
 }: TaskApprovalFormProps) {
   const [note, setNote] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
@@ -89,7 +101,7 @@ export function TaskApprovalForm({
             <View style={styles.infoRow}>
               <User size={18} color={colors.textSecondary} style={styles.infoIcon} />
               <Text style={styles.infoLabel}>Tamamlayan:</Text>
-              <Text style={styles.infoValue}>{task.completedBy?.name}</Text>
+              <Text style={styles.infoValue}>{completerLoading ? 'Yükleniyor...' : (completerName || task.completedBy?.name || 'Bilinmeyen Kullanıcı')}</Text>
             </View>
             
             <View style={styles.infoRow}>

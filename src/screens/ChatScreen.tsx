@@ -14,8 +14,9 @@ import {
   Alert,
   Modal,
   Linking,
+  TextInput,
 } from 'react-native';
-import { Text, TextInput, Avatar, IconButton, Divider, Badge, Dialog, Portal, Button } from 'react-native-paper';
+import { Text, Avatar, IconButton, Divider, Badge, Dialog, Portal, Button } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
@@ -28,9 +29,11 @@ import { ChevronLeft, Send, Image as ImageIcon, Paperclip, Check, CheckCheck, Cl
 import { RootStackParamList } from '../types/navigation';
 import { Message } from '../types/community';
 import * as ImagePicker from 'expo-image-picker';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getDoc, doc, onSnapshot } from 'firebase/firestore';
+import * as FileSystem from 'expo-file-system';
+import { getStorage, ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { getDoc, doc, onSnapshot, addDoc, collection, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type ChatScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 type ChatScreenRouteProp = RouteProp<RootStackParamList, 'Chat'>;
@@ -41,6 +44,8 @@ const EMOJIS = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', 
                 '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', 
                 '😎', '🥸', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕',
                 '👍', '👎', '👏', '🙌', '🤝', '👊', '✌️', '🤞', '🤘', '👌'];
+
+type MessageStatus = 'SENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | 'PENDING';
 
 export default function ChatScreen() {
   const { user } = useAuth();
@@ -71,6 +76,24 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const typingAnimation = useRef(new Animated.Value(0)).current;
   const inputHeight = useRef(new Animated.Value(50)).current;
+  
+  // Add retry state for uploads
+  const [uploadRetries, setUploadRetries] = useState(0);
+  const MAX_RETRIES = 3;
+
+  // Add storage rules test state
+  const [storageRulesTested, setStorageRulesTested] = useState(false);
+
+  // Add state for upload debugging
+  const [uploadErrorDetails, setUploadErrorDetails] = useState<string | null>(null);
+
+  // Add state for storage errors and fallback mode
+  const [storageErrorOccurred, setStorageErrorOccurred] = useState(false);
+  const [usingFallbackMode, setUsingFallbackMode] = useState(false);
+
+  const communityConversationId = isCommunityChat ? `community_${recipientId}` : conversationId;
+
+  const [userNamesCache, setUserNamesCache] = useState<{ [userId: string]: string }>({});
 
   useEffect(() => {
     const fetchData = async () => {
@@ -92,10 +115,19 @@ export default function ChatScreen() {
         
         // Get messages based on conversation type
         messagesList = await messagingService.getConversationMessages(
-          conversationId,
+          communityConversationId,
           isCommunityChat,
           recipientId
         );
+        
+        // Filter messages to only include those from groups the user has joined
+        if (isCommunityChat) {
+          const userJoinedDate = community?.joinedAt || new Date().toISOString();
+          messagesList = messagesList.filter(msg => new Date(msg.createdAt) >= new Date(userJoinedDate));
+        }
+
+        // Sort messages by date, ensuring the latest message is at the top
+        messagesList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         
         console.log(`Fetched ${messagesList.length} messages for ${isCommunityChat ? 'community' : 'direct'} conversation`);
         
@@ -138,8 +170,8 @@ export default function ChatScreen() {
         setMessages(messagesList);
         
         // Mark messages as read
-        if (conversationId && !isCommunityChat) {
-          messagingService.markMessagesAsRead(conversationId, user.uid);
+        if (communityConversationId && !isCommunityChat) {
+          messagingService.markMessagesAsRead(communityConversationId, user.uid);
         } else if (isCommunityChat && recipientId) {
           messagingService.markCommunityMessagesAsRead(recipientId, user.uid);
         }
@@ -152,21 +184,28 @@ export default function ChatScreen() {
     
     fetchData();
     
-    // Set up real-time listener for new messages
+    // Improved real-time listener for new messages
     const unsubscribe = messagingService.subscribeToMessages(
-      conversationId,
+      communityConversationId,
       recipientId,
       user?.uid || '',
       isCommunityChat || false,
       (newMessages) => {
-        setMessages(newMessages);
+        // Apply sorting to ensure newest messages are at the bottom
+        const sortedMessages = [...newMessages].sort((a, b) => {
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        });
         
-        // Mark messages as read when received
-        if (conversationId && !isCommunityChat) {
-          messagingService.markMessagesAsRead(conversationId, user?.uid || '');
-        } else if (isCommunityChat && recipientId) {
-          messagingService.markCommunityMessagesAsRead(recipientId, user?.uid || '');
-        }
+        setMessages(sortedMessages);
+        
+        // Mark messages as read when received - with a slight delay to ensure UI updates first
+        setTimeout(() => {
+          if (communityConversationId && !isCommunityChat) {
+            messagingService.markMessagesAsRead(communityConversationId, user?.uid || '');
+          } else if (isCommunityChat && recipientId) {
+            messagingService.markCommunityMessagesAsRead(recipientId, user?.uid || '');
+          }
+        }, 500);
       }
     );
     
@@ -230,7 +269,35 @@ export default function ChatScreen() {
         useNativeDriver: false,
       }).start();
     });
+
+    // Check if Firebase storage rules allow uploads
+    const checkStoragePermissions = async () => {
+      if (!user || storageRulesTested) return;
+      
+      try {
+        const storage = getStorage();
+        // Try to upload a tiny test file
+        const testRef = ref(storage, `permissions_test/${user.uid}_${Date.now()}.txt`);
+        const testBytes = new Uint8Array([0, 1, 2, 3]);
+        await uploadBytes(testRef, testBytes);
+        console.log("Storage permissions test: Success");
+        setStorageRulesTested(true);
+        setUsingFallbackMode(false);
+      } catch (error) {
+        console.warn("Storage permissions test failed:", error);
+        setStorageRulesTested(true);
+        setStorageErrorOccurred(true);
+        setUsingFallbackMode(true);
+      }
+    };
     
+    checkStoragePermissions();
+
+    // Create community conversation document if needed
+    if (isCommunityChat && recipientId) {
+      ensureCommunityConversationDoc(recipientId);
+    }
+
     return () => {
       unsubscribe?.();
       presenceUnsubscribe?.();
@@ -238,89 +305,122 @@ export default function ChatScreen() {
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, [user, conversationId, recipientId, isCommunityChat]);
+  }, [user, communityConversationId, recipientId, isCommunityChat]);
+
+  useEffect(() => {
+    if (!user || !communityConversationId) return;
+
+    // Subscribe to message read status updates
+    const unsubscribe = onSnapshot(
+      doc(db, 'conversations', communityConversationId),
+      (doc) => {
+        if (doc.exists()) {
+          const data = doc.data();
+          const lastReadTimestamps = data.lastReadTimestamps || {};
+          
+          // Update message read status
+          setMessages(prev => prev.map(msg => {
+            if (msg.senderId === user.uid) {
+              const recipientLastRead = lastReadTimestamps[msg.recipientId];
+              if (recipientLastRead && new Date(recipientLastRead) >= new Date(msg.createdAt)) {
+                return { ...msg, isRead: true, status: 'READ' };
+              } else if (msg.status === 'SENT') {
+                return { ...msg, status: 'DELIVERED' };
+              }
+            } else if (msg.isRead !== undefined) {
+              // For incoming messages, update isRead if changed in Firestore
+              return { ...msg };
+            }
+            return msg;
+          }));
+        }
+      },
+      (error) => {
+        console.error('Error listening to message read status:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user, communityConversationId]);
+
+  // Update last read timestamp when messages are viewed
+  const markMessagesAsRead = async () => {
+    if (!user || !communityConversationId) return;
+
+    try {
+      const conversationRef = doc(db, 'conversations', communityConversationId);
+      await updateDoc(conversationRef, {
+        [`lastReadTimestamps.${user.uid}`]: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error marking messages as read:', error);
+    }
+  };
+
+  // Call markMessagesAsRead when messages are viewed
+  useEffect(() => {
+    if (messages.length > 0) {
+      markMessagesAsRead();
+    }
+  }, [messages.length]);
 
   const handleSend = async () => {
-    if (!user || (!newMessage.trim() && !selectedImage)) return;
-    
-    try {
-      console.log(`Current user: ${user.uid}`);
-      console.log(`Sending message to ${isCommunityChat ? 'community' : 'user'} ${recipientId}: ${newMessage.trim()}`);
-      
-      // Upload image if selected
-      let imageUrl: string | undefined;
-      if (selectedImage) {
+    const messageContent = newMessage.trim();
+    if (newMessage !== '') setNewMessage('');
+    if (!user || (!messageContent && !selectedImage)) return;
+    let imageUrl: string | undefined;
+    if (selectedImage) {
+      try {
         setUploading(true);
         imageUrl = await uploadImage(selectedImage);
         setUploading(false);
         setSelectedImage(null);
+      } catch (uploadError) {
+        setUploading(false);
+        setSelectedImage(null);
+        Alert.alert('Hata', 'Resim yüklenemedi.');
+        if (!messageContent) return;
       }
-      
-      const attachments = imageUrl ? [imageUrl] : [];
-      
-      // Create a temporary message for optimistic UI update
-      const tempId = `temp_${Date.now()}`;
-      const tempMessage: Message = {
-        id: tempId,
-        senderId: user.uid,
-        recipientId: recipientId,
-        content: newMessage.trim(),
-        createdAt: new Date().toISOString(),
-        isRead: false,
-        isDelivered: false,
-        attachments: attachments,
-        type: isCommunityChat ? 'GROUP' : 'DIRECT',
-        conversationId: conversationId || '',
-        status: 'SENT'
-      };
-      
-      // Update UI optimistically for better user experience
-      setMessages(prev => [...prev, tempMessage]);
-      
-      // Clear input immediately for better UX
-      setNewMessage('');
-      
-      // Scroll to bottom
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 10);
-      
-      // Actually send the message
-      try {
-        let sentMessage;
-        if (isCommunityChat) {
-          sentMessage = await messagingService.sendGroupMessage(
-            user.uid,
-            recipientId,
-            newMessage.trim(),
-            attachments
-          );
-        } else {
-          sentMessage = await messagingService.sendDirectMessage(
-            user.uid,
-            recipientId,
-            newMessage.trim(),
-            attachments
-          );
-        }
-        
-        // Replace temporary message with actual message
-        setMessages(prev => prev.map(msg => 
-          msg.id === tempId ? sentMessage : msg
-        ));
-      } catch (error) {
-        console.error('Error sending message:', error);
-        
-        // Mark the temp message as failed
-        setMessages(prev => prev.map(msg => 
-          msg.id === tempId ? { ...msg, status: 'FAILED' as any } : msg
-        ));
-        
-        Alert.alert('Hata', 'Mesaj gönderilemedi. Lütfen tekrar deneyin.');
+    }
+    const attachments = imageUrl ? [imageUrl] : [];
+    const tempId = `temp_${Date.now()}`;
+    const tempMessage: Message = {
+      id: tempId,
+      senderId: user.uid,
+      recipientId: recipientId,
+      content: messageContent,
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      isDelivered: false,
+      attachments,
+      type: isCommunityChat ? 'GROUP' : 'DIRECT',
+      conversationId: communityConversationId || '',
+      status: 'SENDING'
+    };
+    setMessages(prev => [...prev, tempMessage]);
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 10);
+    try {
+      let sentMessage;
+      if (isCommunityChat) {
+        sentMessage = await messagingService.sendGroupMessage(
+          user.uid,
+          recipientId,
+          messageContent,
+          user.displayName || '',
+          attachments
+        );
+      } else {
+        sentMessage = await messagingService.sendDirectMessage(
+          user.uid,
+          recipientId,
+          messageContent,
+          attachments
+        );
       }
+      setMessages(prev => prev.map(msg => msg.id === tempId ? { ...sentMessage, status: 'SENT' } : msg));
     } catch (error) {
-      console.error('Error in handleSend:', error);
-      Alert.alert('Hata', 'Mesaj gönderilirken bir sorun oluştu.');
+      setMessages(prev => prev.map(msg => msg.id === tempId ? { ...msg, status: 'FAILED' } : msg));
+      Alert.alert('Hata', 'Mesaj gönderilemedi.');
     }
   };
 
@@ -350,8 +450,8 @@ export default function ChatScreen() {
         isDelivered: false,
         attachments: [],
         type: isCommunityChat ? 'GROUP' : 'DIRECT',
-        conversationId: conversationId || '',
-        status: 'SENT',
+        conversationId: communityConversationId || '',
+        status: 'SENT' as MessageStatus,
         messageType: 'LINK',
         linkPreview
       };
@@ -388,7 +488,7 @@ export default function ChatScreen() {
         
         // Mark the temp message as failed
         setMessages(prev => prev.map(msg => 
-          msg.id === tempId ? { ...msg, status: 'FAILED' as any } : msg
+          msg.id === tempId ? { ...msg, status: 'FAILED' as MessageStatus } : msg
         ));
         
         Alert.alert('Hata', 'Bağlantı gönderilemedi. Lütfen tekrar deneyin.');
@@ -447,49 +547,50 @@ export default function ChatScreen() {
     return `son görülme ${lastSeenDate.toLocaleDateString()}`;
   };
 
+  // Updated getMessageStatus to properly show read/unread status
   const getMessageStatus = (message: Message) => {
     if (message.senderId !== user?.uid) return null;
-    
-    // Simulate message statuses for demo
-    const messageTime = new Date(message.createdAt).getTime();
-    const now = Date.now();
-    
-    // Messages older than 1 minute are read
-    if (now - messageTime > 60000) {
-      return <CheckCheck size={16} color={colors.success} />; 
-    }
-    // Messages older than 30 seconds are delivered
-    else if (now - messageTime > 30000) {
-      return <Check size={16} color={colors.success} />; 
-    }
-    // Recent messages are just sent
-    else {
+    if (message.isRead || message.status === 'READ') {
+      return <CheckCheck size={16} color={colors.success} />;
+    } else if (message.isDelivered || message.status === 'DELIVERED') {
+      return <Check size={16} color={colors.success} />;
+    } else {
       return <Clock size={16} color={colors.textSecondary} />;
     }
   };
 
+  // Render message function with local image handling
+  // Update the renderMessage function to highlight unread messages
   const renderMessage = ({ item }: { item: Message }) => {
     const isCurrentUser = item.senderId === user?.uid;
+    const isUnread = !item.isRead && item.senderId !== user?.uid;
+    
+    // Check if this is a local image (fallback mode)
+    const hasLocalImage = item.attachments && 
+                        item.attachments.length > 0 && 
+                        item.attachments[0].startsWith('local://');
     
     // Get sender name for community chats
-    let senderName = "Unknown User";
+    let senderName = 'Unknown User';
     if (!isCurrentUser && isCommunityChat) {
-      // Use the sender name from the message or fallback to mock data
-      const userNames = {
-        '1': 'Ahmet Yılmaz',
-        '2': 'Ayşe Kaya',
-        '3': 'Mehmet Demir',
-        '4': 'Zeynep Çelik',
-        '5': 'Can Aydın'
-      };
-      
-      senderName = item.senderName || userNames[item.senderId] || `User-${item.senderId.substr(0, 5)}`;
+      if (item.senderName) {
+        senderName = item.senderName;
+      } else if (userNamesCache[item.senderId]) {
+        senderName = userNamesCache[item.senderId];
+      } else {
+        // Fetch and cache sender name
+        UserService.getInstance().getUserById(item.senderId).then(userData => {
+          if (userData && userData.displayName) {
+            setUserNamesCache(prev => ({ ...prev, [item.senderId]: userData.displayName }));
+          }
+        });
+      }
     }
     
     return (
       <View style={[
         styles.messageContainer,
-        isCurrentUser ? styles.currentUserMessage : styles.otherUserMessage
+        isCurrentUser ? styles.currentUserMessage : styles.otherUserMessage,
       ]}>
         {!isCurrentUser && (
           <Avatar.Image
@@ -505,18 +606,39 @@ export default function ChatScreen() {
         
         <View style={[
           styles.messageBubble,
-          isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble
+          isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble,
+          isUnread && styles.unreadMessageBubble
         ]}>
           {!isCurrentUser && isCommunityChat && (
             <Text style={styles.senderName}>{senderName}</Text>
           )}
           
+          {isUnread && (
+            <View style={styles.unreadIndicator} />
+          )}
+          
+          {/* Handle both remote and local images */}
           {item.attachments && item.attachments.length > 0 && (
-            <Image 
-              source={{ uri: item.attachments[0] }}
-              style={styles.messageImage}
-              resizeMode="contain"
-            />
+            <>
+              {hasLocalImage ? (
+                <View style={styles.localImageContainer}>
+                  <Image 
+                    source={{ uri: selectedImage || 'https://via.placeholder.com/200x150?text=Image+Not+Available' }}
+                    style={styles.messageImage}
+                    resizeMode="contain"
+                  />
+                  <Text style={styles.localImageText}>
+                    Resim yüklenemedi (sadece size görünür)
+                  </Text>
+                </View>
+              ) : (
+                <Image 
+                  source={{ uri: item.attachments[0] }}
+                  style={styles.messageImage}
+                  resizeMode="contain"
+                />
+              )}
+            </>
           )}
           
           {item.messageType === 'LINK' ? (
@@ -573,7 +695,7 @@ export default function ChatScreen() {
                 {item.content}
               </Text>
             </TouchableOpacity>
-          ) : item.content.trim() !== '' && (
+          ) : item.content && item.content.trim() !== '' && (
             <Text style={[
               styles.messageText, 
               { color: isCurrentUser ? colors.background : colors.text }
@@ -610,48 +732,246 @@ export default function ChatScreen() {
     );
   };
 
-  // Add image picking functionality
+  // Improved image picking with size validation and lower quality setting
+  // Updated image picker with fixed deprecation warning
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.8,
-    });
-    
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setSelectedImage(result.assets[0].uri);
+    try {
+      // Request permissions first (often a cause of failures)
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert("İzin Gerekli", "Fotoğraf seçebilmek için galeri izni gereklidir.");
+        return;
+      }
+  
+      // Use the updated API: MediaTypeOptions.Images
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.5, // Lower quality for smaller file size
+        exif: false, // Don't include EXIF data to reduce size
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selectedUri = result.assets[0].uri;
+        
+        // Validate the image file if FileSystem is available
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(selectedUri);
+          
+          if (!fileInfo.exists) {
+            Alert.alert("Hata", "Seçilen dosya bulunamadı.");
+            return;
+          }
+          
+          // Check file size
+          if (fileInfo.size > 5 * 1024 * 1024) { // 5MB limit
+            Alert.alert(
+              "Dosya Çok Büyük", 
+              "Seçilen görsel 5MB'dan büyük. Lütfen daha küçük bir görsel seçin veya kırpma özelliğini kullanın."
+            );
+            return;
+          }
+          
+          console.log("Image selected:", selectedUri, "Size:", fileInfo.size);
+        } catch (error) {
+          // If FileSystem fails, still allow upload but log the error
+          console.warn("FileSystem info error:", error);
+          console.log("Image selected:", selectedUri);
+        }
+        
+        setSelectedImage(selectedUri);
+      }
+    } catch (error) {
+      console.error("Error picking image:", error);
+      Alert.alert("Hata", "Fotoğraf seçilirken bir sorun oluştu.");
     }
   };
-  
+
+  // Simplified image upload function with better error handling
   const uploadImage = async (uri: string): Promise<string> => {
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      console.log("Starting image upload process...");
+      setUploading(true);
+      setUploadErrorDetails(null);
       
+      // If we're already in fallback mode, don't attempt real uploads
+      if (usingFallbackMode) {
+        console.log("Using fallback mode - skipping actual upload");
+        // Create a placeholder URL that indicates this is a local image
+        const localImageId = Date.now().toString();
+        
+        // Store the image in memory (in a real app, you'd use AsyncStorage)
+        // This is just a demo placeholder
+        console.log("Created local reference to image:", localImageId);
+        
+        // Simulate network delay for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Return a fake URL that we can detect later
+        return `local://images/${localImageId}`;
+      }
+      
+      // Regular upload flow
       const storage = getStorage();
-      const filename = `chat/${Date.now()}_${user?.uid}`;
-      const storageRef = ref(storage, filename);
       
-      console.log(`Uploading image to Firebase Storage: ${filename}`);
+      // Try multiple paths - sometimes the specific path is the issue
+      const paths = [
+        `chat_images/${user.uid}_${Date.now()}.jpg`,
+        `uploads/${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`,
+        `images/${user.uid}/${Date.now()}.jpg`
+      ];
       
-      // Upload the file
-      const snapshot = await uploadBytes(storageRef, blob);
-      console.log('Image uploaded successfully');
+      let uploadError = null;
       
-      // Get download URL
-      const downloadURL = await getDownloadURL(storageRef);
-      console.log(`Download URL obtained: ${downloadURL}`);
+      // Try each path until one works
+      for (let i = 0; i < paths.length; i++) {
+        try {
+          const path = paths[i];
+          console.log(`Trying upload path ${i+1}/${paths.length}: ${path}`);
+          
+          // Fetch the image and convert to blob
+          const response = await fetch(uri);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch image: ${response.status}`);
+          }
+          
+          const blob = await response.blob();
+          console.log("Image blob created, size:", blob.size);
+          
+          // Upload to Firebase Storage
+          const storageRef = ref(storage, path);
+          console.log("Starting direct upload...");
+          const snapshot = await uploadBytes(storageRef, blob);
+          console.log(`Upload successful to path: ${path}`);
+          
+          // Get the download URL
+          const downloadURL = await getDownloadURL(snapshot.ref);
+          console.log("Download URL:", downloadURL);
+          
+          // Reset error states on success
+          setStorageErrorOccurred(false);
+          setUsingFallbackMode(false);
+          
+          return downloadURL;
+        } catch (e) {
+          console.error(`Upload to path ${i+1} failed:`, e);
+          uploadError = e;
+          // Continue to the next path
+        }
+      }
       
-      return downloadURL;
+      // If we get here, all paths failed
+      throw uploadError || new Error("All upload paths failed");
     } catch (error) {
-      console.error('Error uploading image to Firebase Storage:', error);
-      Alert.alert(
-        'Dosya Yükleme Hatası',
-        'Resim yüklenirken bir sorun oluştu. Lütfen tekrar deneyin.'
-      );
-      throw new Error(`Image upload failed: ${error.message}`);
+      console.error("Upload error:", error);
+      
+      // Set error states
+      setStorageErrorOccurred(true);
+      
+      // Build error message
+      let errorMessage = "Unknown error";
+      let errorDetails = "";
+      
+      if (error.code === 'storage/unauthorized') {
+        errorMessage = "You don't have permission to upload files";
+        errorDetails = "Firebase Storage rules may be too restrictive";
+      } else if (error.code === 'storage/unknown') {
+        errorMessage = "Firebase Storage error";
+        errorDetails = "This could be due to network issues, incorrect Firebase configuration, or storage rules";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // Save error details for debugging
+      setUploadErrorDetails(`${errorMessage} (${error.code || 'no code'})`);
+      
+      // Ask if user wants to use fallback mode
+      if (!usingFallbackMode) {
+        const wantsFallback = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Resim Yükleme Sorunu',
+            'Firebase Storage\'a resim yüklenirken bir sorun oluştu. Alternatif bir yöntem kullanmak ister misiniz?',
+            [
+              { text: 'İptal', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Alternatif Yöntemi Kullan', onPress: () => resolve(true) }
+            ]
+          );
+        });
+        
+        if (wantsFallback) {
+          setUsingFallbackMode(true);
+          // Try again with fallback mode
+          return uploadImage(uri);
+        }
+      }
+      
+      // Handle retries
+      if (uploadRetries < MAX_RETRIES) {
+        console.log(`Retry attempt ${uploadRetries + 1} of ${MAX_RETRIES}`);
+        setUploadRetries(prev => prev + 1);
+        
+        Alert.alert(
+          'Dosya Yükleme Hatası',
+          `Resim yükleme başarısız oldu: ${errorMessage}. Tekrar denemek ister misiniz?`,
+          [
+            { 
+              text: 'İptal', 
+              style: 'cancel', 
+              onPress: () => {
+                setSelectedImage(null);
+                
+                // Offer to send message without image
+                if (newMessage.trim()) {
+                  Alert.alert(
+                    'Mesajı Göndermek İster misiniz?',
+                    'Resim olmadan sadece metni gönderebilirsiniz.',
+                    [
+                      { text: 'İptal', style: 'cancel' },
+                      { text: 'Gönder', onPress: handleSend }
+                    ]
+                  );
+                }
+              }
+            },
+            { text: 'Tekrar Dene', onPress: () => handleSend() }
+          ]
+        );
+      } else {
+        setUploadRetries(0);
+        setSelectedImage(null);
+        
+        // Show debug info for developer
+        Alert.alert(
+          'Dosya Yükleme Hatası',
+          `Resim yüklenemedi: ${errorMessage}\n\nHata detayları: ${errorDetails}`,
+          [
+            { text: 'Tamam' },
+            { 
+              text: 'Hata Detayları', 
+              onPress: () => {
+                Alert.alert(
+                  'Teknik Detaylar',
+                  `Hata Kodu: ${error.code || 'Yok'}\nHata Mesajı: ${error.message || 'Yok'}\n` +
+                  `\nLütfen bu bilgileri geliştiricinizle paylaşın.`
+                );
+              }
+            }
+          ]
+        );
+      }
+      
+      throw error;
+    } finally {
+      setUploading(false);
     }
+  };
+
+  // Add utility function to convert base64 to blob if needed
+  const base64ToBlob = async (base64: string, mimeType: string): Promise<Blob> => {
+    const response = await fetch(`data:${mimeType};base64,${base64}`);
+    return response.blob();
   };
 
   const addEmoji = (emoji: string) => {
@@ -667,19 +987,47 @@ export default function ChatScreen() {
     setLinkDialogVisible(false);
   };
 
+  // After messages are loaded or updated, call markMessagesAsRead/markCommunityMessagesAsRead
+  useEffect(() => {
+    if (!user || !communityConversationId) return;
+    if (messages.length > 0) {
+      if (isCommunityChat) {
+        messagingService.markCommunityMessagesAsRead(recipientId, user.uid);
+      } else {
+        messagingService.markMessagesAsRead(communityConversationId, user.uid);
+      }
+    }
+  }, [messages.length, user, communityConversationId, isCommunityChat, recipientId]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Show storage error notice if needed */}
+      {storageErrorOccurred && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>
+            Firebase Storage hatası: Resim yüklemesi şu anda çalışmıyor. 
+            {usingFallbackMode ? ' Alternatif mod kullanılıyor.' : ''}
+          </Text>
+          <TouchableOpacity 
+            style={styles.errorButton}
+            onPress={() => setStorageErrorOccurred(false)}
+          >
+            <Text style={styles.errorButtonText}>Kapat</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <View style={styles.header}>
+        <LinearGradient colors={['#6a11cb', '#2575fc']} style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <ChevronLeft size={24} color={colors.text} />
+            <ChevronLeft size={24} color="#fff" />
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -739,7 +1087,7 @@ export default function ChatScreen() {
               style={styles.onlineBadge}
             />
           )}
-        </View>
+        </LinearGradient>
         
         <Divider />
         
@@ -819,14 +1167,33 @@ export default function ChatScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={styles.imageButton}
-            onPress={pickImage}
+            style={[
+              styles.imageButton,
+              usingFallbackMode && styles.fallbackModeButton
+            ]}
+            onPress={() => {
+              if (usingFallbackMode) {
+                Alert.alert(
+                  'Alternatif Mod Aktif',
+                  'Firebase Storage ile ilgili sorunlar nedeniyle, resimler gerçekten yüklenemiyor. Resimler sadece size görünecek.',
+                  [
+                    { text: 'İptal', style: 'cancel' },
+                    { text: 'Yine de Seç', onPress: pickImage }
+                  ]
+                );
+              } else {
+                pickImage();
+              }
+            }}
             disabled={uploading}
           >
             <ImageIcon
               size={24}
-              color={uploading ? colors.textTertiary : colors.text}
+              color={uploading ? colors.textTertiary : usingFallbackMode ? "#ff9800" : colors.text}
             />
+            {usingFallbackMode && (
+              <View style={styles.fallbackIndicator} />
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -848,6 +1215,17 @@ export default function ChatScreen() {
               multiline
               style={styles.input}
               blurOnSubmit={false}
+              onKeyPress={({ nativeEvent }) => {
+                if (nativeEvent.key === 'Enter') {
+                  // Prevent default new line kaldırıldı
+                  const messageToSend = newMessage;
+                  setNewMessage('');
+                  if (messageToSend.trim() || selectedImage) {
+                    handleSend();
+                  }
+                  return true;
+                }
+              }}
             />
             
             <TouchableOpacity
@@ -911,7 +1289,6 @@ export default function ChatScreen() {
             <Dialog.Title>Bağlantı Paylaş</Dialog.Title>
             <Dialog.Content>
               <TextInput
-                label="Bağlantı URL"
                 value={linkUrl}
                 onChangeText={setLinkUrl}
                 placeholder="https://example.com"
@@ -920,14 +1297,12 @@ export default function ChatScreen() {
                 style={styles.dialogInput}
               />
               <TextInput
-                label="Başlık (İsteğe Bağlı)"
                 value={linkTitle}
                 onChangeText={setLinkTitle}
                 placeholder="Bağlantı başlığı"
                 style={styles.dialogInput}
               />
               <TextInput
-                label="Açıklama (İsteğe Bağlı)"
                 value={linkDescription}
                 onChangeText={setLinkDescription}
                 placeholder="Bağlantı açıklaması"
@@ -948,6 +1323,21 @@ export default function ChatScreen() {
             </Dialog.Actions>
           </Dialog>
         </Portal>
+        
+        {/* Add a debug banner when upload errors occur */}
+        {uploadErrorDetails && __DEV__ && (
+          <View style={styles.debugBanner}>
+            <Text style={styles.debugText}>
+              Firebase Storage Error: {uploadErrorDetails}
+            </Text>
+            <TouchableOpacity 
+              style={styles.debugButton}
+              onPress={() => setUploadErrorDetails(null)}
+            >
+              <Text style={styles.debugButtonText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -1080,6 +1470,7 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     padding: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: borderRadius.medium,
     ...shadows.small,
     maxWidth: '100%',
@@ -1104,6 +1495,8 @@ const styles = StyleSheet.create({
   },
   messageText: {
     ...typography.body2,
+    lineHeight: 20,
+    fontSize: 15,
   },
   messageFooter: {
     flexDirection: 'row',
@@ -1144,7 +1537,8 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    paddingVertical: Platform.OS === 'ios' ? spacing.xs : 0,
+    paddingVertical: Platform.OS === 'ios' ? spacing.xs : 4,
+    paddingHorizontal: spacing.sm,
     maxHeight: 100,
     ...typography.body2,
   },
@@ -1219,12 +1613,12 @@ const styles = StyleSheet.create({
   emojiPickerTitle: {
     ...typography.h3,
     color: colors.text,
-    fontWeight: 'bold' as const,
+    fontWeight: 'bold',
   },
   emojiPickerClose: {
     ...typography.body1,
     color: colors.primary,
-    fontWeight: 'normal' as const,
+    fontWeight: 'normal',
   },
   emojiGrid: {
     flexDirection: 'row',
@@ -1272,4 +1666,140 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontSize: 10,
   },
-}); 
+  debugBanner: {
+    backgroundColor: '#ffcccc',
+    padding: spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  debugText: {
+    color: '#990000',
+    flex: 1,
+    fontSize: 12,
+  },
+  debugButton: {
+    backgroundColor: '#990000',
+    padding: spacing.xs,
+    borderRadius: borderRadius.small,
+  },
+  debugButtonText: {
+    color: 'white',
+    fontSize: 10,
+  },
+  errorBanner: {
+    backgroundColor: '#ffcccc',
+    padding: spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#990000',
+    flex: 1,
+    fontSize: 12,
+  },
+  errorButton: {
+    backgroundColor: '#990000',
+    padding: spacing.xs,
+    borderRadius: borderRadius.small,
+  },
+  errorButtonText: {
+    color: 'white',
+    fontSize: 10,
+  },
+  fallbackModeButton: {
+    borderWidth: 1,
+    borderColor: '#ff9800',
+    position: 'relative',
+  },
+  fallbackIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ff9800',
+    position: 'absolute',
+    top: 0,
+    right: 0,
+  },
+  localImageContainer: {
+    borderWidth: 1,
+    borderColor: '#ff9800',
+    borderStyle: 'dashed',
+    borderRadius: borderRadius.small,
+    padding: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  localImageText: {
+    ...typography.caption,
+    color: '#ff9800',
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: spacing.xxs,
+  },
+  unreadMessageBubble: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  
+  unreadIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.xs,
+  },
+});
+
+// Helper function to convert base64 to array buffer
+const atob = (base64: string) => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  let buffer = '';
+  
+  let i = 0;
+  while (i < base64.length) {
+    const enc1 = chars.indexOf(base64.charAt(i++));
+    const enc2 = chars.indexOf(base64.charAt(i++));
+    const enc3 = chars.indexOf(base64.charAt(i++));
+    const enc4 = chars.indexOf(base64.charAt(i++));
+    
+    const chr1 = (enc1 << 2) | (enc2 >> 4);
+    const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+    const chr3 = ((enc3 & 3) << 6) | enc4;
+    
+    buffer += String.fromCharCode(chr1);
+    
+    if (enc3 !== 64) buffer += String.fromCharCode(chr2);
+    if (enc4 !== 64) buffer += String.fromCharCode(chr3);
+  }
+  
+  return buffer;
+};
+
+// Helper function to create community conversation document
+async function ensureCommunityConversationDoc(communityId: string) {
+  const conversationId = `community_${communityId}`;
+  const conversationRef = doc(db, 'conversations', conversationId);
+  const docSnap = await getDoc(conversationRef);
+
+  if (!docSnap.exists()) {
+    // Get community information
+    const communityRef = doc(db, 'communities', communityId);
+    const communitySnap = await getDoc(communityRef);
+    const communityData = communitySnap.data();
+
+    await setDoc(conversationRef, {
+      id: conversationId,
+      type: 'GROUP',
+      name: communityData?.name || '',
+      photoURL: communityData?.photoURL || '',
+      members: communityData?.members || [],
+      lastMessage: null,
+      lastMessageAt: new Date().toISOString(),
+      unreadCount: {},
+      communityId: communityId
+    });
+  }
+}
