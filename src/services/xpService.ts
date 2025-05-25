@@ -276,14 +276,16 @@ export class XPService {
           stats: {
             tasksCompleted: 1
           },
-          lastTaskCompletionDate: new Date().toISOString()
+          lastTaskCompletionDate: new Date().toISOString(),
+          xp: xpAmount // XP'yi başlat
         });
       } else {
         // Mevcut kullanıcı belgesini güncelle
         await updateDoc(userRef, {
           taskCompletions: arrayUnion(taskCompletion),
           lastTaskCompletionDate: new Date().toISOString(),
-          'stats.tasksCompleted': increment(1)
+          'stats.tasksCompleted': increment(1),
+          xp: increment(xpAmount) // XP'yi artır
         });
       }
       

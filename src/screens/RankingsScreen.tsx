@@ -49,14 +49,22 @@ export default function RankingsScreen() {
         const allUsers = await userService.getAllUsers();
         
         // Process volunteers
-        const volunteerUsers = allUsers
-          .filter(u => !u.isBusinessAccount && (u.role === 'user' || u.role === 'volunteer'))
-          .map((u, index) => ({
-            ...u,
-            rank: index + 1,
-            score: u.stats?.xpPoints || 0,
-          }))
-          .sort((a, b) => b.score - a.score);
+        const volunteerUsers = await Promise.all(
+          allUsers
+            .filter(u => !u.isBusinessAccount && (u.role === 'user' || u.role === 'volunteer'))
+            .map(async (u, index) => {
+              const xpService = require('../services/xpService').XPService.getInstance();
+              const taskProgress = await xpService.getTaskProgress(u.uid);
+              const xp = taskProgress.completedTasks > 0 ? await getTotalXPFromTasks(u.uid) : 0;
+              return {
+                ...u,
+                rank: index + 1,
+                score: xp,
+                completedTasks: taskProgress.completedTasks,
+              };
+            })
+        );
+        volunteerUsers.sort((a, b) => b.score - a.score);
         
         // Process businesses
         const businessUsers = allUsers
@@ -632,4 +640,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.warning,
   },
-}); 
+});
+
+async function getTotalXPFromTasks(userId: string): Promise<number> {
+  const taskService = require('../services/taskService').TaskService.getInstance();
+  const allTasks = await taskService.getTasks();
+  const completedTasks = allTasks.filter(task => task.status === 'COMPLETED' && task.completedBy?.id === userId);
+  return completedTasks.reduce((sum, task) => sum + (task.xpReward || 0), 0);
+} 

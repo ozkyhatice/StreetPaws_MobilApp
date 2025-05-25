@@ -18,7 +18,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../types/navigation';
 import { AuthContext } from '../contexts/AuthContext';
 import { AuthContextType } from '../types/auth';
-import { Text, Avatar, Surface, useTheme, Button, ProgressBar, Chip, IconButton, Divider } from 'react-native-paper';
+import { Text, Avatar, Surface, useTheme, Button, ProgressBar, Chip, IconButton, Divider, ActivityIndicator } from 'react-native-paper';
 import { colors } from '../config/theme';
 import { Lock, Bell, Paintbrush, LogOut, Phone, User, Calendar, MapPin, FileText, Award, Star, Settings, ChevronRight } from 'lucide-react-native';
 import { db } from '../config/firebase';
@@ -27,6 +27,8 @@ import { BadgeService } from '../services/badgeService';
 import { UserService } from '../services/userService';
 import { XPService } from '../services/xpService';
 import { calculateLevelFromXP, calculateXpForLevel, calculateXpForNextLevel, calculateProgressValue } from '../utils/levelUtils';
+import { TaskCompletionService } from '../services/taskCompletionService';
+import type { User as UserType } from '../types/user';
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
@@ -47,7 +49,7 @@ const ProfileScreen = () => {
   const [editValue, setEditValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserType | null>(null);
   const [badges, setBadges] = useState([]);
   const [recentBadges, setRecentBadges] = useState([]);
   const [actualCompletedTaskCount, setActualCompletedTaskCount] = useState(0);
@@ -58,6 +60,9 @@ const ProfileScreen = () => {
   const [taskStats, setTaskStats] = useState<TaskStats | null>(null);
   const [profileImage, setProfileImage] = useState(null);
   const [scrollY] = useState(new Animated.Value(0));
+  const [pendingVerifications, setPendingVerifications] = useState<any[]>([]);
+  const [loadingVerifications, setLoadingVerifications] = useState(false);
+  const [verifActionLoading, setVerifActionLoading] = useState<string | null>(null);
 
   // Initialize services
   const xpService = XPService.getInstance();
@@ -108,20 +113,12 @@ const ProfileScreen = () => {
         return;
       }
       
-      console.log("ProfileScreen - User data loaded:", JSON.stringify(userData));
-      console.log("ProfileScreen - User role:", userData.role);
-      console.log("ProfileScreen - Business data:", userData.business || userData.Business);
-      
       setUserData(userData);
       
-      // Get XP data
-      try {
-        const centralizedXP = await xpService.getCentralizedXP(user.uid);
-        setActualXP(centralizedXP.xp);
-      } catch (error) {
-        console.error('Error getting XP data:', error);
-        setActualXP(userData.xp || 0);
-      }
+      // XP ve görev sayısı XPService.getTaskProgress ile alınacak
+      const taskProgress = await xpService.getTaskProgress(user.uid);
+      setActualCompletedTaskCount(taskProgress.completedTasks);
+      setActualXP(taskProgress.completedTasks > 0 ? await getTotalXPFromTasks(user.uid) : 0);
       
       // Set profile image
       if (userData.photoURL) {
@@ -143,14 +140,7 @@ const ProfileScreen = () => {
       }
       
       // Get task stats
-      try {
-        const taskProgress = await xpService.getTaskProgress(user.uid);
-        setActualCompletedTaskCount(taskProgress.completedTasks);
-        setTaskStats(taskProgress);
-      } catch (error) {
-        console.error('Error getting task stats:', error);
-        setActualCompletedTaskCount(userData.stats?.tasksCompleted || 0);
-      }
+      setTaskStats(taskProgress);
     } catch (error) {
       console.error('Error loading user data:', error);
     } finally {
@@ -313,13 +303,15 @@ const ProfileScreen = () => {
     );
   };
 
-  // Calculate level and XP data
+  // Calculate level and XP data - Fix: ensure the calculations are correct
   const currentXP = actualXP;
+  // Force refresh level calculation based on current XP
   const currentLevel = calculateLevelFromXP(currentXP);
-  const progress = calculateProgressValue(currentXP, currentLevel);
   const nextLevelXP = calculateXpForNextLevel(currentLevel);
   const currentLevelXP = calculateXpForLevel(currentLevel);
   const remainingXP = nextLevelXP - currentXP;
+  // Calculate progress correctly
+  const progress = (currentXP - currentLevelXP) / (nextLevelXP - currentLevelXP);
 
   const headerOpacity = scrollY.interpolate({
     inputRange: [0, 100],
@@ -404,6 +396,60 @@ const ProfileScreen = () => {
       </Surface>
     );
   };
+
+  const loadPendingVerifications = async () => {
+    setLoadingVerifications(true);
+    try {
+      const result = await TaskCompletionService.getInstance().getPendingVerifications();
+      setPendingVerifications(result);
+    } catch (e) {
+      setPendingVerifications([]);
+    } finally {
+      setLoadingVerifications(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      loadPendingVerifications();
+    }
+  }, [user]);
+
+  const handleApproveVerification = async (verificationId: string) => {
+    if (!user) return;
+    setVerifActionLoading(verificationId + '_approve');
+    try {
+      await TaskCompletionService.getInstance().approveTaskCompletion(verificationId, user.uid);
+      Alert.alert('Başarılı', 'Görev onaylandı.');
+      loadPendingVerifications();
+    } catch (e) {
+      Alert.alert('Hata', 'Görev onaylanamadı.');
+    } finally {
+      setVerifActionLoading(null);
+    }
+  };
+
+  const handleRejectVerification = async (verificationId: string) => {
+    if (!user) return;
+    setVerifActionLoading(verificationId + '_reject');
+    try {
+      await TaskCompletionService.getInstance().rejectTaskCompletion(verificationId, user.uid, 'Admin tarafından reddedildi');
+      Alert.alert('Bilgi', 'Görev reddedildi.');
+      loadPendingVerifications();
+    } catch (e) {
+      Alert.alert('Hata', 'Görev reddedilemedi.');
+    } finally {
+      setVerifActionLoading(null);
+    }
+  };
+
+  // Yardımcı fonksiyon
+  async function getTotalXPFromTasks(userId: string): Promise<number> {
+    const taskService = require('../services/taskService').TaskService.getInstance();
+    const allTasks = await taskService.getTasks();
+    const completedTasks = allTasks.filter(task => task.status === 'COMPLETED' && task.completedBy?.id === userId);
+    return completedTasks.reduce((sum, task) => sum + (task.xpReward || 0), 0);
+  }
 
   if (!user) {
     return (
@@ -624,6 +670,46 @@ const ProfileScreen = () => {
             <ChevronRight size={20} color="#CCC" />
           </TouchableOpacity>
         </Surface>
+        
+        {/* Onay Bekleyen Görevler (sadece admin için) */}
+        {user?.role === 'admin' && (
+          <Surface style={styles.infoCard} elevation={1}>
+            <Text style={styles.cardTitle}>Onay Bekleyen Görevler</Text>
+            {loadingVerifications ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : pendingVerifications.length === 0 ? (
+              <Text style={{ color: '#888', marginTop: 8 }}>Onay bekleyen görev yok.</Text>
+            ) : (
+              pendingVerifications.map(({ verification, task }) => (
+                <View key={verification.id} style={{ borderBottomWidth: 1, borderBottomColor: '#eee', paddingVertical: 10 }}>
+                  <Text style={{ fontWeight: 'bold' }}>{task.title}</Text>
+                  <Text style={{ color: '#666', fontSize: 12 }}>Tamamlayan: {verification.userId}</Text>
+                  <Text style={{ color: '#666', fontSize: 12 }}>Tarih: {verification.createdAt ? new Date(verification.createdAt).toLocaleString() : '-'}</Text>
+                  <View style={{ flexDirection: 'row', marginTop: 6 }}>
+                    <Button
+                      mode="contained"
+                      compact
+                      loading={verifActionLoading === verification.id + '_approve'}
+                      onPress={() => handleApproveVerification(verification.id)}
+                      style={{ marginRight: 8 }}
+                    >
+                      Onayla
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      compact
+                      loading={verifActionLoading === verification.id + '_reject'}
+                      onPress={() => handleRejectVerification(verification.id)}
+                      textColor={colors.error}
+                    >
+                      Reddet
+                    </Button>
+                  </View>
+                </View>
+              ))
+            )}
+          </Surface>
+        )}
         
         <View style={styles.footer}>
           <Text style={styles.footerText}>Sürüm 1.0.0</Text>
@@ -1002,12 +1088,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 6,
   },
-  bioText: {
-    color: '#333',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
   bioEditIcon: {
     position: 'absolute',
     top: 10,
@@ -1035,12 +1115,6 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
     backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-  xpText: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 6,
   },
   refreshButton: {
     marginTop: 6,

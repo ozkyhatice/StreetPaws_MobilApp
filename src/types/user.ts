@@ -32,7 +32,6 @@ export interface User {
     address?: string;
   };
   xp: number;
-  completedTasks: string[];
   volunteerHours: number;
   badges: Badge[];
   activeTask?: string;
@@ -51,4 +50,12 @@ export interface User {
   address?: string;
   website?: string;
   description?: string;
+  streak?: number;
+  taskCompletions?: {
+    taskId: string;
+    xp: number;
+    timestamp: string;
+    isEmergency?: boolean;
+    title?: string;
+  }[];
 } 

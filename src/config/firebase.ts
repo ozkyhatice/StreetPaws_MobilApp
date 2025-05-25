@@ -1,5 +1,6 @@
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import {
@@ -35,18 +36,42 @@ const firebaseConfig = {
   measurementId: FIREBASE_MEASUREMENT_ID
 };
 
-// Delete any existing Firebase apps
-getApps().forEach(app => {
-    deleteApp(app);
-});
+// Initialize variables
+let app;
+let auth;
+let db;
+let storage;
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Validate Firebase configuration
+const validateConfig = () => {
+  const requiredFields = Object.entries(firebaseConfig);
+  for (const [key, value] of requiredFields) {
+    if (!value) {
+      throw new Error(`Missing Firebase configuration field: ${key}`);
+    }
+  }
+};
 
 // Initialize Firebase services
-const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+try {
+  validateConfig();
+  
+  // Delete any existing Firebase apps
+  getApps().forEach(app => {
+    deleteApp(app);
+  });
+
+  app = initializeApp(firebaseConfig);
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
+  db = getFirestore(app);
+  storage = getStorage(app);
+
+} catch (error) {
+  console.error('Firebase initialization error:', error);
+  throw error;
+}
 
 // Firestore koleksiyonlarını ve field yapılarını tanımla
 export const initializeDatabase = async () => {
@@ -227,4 +252,4 @@ export const initializeDatabase = async () => {
   }
 };
 
-export { app, auth, db, storage }; 
+export { app, auth, db, storage };
